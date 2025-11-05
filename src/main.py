@@ -17,10 +17,13 @@ from fastapi.security import APIKeyHeader
 import httpx
 
 # ============================================================
-# DEBUG CONFIGURATION
+# CONFIGURATION
 # ============================================================
 # Set to True for detailed logging, False for minimal logging
-DEBUG = False
+DEBUG = True
+
+# Port to run the server on
+PORT = 8000
 # ============================================================
 
 def debug_print(*args, **kwargs):
@@ -1574,8 +1577,8 @@ if __name__ == "__main__":
     print("=" * 60)
     print("🚀 LMArena Bridge Server Starting...")
     print("=" * 60)
-    print(f"📍 Dashboard: http://localhost:8000/dashboard")
-    print(f"🔐 Login: http://localhost:8000/login")
-    print(f"📚 API Base URL: http://localhost:8000/api/v1")
+    print(f"📍 Dashboard: http://localhost:{PORT}/dashboard")
+    print(f"🔐 Login: http://localhost:{PORT}/login")
+    print(f"📚 API Base URL: http://localhost:{PORT}/api/v1")
     print("=" * 60)
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)

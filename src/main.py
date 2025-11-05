@@ -16,6 +16,18 @@ from fastapi.security import APIKeyHeader
 
 import httpx
 
+# ============================================================
+# DEBUG CONFIGURATION
+# ============================================================
+# Set to True for detailed logging, False for minimal logging
+DEBUG = False
+# ============================================================
+
+def debug_print(*args, **kwargs):
+    """Print debug messages only if DEBUG is True"""
+    if DEBUG:
+        print(*args, **kwargs)
+
 # Custom UUIDv7 implementation (using correct Unix epoch)
 def uuid7():
     """
@@ -206,6 +218,23 @@ async def get_initial_data():
     except Exception as e:
         print(f"❌ An error occurred during initial data retrieval: {e}")
 
+async def periodic_refresh_task():
+    """Background task to refresh cf_clearance and models every 30 minutes"""
+    while True:
+        try:
+            # Wait 30 minutes (1800 seconds)
+            await asyncio.sleep(1800)
+            print("\n" + "="*60)
+            print("🔄 Starting scheduled 30-minute refresh...")
+            print("="*60)
+            await get_initial_data()
+            print("✅ Scheduled refresh completed")
+            print("="*60 + "\n")
+        except Exception as e:
+            print(f"❌ Error in periodic refresh task: {e}")
+            # Continue the loop even if there's an error
+            continue
+
 @app.on_event("startup")
 async def startup_event():
     # Ensure config and models files exist
@@ -213,7 +242,10 @@ async def startup_event():
     save_models(get_models())
     # Load usage stats from config
     load_usage_stats()
+    # Start initial data fetch
     asyncio.create_task(get_initial_data())
+    # Start periodic refresh task (every 30 minutes)
+    asyncio.create_task(periodic_refresh_task())
 
 # --- UI Endpoints (Login/Dashboard) ---
 
@@ -1004,30 +1036,30 @@ async def list_models(api_key: dict = Depends(rate_limit_api_key)):
 
 @app.post("/api/v1/chat/completions")
 async def api_chat_completions(request: Request, api_key: dict = Depends(rate_limit_api_key)):
-    print("\n" + "="*80)
-    print("🔵 NEW API REQUEST RECEIVED")
-    print("="*80)
+    debug_print("\n" + "="*80)
+    debug_print("🔵 NEW API REQUEST RECEIVED")
+    debug_print("="*80)
     
     try:
         body = await request.json()
-        print(f"📥 Request body keys: {list(body.keys())}")
+        debug_print(f"📥 Request body keys: {list(body.keys())}")
         
         model_public_name = body.get("model")
         messages = body.get("messages", [])
         stream = body.get("stream", False)
         
-        print(f"🌊 Stream mode: {stream}")
+        debug_print(f"🌊 Stream mode: {stream}")
         
-        print(f"🤖 Requested model: {model_public_name}")
-        print(f"💬 Number of messages: {len(messages)}")
+        debug_print(f"🤖 Requested model: {model_public_name}")
+        debug_print(f"💬 Number of messages: {len(messages)}")
         
         if not model_public_name or not messages:
-            print("❌ Missing model or messages in request")
+            debug_print("❌ Missing model or messages in request")
             raise HTTPException(status_code=400, detail="Missing 'model' or 'messages' in request body.")
 
         # Find model ID from public name
         models = get_models()
-        print(f"📚 Total models loaded: {len(models)}")
+        debug_print(f"📚 Total models loaded: {len(models)}")
         
         model_id = None
         for m in models:
@@ -1036,13 +1068,13 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 break
         
         if not model_id:
-            print(f"❌ Model '{model_public_name}' not found in model list")
+            debug_print(f"❌ Model '{model_public_name}' not found in model list")
             raise HTTPException(
                 status_code=404, 
                 detail=f"Model '{model_public_name}' not found. Use /api/v1/models to see available models."
             )
         
-        print(f"✅ Found model ID: {model_id}")
+        debug_print(f"✅ Found model ID: {model_id}")
 
         # Log usage
         model_usage_stats[model_public_name] += 1
@@ -1056,48 +1088,48 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         
         # Validate prompt is a string and not too large
         if not isinstance(prompt, str):
-            print("❌ Prompt content must be a string")
+            debug_print("❌ Prompt content must be a string")
             raise HTTPException(status_code=400, detail="Message content must be a string.")
         
         if not prompt:
-            print("❌ Last message has no content")
+            debug_print("❌ Last message has no content")
             raise HTTPException(status_code=400, detail="Last message must have content.")
         
         # Log prompt length for debugging character limit issues
-        print(f"📝 User prompt length: {len(prompt)} characters")
-        print(f"📝 User prompt preview: {prompt[:100]}..." if len(prompt) > 100 else f"📝 User prompt: {prompt}")
+        debug_print(f"📝 User prompt length: {len(prompt)} characters")
+        debug_print(f"📝 User prompt preview: {prompt[:100]}..." if len(prompt) > 100 else f"📝 User prompt: {prompt}")
         
         # Check for reasonable character limit (LMArena appears to have limits)
         # Typical limit seems to be around 32K-64K characters based on testing
         MAX_PROMPT_LENGTH = 50000  # Conservative estimate
         if len(prompt) > MAX_PROMPT_LENGTH:
             error_msg = f"Prompt too long ({len(prompt)} characters). LMArena has a character limit of approximately {MAX_PROMPT_LENGTH} characters. Please reduce the message size."
-            print(f"❌ {error_msg}")
+            debug_print(f"❌ {error_msg}")
             raise HTTPException(status_code=400, detail=error_msg)
         
         # Use API key + conversation tracking
         api_key_str = api_key["key"]
         conversation_id = body.get("conversation_id", f"conv-{uuid.uuid4()}")
         
-        print(f"🔑 API Key: {api_key_str[:20]}...")
-        print(f"💭 Conversation ID: {conversation_id}")
+        debug_print(f"🔑 API Key: {api_key_str[:20]}...")
+        debug_print(f"💭 Conversation ID: {conversation_id}")
         
         headers = get_request_headers()
-        print(f"📋 Headers prepared (auth token length: {len(headers.get('Cookie', '').split('arena-auth-prod-v1=')[-1].split(';')[0])} chars)")
+        debug_print(f"📋 Headers prepared (auth token length: {len(headers.get('Cookie', '').split('arena-auth-prod-v1=')[-1].split(';')[0])} chars)")
         
         # Check if conversation exists for this API key
         session = chat_sessions[api_key_str].get(conversation_id)
         
         if not session:
-            print("🆕 Creating NEW conversation session")
+            debug_print("🆕 Creating NEW conversation session")
             # New conversation - Generate all IDs at once (like the browser does)
             session_id = str(uuid7())
             user_msg_id = str(uuid7())
             model_msg_id = str(uuid7())
             
-            print(f"🔑 Generated session_id: {session_id}")
-            print(f"👤 Generated user_msg_id: {user_msg_id}")
-            print(f"🤖 Generated model_msg_id: {model_msg_id}")
+            debug_print(f"🔑 Generated session_id: {session_id}")
+            debug_print(f"👤 Generated user_msg_id: {user_msg_id}")
+            debug_print(f"🤖 Generated model_msg_id: {model_msg_id}")
             
             payload = {
                 "id": session_id,
@@ -1135,15 +1167,15 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": "chat"
             }
             url = "https://lmarena.ai/nextjs-api/stream/create-evaluation"
-            print(f"📤 Target URL: {url}")
-            print(f"📦 Payload structure: {len(payload['messages'])} messages")
+            debug_print(f"📤 Target URL: {url}")
+            debug_print(f"📦 Payload structure: {len(payload['messages'])} messages")
         else:
-            print("🔄 Using EXISTING conversation session")
+            debug_print("🔄 Using EXISTING conversation session")
             # Follow-up message - Generate new message IDs
             user_msg_id = str(uuid7())
-            print(f"👤 Generated followup user_msg_id: {user_msg_id}")
+            debug_print(f"👤 Generated followup user_msg_id: {user_msg_id}")
             model_msg_id = str(uuid7())
-            print(f"🤖 Generated followup model_msg_id: {model_msg_id}")
+            debug_print(f"🤖 Generated followup model_msg_id: {model_msg_id}")
             
             # Build full conversation history using stored messages with their original IDs
             conversation_messages = []
@@ -1205,11 +1237,11 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": "chat"
             }
             url = f"https://lmarena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
-            print(f"📤 Target URL: {url}")
-            print(f"📦 Payload structure: {len(payload['messages'])} messages")
+            debug_print(f"📤 Target URL: {url}")
+            debug_print(f"📦 Payload structure: {len(payload['messages'])} messages")
 
-        print(f"\n🚀 Making API request to LMArena...")
-        print(f"⏱️  Timeout set to: 120 seconds")
+        debug_print(f"\n🚀 Making API request to LMArena...")
+        debug_print(f"⏱️  Timeout set to: 120 seconds")
         
         # Handle streaming mode
         if stream:
@@ -1219,9 +1251,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 
                 async with httpx.AsyncClient() as client:
                     try:
-                        print("📡 Sending POST request for streaming...")
+                        debug_print("📡 Sending POST request for streaming...")
                         async with client.stream('POST', url, json=payload, headers=headers, timeout=120) as response:
-                            print(f"✅ Stream opened - Status: {response.status_code}")
+                            debug_print(f"✅ Stream opened - Status: {response.status_code}")
                             response.raise_for_status()
                             
                             async for line in response.aiter_lines():
@@ -1298,7 +1330,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 chat_sessions[api_key_str][conversation_id]["last_message_id"] = model_msg_id
                             
                             yield "data: [DONE]\n\n"
-                            print(f"✅ Stream completed - {len(response_text)} chars sent")
+                            debug_print(f"✅ Stream completed - {len(response_text)} chars sent")
                             
                     except httpx.HTTPStatusError as e:
                         error_msg = f"LMArena API error: {e.response.status_code}"
@@ -1326,17 +1358,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         # Handle non-streaming mode (original code)
         async with httpx.AsyncClient() as client:
             try:
-                print("📡 Sending POST request...")
+                debug_print("📡 Sending POST request...")
                 response = await client.post(url, json=payload, headers=headers, timeout=120)
                 
-                print(f"✅ Response received - Status: {response.status_code}")
-                print(f"📏 Response length: {len(response.text)} characters")
-                print(f"📋 Response headers: {dict(response.headers)}")
+                debug_print(f"✅ Response received - Status: {response.status_code}")
+                debug_print(f"📏 Response length: {len(response.text)} characters")
+                debug_print(f"📋 Response headers: {dict(response.headers)}")
                 
                 response.raise_for_status()
                 
-                print(f"🔍 Processing response...")
-                print(f"📄 First 500 chars of response:\n{response.text[:500]}")
+                debug_print(f"🔍 Processing response...")
+                debug_print(f"📄 First 500 chars of response:\n{response.text[:500]}")
                 
                 # Process response in lmarena format
                 # Format: a0:"text chunk" for content, ad:{...} for metadata
@@ -1346,7 +1378,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 text_chunks_found = 0
                 metadata_found = 0
                 
-                print(f"📊 Parsing response lines...")
+                debug_print(f"📊 Parsing response lines...")
                 
                 error_message = None
                 for line in response.text.splitlines():
@@ -1364,9 +1396,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             text_chunk = json.loads(chunk_data)
                             response_text += text_chunk
                             if text_chunks_found <= 3:  # Log first 3 chunks
-                                print(f"  ✅ Chunk {text_chunks_found}: {repr(text_chunk[:50])}")
+                                debug_print(f"  ✅ Chunk {text_chunks_found}: {repr(text_chunk[:50])}")
                         except json.JSONDecodeError as e:
-                            print(f"  ⚠️ Failed to parse text chunk on line {line_count}: {chunk_data[:100]} - {e}")
+                            debug_print(f"  ⚠️ Failed to parse text chunk on line {line_count}: {chunk_data[:100]} - {e}")
                             continue
                     
                     # Parse error messages: a3:"An error occurred"
@@ -1374,9 +1406,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         error_data = line[3:]  # Remove "a3:" prefix
                         try:
                             error_message = json.loads(error_data)
-                            print(f"  ❌ Error message received: {error_message}")
+                            debug_print(f"  ❌ Error message received: {error_message}")
                         except json.JSONDecodeError as e:
-                            print(f"  ⚠️ Failed to parse error message on line {line_count}: {error_data[:100]} - {e}")
+                            debug_print(f"  ⚠️ Failed to parse error message on line {line_count}: {error_data[:100]} - {e}")
                             error_message = error_data
                     
                     # Parse metadata: ad:{"finishReason":"stop"}
@@ -1386,34 +1418,48 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         try:
                             metadata = json.loads(metadata_data)
                             finish_reason = metadata.get("finishReason")
-                            print(f"  📋 Metadata found: finishReason={finish_reason}")
+                            debug_print(f"  📋 Metadata found: finishReason={finish_reason}")
                         except json.JSONDecodeError as e:
-                            print(f"  ⚠️ Failed to parse metadata on line {line_count}: {metadata_data[:100]} - {e}")
+                            debug_print(f"  ⚠️ Failed to parse metadata on line {line_count}: {metadata_data[:100]} - {e}")
                             continue
                     elif line.strip():  # Non-empty line that doesn't match expected format
                         if line_count <= 5:  # Log first 5 unexpected lines
-                            print(f"  ❓ Unexpected line format {line_count}: {line[:100]}")
+                            debug_print(f"  ❓ Unexpected line format {line_count}: {line[:100]}")
 
-                print(f"\n📊 Parsing Summary:")
-                print(f"  - Total lines: {line_count}")
-                print(f"  - Text chunks found: {text_chunks_found}")
-                print(f"  - Metadata entries: {metadata_found}")
-                print(f"  - Final response length: {len(response_text)} chars")
-                print(f"  - Finish reason: {finish_reason}")
+                debug_print(f"\n📊 Parsing Summary:")
+                debug_print(f"  - Total lines: {line_count}")
+                debug_print(f"  - Text chunks found: {text_chunks_found}")
+                debug_print(f"  - Metadata entries: {metadata_found}")
+                debug_print(f"  - Final response length: {len(response_text)} chars")
+                debug_print(f"  - Finish reason: {finish_reason}")
                 
                 if not response_text:
-                    print(f"\n⚠️  WARNING: Empty response text!")
-                    print(f"📄 Full raw response:\n{response.text}")
+                    debug_print(f"\n⚠️  WARNING: Empty response text!")
+                    debug_print(f"📄 Full raw response:\n{response.text}")
                     if error_message:
-                        error_detail = f"LMArena API returned an error: {error_message}"
-                        print(f"❌ Raising HTTPException with error: {error_detail}")
-                        raise HTTPException(status_code=502, detail=error_detail)
+                        error_detail = f"LMArena API error: {error_message}"
+                        print(f"❌ {error_detail}")
+                        # Return OpenAI-compatible error response
+                        return {
+                            "error": {
+                                "message": error_detail,
+                                "type": "upstream_error",
+                                "code": "lmarena_error"
+                            }
+                        }
                     else:
                         error_detail = "LMArena API returned empty response. This could be due to: invalid auth token, expired cf_clearance, model unavailable, or API rate limiting."
-                        print(f"❌ Raising HTTPException: {error_detail}")
-                        raise HTTPException(status_code=502, detail=error_detail)
+                        debug_print(f"❌ {error_detail}")
+                        # Return OpenAI-compatible error response
+                        return {
+                            "error": {
+                                "message": error_detail,
+                                "type": "upstream_error",
+                                "code": "empty_response"
+                            }
+                        }
                 else:
-                    print(f"✅ Response text preview: {response_text[:200]}...")
+                    debug_print(f"✅ Response text preview: {response_text[:200]}...")
                 
                 # Update session - Store message history with IDs
                 if not session:
@@ -1425,7 +1471,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             {"id": model_msg_id, "role": "assistant", "content": response_text.strip()}
                         ]
                     }
-                    print(f"💾 Saved new session for conversation {conversation_id}")
+                    debug_print(f"💾 Saved new session for conversation {conversation_id}")
                 else:
                     # Append new messages to history
                     chat_sessions[api_key_str][conversation_id]["messages"].append(
@@ -1434,7 +1480,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     chat_sessions[api_key_str][conversation_id]["messages"].append(
                         {"id": model_msg_id, "role": "assistant", "content": response_text.strip()}
                     )
-                    print(f"💾 Updated existing session for conversation {conversation_id}")
+                    debug_print(f"💾 Updated existing session for conversation {conversation_id}")
 
                 final_response = {
                     "id": f"chatcmpl-{uuid.uuid4()}",
@@ -1457,8 +1503,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     }
                 }
                 
-                print(f"\n✅ REQUEST COMPLETED SUCCESSFULLY")
-                print("="*80 + "\n")
+                debug_print(f"\n✅ REQUEST COMPLETED SUCCESSFULLY")
+                debug_print("="*80 + "\n")
                 
                 return final_response
 
@@ -1472,28 +1518,33 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 print(f"\n❌ HTTP STATUS ERROR")
                 print(f"📛 Error detail: {error_detail}")
                 print(f"📤 Request URL: {url}")
-                print(f"📤 Request payload (truncated): {json.dumps(payload, indent=2)[:500]}")
-                print(f"📥 Response text: {e.response.text[:500]}")
+                debug_print(f"📤 Request payload (truncated): {json.dumps(payload, indent=2)[:500]}")
+                debug_print(f"📥 Response text: {e.response.text[:500]}")
                 print("="*80 + "\n")
                 
-                # Handle 429 from LMArena - propagate Retry-After if available
-                if e.response.status_code == 429:
-                    retry_after = e.response.headers.get("Retry-After", "60")  # Default 60s
-                    print(f"⏱️  LMArena rate limit - Retry-After: {retry_after}s")
-                    raise HTTPException(
-                        status_code=429,
-                        detail=f"LMArena rate limit exceeded: {error_detail}",
-                        headers={"Retry-After": retry_after}
-                    )
-                
-                raise HTTPException(status_code=502, detail=error_detail)
+                # Return OpenAI-compatible error response
+                error_type = "rate_limit_error" if e.response.status_code == 429 else "upstream_error"
+                return {
+                    "error": {
+                        "message": error_detail,
+                        "type": error_type,
+                        "code": f"http_{e.response.status_code}"
+                    }
+                }
             
             except httpx.TimeoutException as e:
                 print(f"\n⏱️  TIMEOUT ERROR")
                 print(f"📛 Request timed out after 120 seconds")
                 print(f"📤 Request URL: {url}")
                 print("="*80 + "\n")
-                raise HTTPException(status_code=504, detail="Request to LMArena API timed out")
+                # Return OpenAI-compatible error response
+                return {
+                    "error": {
+                        "message": "Request to LMArena API timed out after 120 seconds",
+                        "type": "timeout_error",
+                        "code": "request_timeout"
+                    }
+                }
             
             except Exception as e:
                 print(f"\n❌ UNEXPECTED ERROR IN HTTP CLIENT")
@@ -1501,7 +1552,14 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 print(f"📛 Error message: {str(e)}")
                 print(f"📤 Request URL: {url}")
                 print("="*80 + "\n")
-                raise
+                # Return OpenAI-compatible error response
+                return {
+                    "error": {
+                        "message": f"Unexpected error: {str(e)}",
+                        "type": "internal_error",
+                        "code": type(e).__name__.lower()
+                    }
+                }
                 
     except HTTPException:
         raise

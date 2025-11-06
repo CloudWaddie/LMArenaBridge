@@ -4,8 +4,10 @@ import re
 import uuid
 import time
 import secrets
+import base64
+import mimetypes
 from collections import defaultdict
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from datetime import datetime, timezone, timedelta
 
 import uvicorn
@@ -20,7 +22,7 @@ import httpx
 # CONFIGURATION
 # ============================================================
 # Set to True for detailed logging, False for minimal logging
-DEBUG = True
+DEBUG = False
 
 # Port to run the server on
 PORT = 8000
@@ -47,6 +49,185 @@ def uuid7():
     
     hex_str = f"{uuid_int:032x}"
     return f"{hex_str[0:8]}-{hex_str[8:12]}-{hex_str[12:16]}-{hex_str[16:20]}-{hex_str[20:32]}"
+
+# Image upload helper functions
+async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: str) -> Optional[tuple]:
+    """
+    Upload an image to LMArena R2 storage and return the key and download URL.
+    
+    Args:
+        image_data: Binary image data
+        mime_type: MIME type of the image (e.g., 'image/png')
+        filename: Original filename for the image
+    
+    Returns:
+        Tuple of (key, download_url) if successful, or None if upload fails
+    """
+    try:
+        # Step 1: Request upload URL
+        debug_print(f"📤 Step 1: Requesting upload URL for {filename}")
+        
+        # Prepare headers for Next.js Server Action
+        request_headers = get_request_headers()
+        request_headers.update({
+            "Accept": "text/x-component",
+            "Content-Type": "text/plain;charset=UTF-8",
+            "Next-Action": "70cb393626e05a5f0ce7dcb46977c36c139fa85f91",
+            "Referer": "https://lmarena.ai/?mode=direct",
+        })
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://lmarena.ai/?mode=direct",
+                headers=request_headers,
+                content=json.dumps([filename, mime_type]),
+                timeout=30.0
+            )
+            response.raise_for_status()
+            
+            # Parse response - format: 0:{...}\n1:{...}\n
+            lines = response.text.strip().split('\n')
+            upload_data = None
+            for line in lines:
+                if line.startswith('1:'):
+                    upload_data = json.loads(line[2:])
+                    break
+            
+            if not upload_data or not upload_data.get('success'):
+                debug_print(f"❌ Failed to get upload URL: {response.text}")
+                return None
+            
+            upload_url = upload_data['data']['uploadUrl']
+            key = upload_data['data']['key']
+            debug_print(f"✅ Got upload URL and key: {key}")
+            
+            # Step 2: Upload image to R2 storage
+            debug_print(f"📤 Step 2: Uploading image to R2 storage ({len(image_data)} bytes)")
+            response = await client.put(
+                upload_url,
+                content=image_data,
+                headers={"Content-Type": mime_type},
+                timeout=60.0
+            )
+            response.raise_for_status()
+            debug_print(f"✅ Image uploaded successfully")
+            
+            # Step 3: Get signed download URL (uses different Next-Action)
+            debug_print(f"📤 Step 3: Requesting signed download URL")
+            request_headers_step3 = request_headers.copy()
+            request_headers_step3["Next-Action"] = "6064c365792a3eaf40a60a874b327fe031ea6f22d7"
+            
+            response = await client.post(
+                "https://lmarena.ai/?mode=direct",
+                headers=request_headers_step3,
+                content=json.dumps([key]),
+                timeout=30.0
+            )
+            response.raise_for_status()
+            
+            # Parse response
+            lines = response.text.strip().split('\n')
+            download_data = None
+            for line in lines:
+                if line.startswith('1:'):
+                    download_data = json.loads(line[2:])
+                    break
+            
+            if not download_data or not download_data.get('success'):
+                debug_print(f"❌ Failed to get download URL: {response.text}")
+                return None
+            
+            download_url = download_data['data']['url']
+            debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
+            return (key, download_url)
+            
+    except Exception as e:
+        debug_print(f"❌ Error uploading image: {e}")
+        return None
+
+async def process_message_content(content, model_capabilities: dict) -> tuple[str, List[dict]]:
+    """
+    Process message content, handle images if present and model supports them.
+    
+    Args:
+        content: Message content (string or list of content parts)
+        model_capabilities: Model's capability dictionary
+    
+    Returns:
+        Tuple of (text_content, experimental_attachments)
+    """
+    # Check if model supports image input
+    supports_images = model_capabilities.get('inputCapabilities', {}).get('image', False)
+    
+    # If content is a string, return it as-is
+    if isinstance(content, str):
+        return content, []
+    
+    # If content is a list (OpenAI format with multiple parts)
+    if isinstance(content, list):
+        text_parts = []
+        attachments = []
+        
+        for part in content:
+            if isinstance(part, dict):
+                if part.get('type') == 'text':
+                    text_parts.append(part.get('text', ''))
+                    
+                elif part.get('type') == 'image_url' and supports_images:
+                    image_url = part.get('image_url', {})
+                    if isinstance(image_url, dict):
+                        url = image_url.get('url', '')
+                    else:
+                        url = image_url
+                    
+                    # Handle base64-encoded images
+                    if url.startswith('data:'):
+                        # Format: data:image/png;base64,iVBORw0KGgo...
+                        try:
+                            header, data = url.split(',', 1)
+                            mime_type = header.split(';')[0].split(':')[1]
+                            
+                            # Decode base64
+                            image_data = base64.b64decode(data)
+                            
+                            # Generate filename
+                            ext = mimetypes.guess_extension(mime_type) or '.png'
+                            filename = f"upload-{uuid.uuid4()}{ext}"
+                            
+                            debug_print(f"🖼️  Processing base64 image: {filename}, size: {len(image_data)} bytes")
+                            
+                            # Upload to LMArena
+                            upload_result = await upload_image_to_lmarena(image_data, mime_type, filename)
+                            
+                            if upload_result:
+                                key, download_url = upload_result
+                                # Add as attachment in LMArena format
+                                attachments.append({
+                                    "name": key,
+                                    "contentType": mime_type,
+                                    "url": download_url
+                                })
+                                debug_print(f"✅ Image uploaded and added to attachments")
+                            else:
+                                debug_print(f"⚠️  Failed to upload image, skipping")
+                        except Exception as e:
+                            debug_print(f"❌ Error processing base64 image: {e}")
+                    
+                    # Handle URL images (direct URLs)
+                    elif url.startswith('http://') or url.startswith('https://'):
+                        # For external URLs, we'd need to download and re-upload
+                        # For now, skip this case
+                        debug_print(f"⚠️  External image URLs not yet supported: {url[:100]}")
+                        
+                elif part.get('type') == 'image_url' and not supports_images:
+                    debug_print(f"⚠️  Image provided but model doesn't support images")
+        
+        # Combine text parts
+        text_content = '\n'.join(text_parts).strip()
+        return text_content, attachments
+    
+    # Fallback
+    return str(content), []
 
 app = FastAPI()
 
@@ -1091,6 +1272,15 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         
         debug_print(f"✅ Found model ID: {model_id}")
 
+        # Get model capabilities
+        model_capabilities = {}
+        for m in models:
+            if m.get("id") == model_id:
+                model_capabilities = m.get("capabilities", {})
+                break
+        
+        debug_print(f"🔧 Model capabilities: {model_capabilities}")
+
         # Log usage
         model_usage_stats[model_public_name] += 1
         # Save stats immediately after incrementing
@@ -1098,20 +1288,20 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         config["usage_stats"] = dict(model_usage_stats)
         save_config(config)
 
-        # Use last message as prompt
-        prompt = messages[-1].get("content", "")
+        # Process last message content (may include images)
+        last_message_content = messages[-1].get("content", "")
+        prompt, experimental_attachments = await process_message_content(last_message_content, model_capabilities)
         
-        # Validate prompt is a string and not too large
-        if not isinstance(prompt, str):
-            debug_print("❌ Prompt content must be a string")
-            raise HTTPException(status_code=400, detail="Message content must be a string.")
-        
+        # Validate prompt
         if not prompt:
-            debug_print("❌ Last message has no content")
-            raise HTTPException(status_code=400, detail="Last message must have content.")
+            # If no text but has attachments, that's okay for vision models
+            if not experimental_attachments:
+                debug_print("❌ Last message has no content")
+                raise HTTPException(status_code=400, detail="Last message must have content.")
         
         # Log prompt length for debugging character limit issues
         debug_print(f"📝 User prompt length: {len(prompt)} characters")
+        debug_print(f"🖼️  Attachments: {len(experimental_attachments)} images")
         debug_print(f"📝 User prompt preview: {prompt[:100]}..." if len(prompt) > 100 else f"📝 User prompt: {prompt}")
         
         # Check for reasonable character limit (LMArena appears to have limits)
@@ -1157,7 +1347,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         "id": user_msg_id,
                         "role": "user",
                         "content": prompt,
-                        "experimental_attachments": [],
+                        "experimental_attachments": experimental_attachments,
                         "parentMessageIds": [],
                         "participantPosition": "a",
                         "modelId": None,
@@ -1184,6 +1374,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             url = "https://lmarena.ai/nextjs-api/stream/create-evaluation"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: {len(payload['messages'])} messages")
+            debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
         else:
             debug_print("🔄 Using EXISTING conversation session")
             # Follow-up message - Generate new message IDs
@@ -1218,7 +1409,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "id": user_msg_id,
                 "role": "user",
                 "content": prompt,
-                "experimental_attachments": [],
+                "experimental_attachments": experimental_attachments,
                 "parentMessageIds": [last_msg_id],
                 "participantPosition": "a",
                 "modelId": None,
@@ -1254,6 +1445,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             url = f"https://lmarena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: {len(payload['messages'])} messages")
+            debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
 
         debug_print(f"\n🚀 Making API request to LMArena...")
         debug_print(f"⏱️  Timeout set to: 120 seconds")

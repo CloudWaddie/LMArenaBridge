@@ -64,6 +64,15 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         Tuple of (key, download_url) if successful, or None if upload fails
     """
     try:
+        # Validate inputs
+        if not image_data:
+            debug_print("❌ Image data is empty")
+            return None
+        
+        if not mime_type or not mime_type.startswith('image/'):
+            debug_print(f"❌ Invalid MIME type: {mime_type}")
+            return None
+        
         # Step 1: Request upload URL
         debug_print(f"📤 Step 1: Requesting upload URL for {filename}")
         
@@ -77,72 +86,101 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         })
         
         async with httpx.AsyncClient() as client:
-            response = await client.post(
-                "https://lmarena.ai/?mode=direct",
-                headers=request_headers,
-                content=json.dumps([filename, mime_type]),
-                timeout=30.0
-            )
-            response.raise_for_status()
-            
-            # Parse response - format: 0:{...}\n1:{...}\n
-            lines = response.text.strip().split('\n')
-            upload_data = None
-            for line in lines:
-                if line.startswith('1:'):
-                    upload_data = json.loads(line[2:])
-                    break
-            
-            if not upload_data or not upload_data.get('success'):
-                debug_print(f"❌ Failed to get upload URL: {response.text}")
+            try:
+                response = await client.post(
+                    "https://lmarena.ai/?mode=direct",
+                    headers=request_headers,
+                    content=json.dumps([filename, mime_type]),
+                    timeout=30.0
+                )
+                response.raise_for_status()
+            except httpx.TimeoutException:
+                debug_print("❌ Timeout while requesting upload URL")
+                return None
+            except httpx.HTTPError as e:
+                debug_print(f"❌ HTTP error while requesting upload URL: {e}")
                 return None
             
-            upload_url = upload_data['data']['uploadUrl']
-            key = upload_data['data']['key']
-            debug_print(f"✅ Got upload URL and key: {key}")
+            # Parse response - format: 0:{...}\n1:{...}\n
+            try:
+                lines = response.text.strip().split('\n')
+                upload_data = None
+                for line in lines:
+                    if line.startswith('1:'):
+                        upload_data = json.loads(line[2:])
+                        break
+                
+                if not upload_data or not upload_data.get('success'):
+                    debug_print(f"❌ Failed to get upload URL: {response.text[:200]}")
+                    return None
+                
+                upload_url = upload_data['data']['uploadUrl']
+                key = upload_data['data']['key']
+                debug_print(f"✅ Got upload URL and key: {key}")
+            except (json.JSONDecodeError, KeyError, IndexError) as e:
+                debug_print(f"❌ Failed to parse upload URL response: {e}")
+                return None
             
             # Step 2: Upload image to R2 storage
             debug_print(f"📤 Step 2: Uploading image to R2 storage ({len(image_data)} bytes)")
-            response = await client.put(
-                upload_url,
-                content=image_data,
-                headers={"Content-Type": mime_type},
-                timeout=60.0
-            )
-            response.raise_for_status()
-            debug_print(f"✅ Image uploaded successfully")
+            try:
+                response = await client.put(
+                    upload_url,
+                    content=image_data,
+                    headers={"Content-Type": mime_type},
+                    timeout=60.0
+                )
+                response.raise_for_status()
+                debug_print(f"✅ Image uploaded successfully")
+            except httpx.TimeoutException:
+                debug_print("❌ Timeout while uploading image to R2 storage")
+                return None
+            except httpx.HTTPError as e:
+                debug_print(f"❌ HTTP error while uploading image: {e}")
+                return None
             
             # Step 3: Get signed download URL (uses different Next-Action)
             debug_print(f"📤 Step 3: Requesting signed download URL")
             request_headers_step3 = request_headers.copy()
             request_headers_step3["Next-Action"] = "6064c365792a3eaf40a60a874b327fe031ea6f22d7"
             
-            response = await client.post(
-                "https://lmarena.ai/?mode=direct",
-                headers=request_headers_step3,
-                content=json.dumps([key]),
-                timeout=30.0
-            )
-            response.raise_for_status()
-            
-            # Parse response
-            lines = response.text.strip().split('\n')
-            download_data = None
-            for line in lines:
-                if line.startswith('1:'):
-                    download_data = json.loads(line[2:])
-                    break
-            
-            if not download_data or not download_data.get('success'):
-                debug_print(f"❌ Failed to get download URL: {response.text}")
+            try:
+                response = await client.post(
+                    "https://lmarena.ai/?mode=direct",
+                    headers=request_headers_step3,
+                    content=json.dumps([key]),
+                    timeout=30.0
+                )
+                response.raise_for_status()
+            except httpx.TimeoutException:
+                debug_print("❌ Timeout while requesting download URL")
+                return None
+            except httpx.HTTPError as e:
+                debug_print(f"❌ HTTP error while requesting download URL: {e}")
                 return None
             
-            download_url = download_data['data']['url']
-            debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
-            return (key, download_url)
+            # Parse response
+            try:
+                lines = response.text.strip().split('\n')
+                download_data = None
+                for line in lines:
+                    if line.startswith('1:'):
+                        download_data = json.loads(line[2:])
+                        break
+                
+                if not download_data or not download_data.get('success'):
+                    debug_print(f"❌ Failed to get download URL: {response.text[:200]}")
+                    return None
+                
+                download_url = download_data['data']['url']
+                debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
+                return (key, download_url)
+            except (json.JSONDecodeError, KeyError, IndexError) as e:
+                debug_print(f"❌ Failed to parse download URL response: {e}")
+                return None
             
     except Exception as e:
-        debug_print(f"❌ Error uploading image: {e}")
+        debug_print(f"❌ Unexpected error uploading image: {type(e).__name__}: {e}")
         return None
 
 async def process_message_content(content, model_capabilities: dict) -> tuple[str, List[dict]]:
@@ -184,11 +222,36 @@ async def process_message_content(content, model_capabilities: dict) -> tuple[st
                     if url.startswith('data:'):
                         # Format: data:image/png;base64,iVBORw0KGgo...
                         try:
+                            # Validate and parse data URI
+                            if ',' not in url:
+                                debug_print(f"❌ Invalid data URI format (no comma separator)")
+                                continue
+                            
                             header, data = url.split(',', 1)
+                            
+                            # Parse MIME type
+                            if ';' not in header or ':' not in header:
+                                debug_print(f"❌ Invalid data URI header format")
+                                continue
+                            
                             mime_type = header.split(';')[0].split(':')[1]
                             
+                            # Validate MIME type
+                            if not mime_type.startswith('image/'):
+                                debug_print(f"❌ Invalid MIME type: {mime_type}")
+                                continue
+                            
                             # Decode base64
-                            image_data = base64.b64decode(data)
+                            try:
+                                image_data = base64.b64decode(data)
+                            except Exception as e:
+                                debug_print(f"❌ Failed to decode base64 data: {e}")
+                                continue
+                            
+                            # Validate image size (max 10MB)
+                            if len(image_data) > 10 * 1024 * 1024:
+                                debug_print(f"❌ Image too large: {len(image_data)} bytes (max 10MB)")
+                                continue
                             
                             # Generate filename
                             ext = mimetypes.guess_extension(mime_type) or '.png'
@@ -211,7 +274,7 @@ async def process_message_content(content, model_capabilities: dict) -> tuple[st
                             else:
                                 debug_print(f"⚠️  Failed to upload image, skipping")
                         except Exception as e:
-                            debug_print(f"❌ Error processing base64 image: {e}")
+                            debug_print(f"❌ Unexpected error processing base64 image: {type(e).__name__}: {e}")
                     
                     # Handle URL images (direct URLs)
                     elif url.startswith('http://') or url.startswith('https://'):
@@ -1200,6 +1263,37 @@ async def refresh_tokens(session: str = Depends(get_current_session)):
 
 # --- OpenAI Compatible API Endpoints ---
 
+@app.get("/api/v1/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
+    try:
+        models = get_models()
+        config = get_config()
+        
+        # Basic health checks
+        has_cf_clearance = bool(config.get("cf_clearance"))
+        has_models = len(models) > 0
+        has_api_keys = len(config.get("api_keys", [])) > 0
+        
+        status = "healthy" if (has_cf_clearance and has_models) else "degraded"
+        
+        return {
+            "status": status,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "checks": {
+                "cf_clearance": has_cf_clearance,
+                "models_loaded": has_models,
+                "model_count": len(models),
+                "api_keys_configured": has_api_keys
+            }
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "error": str(e)
+        }
+
 @app.get("/api/v1/models")
 async def list_models(api_key: dict = Depends(rate_limit_api_key)):
     models = get_models()
@@ -1227,32 +1321,63 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
     debug_print("="*80)
     
     try:
-        body = await request.json()
+        # Parse request body with error handling
+        try:
+            body = await request.json()
+        except json.JSONDecodeError as e:
+            debug_print(f"❌ Invalid JSON in request body: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid JSON in request body: {str(e)}")
+        except Exception as e:
+            debug_print(f"❌ Failed to read request body: {e}")
+            raise HTTPException(status_code=400, detail=f"Failed to read request body: {str(e)}")
+        
         debug_print(f"📥 Request body keys: {list(body.keys())}")
         
+        # Validate required fields
         model_public_name = body.get("model")
         messages = body.get("messages", [])
         stream = body.get("stream", False)
         
         debug_print(f"🌊 Stream mode: {stream}")
-        
         debug_print(f"🤖 Requested model: {model_public_name}")
         debug_print(f"💬 Number of messages: {len(messages)}")
         
-        if not model_public_name or not messages:
-            debug_print("❌ Missing model or messages in request")
-            raise HTTPException(status_code=400, detail="Missing 'model' or 'messages' in request body.")
+        if not model_public_name:
+            debug_print("❌ Missing 'model' in request")
+            raise HTTPException(status_code=400, detail="Missing 'model' in request body.")
+        
+        if not messages:
+            debug_print("❌ Missing 'messages' in request")
+            raise HTTPException(status_code=400, detail="Missing 'messages' in request body.")
+        
+        if not isinstance(messages, list):
+            debug_print("❌ 'messages' must be an array")
+            raise HTTPException(status_code=400, detail="'messages' must be an array.")
+        
+        if len(messages) == 0:
+            debug_print("❌ 'messages' array is empty")
+            raise HTTPException(status_code=400, detail="'messages' array cannot be empty.")
 
         # Find model ID from public name
-        models = get_models()
-        debug_print(f"📚 Total models loaded: {len(models)}")
+        try:
+            models = get_models()
+            debug_print(f"📚 Total models loaded: {len(models)}")
+        except Exception as e:
+            debug_print(f"❌ Failed to load models: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Failed to load model list from LMArena. Please try again later."
+            )
         
         model_id = None
         model_org = None
+        model_capabilities = {}
+        
         for m in models:
             if m.get("publicName") == model_public_name:
                 model_id = m.get("id")
                 model_org = m.get("organization")
+                model_capabilities = m.get("capabilities", {})
                 break
         
         if not model_id:
@@ -1271,26 +1396,29 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             )
         
         debug_print(f"✅ Found model ID: {model_id}")
-
-        # Get model capabilities
-        model_capabilities = {}
-        for m in models:
-            if m.get("id") == model_id:
-                model_capabilities = m.get("capabilities", {})
-                break
-        
         debug_print(f"🔧 Model capabilities: {model_capabilities}")
 
         # Log usage
-        model_usage_stats[model_public_name] += 1
-        # Save stats immediately after incrementing
-        config = get_config()
-        config["usage_stats"] = dict(model_usage_stats)
-        save_config(config)
+        try:
+            model_usage_stats[model_public_name] += 1
+            # Save stats immediately after incrementing
+            config = get_config()
+            config["usage_stats"] = dict(model_usage_stats)
+            save_config(config)
+        except Exception as e:
+            # Don't fail the request if usage logging fails
+            debug_print(f"⚠️  Failed to log usage stats: {e}")
 
         # Process last message content (may include images)
-        last_message_content = messages[-1].get("content", "")
-        prompt, experimental_attachments = await process_message_content(last_message_content, model_capabilities)
+        try:
+            last_message_content = messages[-1].get("content", "")
+            prompt, experimental_attachments = await process_message_content(last_message_content, model_capabilities)
+        except Exception as e:
+            debug_print(f"❌ Failed to process message content: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to process message content: {str(e)}"
+            )
         
         # Validate prompt
         if not prompt:

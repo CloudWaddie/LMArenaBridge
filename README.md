@@ -86,3 +86,122 @@ print(response.choices[0].message.content)
 - External image URLs (http/https) are not yet supported
 - Models without image support will ignore image content
 - Check model capabilities using `/api/v1/models` endpoint
+- Maximum image size: 10MB per image
+
+## Production Deployment
+
+### Error Handling
+
+LMArenaBridge includes comprehensive error handling for production use:
+
+- **Request Validation**: Validates JSON format, required fields, and data types
+- **Model Validation**: Checks model availability and access permissions
+- **Image Processing**: Validates image formats, sizes (max 10MB), and MIME types
+- **Upload Failures**: Gracefully handles image upload failures with retry logic
+- **Timeout Handling**: Configurable timeouts for all HTTP requests (30-120s)
+- **Rate Limiting**: Built-in rate limiting per API key
+- **Error Responses**: OpenAI-compatible error format for easy client integration
+
+### Debug Mode
+
+Debug mode is **OFF** by default in production. To enable debugging:
+
+```python
+# In src/main.py
+DEBUG = True  # Set to True for detailed logging
+```
+
+When debug mode is enabled, you'll see:
+- Detailed request/response logs
+- Image upload progress
+- Model capability checks
+- Session management details
+
+**Important**: Keep debug mode OFF in production to reduce log verbosity and improve performance.
+
+### Monitoring
+
+Monitor these key metrics in production:
+
+- **API Response Times**: Check for slow responses indicating timeout issues
+- **Error Rates**: Track 4xx/5xx errors from `/api/v1/chat/completions`
+- **Model Usage**: Dashboard shows top 10 most-used models
+- **Image Upload Success**: Monitor image upload failures in logs
+
+### Security Best Practices
+
+1. **API Keys**: Use strong, randomly generated API keys (dashboard auto-generates secure keys)
+2. **Rate Limiting**: Configure appropriate rate limits per key in dashboard
+3. **Admin Password**: Change default admin password in `config.json`
+4. **HTTPS**: Use a reverse proxy (nginx, Caddy) with SSL for production
+5. **Firewall**: Restrict access to dashboard port (default 8000)
+
+### Common Issues
+
+**"LMArena API error: An error occurred"**
+- Check that your `arena-auth-prod-v1` token is valid
+- Verify `cf_clearance` cookie is not expired
+- Ensure model is available on LMArena
+
+**Image Upload Failures**
+- Verify image is under 10MB
+- Check MIME type is supported (image/png, image/jpeg, etc.)
+- Ensure LMArena R2 storage is accessible
+
+**Timeout Errors**
+- Increase timeout in `src/main.py` if needed (default 120s)
+- Check network connectivity to LMArena
+- Consider using streaming mode for long responses
+
+### Reverse Proxy Example (Nginx)
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name api.yourdomain.com;
+    
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+    
+    location / {
+        proxy_pass http://localhost:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # For streaming responses
+        proxy_buffering off;
+        proxy_cache off;
+    }
+}
+```
+
+### Running as a Service (systemd)
+
+Create `/etc/systemd/system/lmarenabridge.service`:
+
+```ini
+[Unit]
+Description=LMArena Bridge API
+After=network.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/path/to/lmarenabridge
+Environment="PATH=/path/to/venv/bin"
+ExecStart=/path/to/venv/bin/python src/main.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable and start:
+```bash
+sudo systemctl enable lmarenabridge
+sudo systemctl start lmarenabridge
+sudo systemctl status lmarenabridge
+```

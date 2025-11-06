@@ -1685,6 +1685,20 @@
     }
   },
   {
+    "id": "019a59bc-8bb8-7933-92eb-fe143770c211",
+    "organization": "moonshot",
+    "provider": "moonshot",
+    "publicName": "kimi-k2-thinking",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
     "id": "019a1866-63f7-7004-a980-301aedebf6ab",
     "publicName": "phantom-1017-1",
     "capabilities": {
@@ -1772,20 +1786,6 @@
     }
   },
   {
-    "id": "019a4c15-bf18-7cf7-9cde-6b120bdc63b9",
-    "organization": "openai",
-    "provider": "openaiResponses",
-    "publicName": "gpt-5-codex",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "web": true
-      }
-    }
-  },
-  {
     "id": "7766a45c-1b6b-4fb8-9823-2557291e1ddd",
     "organization": "tencent",
     "provider": "tencent",
@@ -1802,7 +1802,7 @@
         }
       }
     },
-    "rank": 2
+    "rank": 1
   },
   {
     "id": "019a5050-2875-78ed-ae3a-d9a51a438685",
@@ -1810,29 +1810,6 @@
     "capabilities": {
       "inputCapabilities": {
         "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rank": 2
-  },
-  {
-    "id": "0199ef2a-583f-7088-b704-b75fd169401d",
-    "organization": "google",
-    "provider": "google-genai",
-    "publicName": "gemini-2.5-flash-image-preview (nano-banana)",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": {
-          "requiresUpload": false,
-          "multipleImages": true
-        }
       },
       "outputCapabilities": {
         "image": {
@@ -1864,10 +1841,50 @@
     "rank": 3
   },
   {
+    "id": "0199ef2a-583f-7088-b704-b75fd169401d",
+    "organization": "google",
+    "provider": "google-genai",
+    "publicName": "gemini-2.5-flash-image-preview (nano-banana)",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 3
+  },
+  {
     "id": "2ec9f1a6-126f-4c65-a102-15ac401dcea4",
     "organization": "google",
     "provider": "googleVertex",
     "publicName": "imagen-4.0-generate-preview-06-06",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 7
+  },
+  {
+    "id": "019a5050-1695-7b5d-b045-ba01ff08ec28",
+    "publicName": "wan2.5-preview",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1950,23 +1967,6 @@
     "rank": 8
   },
   {
-    "id": "019a5050-1695-7b5d-b045-ba01ff08ec28",
-    "publicName": "wan2.5-preview",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rank": 8
-  },
-  {
     "id": "0199c238-f8ee-7f7d-afc1-7e28fcfd21cf",
     "organization": "openai",
     "provider": "customOpenai",
@@ -2006,7 +2006,7 @@
         }
       }
     },
-    "rank": 13
+    "rank": 14
   },
   {
     "id": "d8771262-8248-4372-90d5-eb41910db034",
@@ -2045,7 +2045,7 @@
         }
       }
     },
-    "rank": 18
+    "rank": 19
   },
   {
     "id": "9fe82ee1-c84f-417f-b0e7-cab4ae4cf3f3",
@@ -2064,7 +2064,7 @@
         }
       }
     },
-    "rank": 21
+    "rank": 22
   },
   {
     "id": "51ad1d79-61e2-414c-99e3-faeb64bb6b1b",
@@ -2083,7 +2083,7 @@
         }
       }
     },
-    "rank": 23
+    "rank": 24
   },
   {
     "id": "28a8f330-3554-448c-9f32-2c0a08ec6477",
@@ -2105,7 +2105,7 @@
         }
       }
     },
-    "rank": 23
+    "rank": 24
   },
   {
     "id": "0199e980-d247-7dd3-9ca1-77092f126f05",
@@ -2122,7 +2122,7 @@
         }
       }
     },
-    "rank": 23
+    "rank": 24
   },
   {
     "id": "73378be5-cdba-49e7-b3d0-027949871aa6",
@@ -2217,7 +2217,7 @@
         }
       }
     },
-    "rank": 37
+    "rank": 35
   },
   {
     "id": "69bbf7d4-9f44-447e-a868-abc4f7a31810",

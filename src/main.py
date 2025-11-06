@@ -1442,10 +1442,20 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         
         # Use API key + conversation tracking
         api_key_str = api_key["key"]
-        conversation_id = body.get("conversation_id", f"conv-{uuid.uuid4()}")
+        
+        # Generate conversation ID from context (API key + model + first user message)
+        # This allows automatic session continuation without client modifications
+        import hashlib
+        first_user_message = next((m.get("content", "") for m in messages if m.get("role") == "user"), "")
+        if isinstance(first_user_message, list):
+            # Handle array content format
+            first_user_message = str(first_user_message)
+        conversation_key = f"{api_key_str}_{model_public_name}_{first_user_message[:100]}"
+        conversation_id = hashlib.sha256(conversation_key.encode()).hexdigest()[:16]
         
         debug_print(f"🔑 API Key: {api_key_str[:20]}...")
-        debug_print(f"💭 Conversation ID: {conversation_id}")
+        debug_print(f"💭 Auto-generated Conversation ID: {conversation_id}")
+        debug_print(f"🔑 Conversation key: {conversation_key[:100]}...")
         
         headers = get_request_headers()
         debug_print(f"📋 Headers prepared (auth token length: {len(headers.get('Cookie', '').split('arena-auth-prod-v1=')[-1].split(';')[0])} chars)")
@@ -1654,15 +1664,26 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     except json.JSONDecodeError:
                                         continue
                             
-                            # Update session
+                            # Update session - Store message history with IDs
                             if not session:
                                 chat_sessions[api_key_str][conversation_id] = {
                                     "conversation_id": session_id,
-                                    "last_message_id": model_msg_id,
-                                    "model": model_public_name
+                                    "model": model_public_name,
+                                    "messages": [
+                                        {"id": user_msg_id, "role": "user", "content": prompt},
+                                        {"id": model_msg_id, "role": "assistant", "content": response_text.strip()}
+                                    ]
                                 }
+                                debug_print(f"💾 Saved new session for conversation {conversation_id}")
                             else:
-                                chat_sessions[api_key_str][conversation_id]["last_message_id"] = model_msg_id
+                                # Append new messages to history
+                                chat_sessions[api_key_str][conversation_id]["messages"].append(
+                                    {"id": user_msg_id, "role": "user", "content": prompt}
+                                )
+                                chat_sessions[api_key_str][conversation_id]["messages"].append(
+                                    {"id": model_msg_id, "role": "assistant", "content": response_text.strip()}
+                                )
+                                debug_print(f"💾 Updated existing session for conversation {conversation_id}")
                             
                             yield "data: [DONE]\n\n"
                             debug_print(f"✅ Stream completed - {len(response_text)} chars sent")

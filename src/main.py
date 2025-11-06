@@ -1022,8 +1022,10 @@ async def refresh_tokens(session: str = Depends(get_current_session)):
 @app.get("/api/v1/models")
 async def list_models(api_key: dict = Depends(rate_limit_api_key)):
     models = get_models()
-    # Filter for text-based models
-    text_models = [m for m in models if m.get('capabilities', {}).get('outputCapabilities', {}).get('text')]
+    # Filter for text-based models with an organization (exclude stealth models)
+    text_models = [m for m in models 
+                   if m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
+                   and m.get('organization')]
     
     return {
         "object": "list",
@@ -1065,9 +1067,11 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         debug_print(f"📚 Total models loaded: {len(models)}")
         
         model_id = None
+        model_org = None
         for m in models:
             if m.get("publicName") == model_public_name:
                 model_id = m.get("id")
+                model_org = m.get("organization")
                 break
         
         if not model_id:
@@ -1075,6 +1079,14 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             raise HTTPException(
                 status_code=404, 
                 detail=f"Model '{model_public_name}' not found. Use /api/v1/models to see available models."
+            )
+        
+        # Check if model is a stealth model (no organization)
+        if not model_org:
+            debug_print(f"❌ Model '{model_public_name}' is a stealth model (no organization)")
+            raise HTTPException(
+                status_code=403,
+                detail="You do not have access to stealth models. Contact cloudwaddie for more info."
             )
         
         debug_print(f"✅ Found model ID: {model_id}")

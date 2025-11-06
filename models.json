@@ -61,33 +61,17 @@
     "rank": 1
   },
   {
-    "id": "983bc566-b783-4d28-b24c-3c8b08eb1086",
-    "organization": "openai",
-    "provider": "openai",
-    "publicName": "gpt-5-high",
+    "id": "019a2d13-28a5-7205-908c-0a58de904617",
+    "organization": "anthropic",
+    "provider": "googleVertexAnthropic",
+    "publicName": "claude-sonnet-4-5-20250929",
     "capabilities": {
       "inputCapabilities": {
-        "text": true,
-        "image": true
+        "text": true
       },
       "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 2
-  },
-  {
-    "id": "cb0f1e24-e8e9-4745-aabc-b926ffde7475",
-    "organization": "openai",
-    "provider": "openai",
-    "publicName": "o3-2025-04-16",
-    "capabilities": {
-      "inputCapabilities": {
         "text": true,
-        "image": true
-      },
-      "outputCapabilities": {
-        "text": true
+        "web": true
       }
     },
     "rank": 2
@@ -106,7 +90,7 @@
         "web": true
       }
     },
-    "rank": 2
+    "rank": 3
   },
   {
     "id": "0199c1e0-3720-742d-91c8-787788b0a19b",
@@ -122,23 +106,7 @@
         "text": true
       }
     },
-    "rank": 2
-  },
-  {
-    "id": "019a2d13-28a5-7205-908c-0a58de904617",
-    "organization": "anthropic",
-    "provider": "googleVertexAnthropic",
-    "publicName": "claude-sonnet-4-5-20250929",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true,
-        "web": true
-      }
-    },
-    "rank": 2
+    "rank": 3
   },
   {
     "id": "812c93cc-5f88-4cff-b9ca-c11a26599b0e",
@@ -153,13 +121,13 @@
         "text": true
       }
     },
-    "rank": 3
+    "rank": 4
   },
   {
-    "id": "4b11c78c-08c8-461c-938e-5fc97d56a40d",
+    "id": "983bc566-b783-4d28-b24c-3c8b08eb1086",
     "organization": "openai",
     "provider": "openai",
-    "publicName": "gpt-5-chat",
+    "publicName": "gpt-5-high",
     "capabilities": {
       "inputCapabilities": {
         "text": true,
@@ -169,22 +137,23 @@
         "text": true
       }
     },
-    "rank": 10
+    "rank": 4
   },
   {
-    "id": "98ad8b8b-12cd-46cd-98de-99edde7e03eb",
-    "organization": "alibaba",
-    "provider": "alibaba",
-    "publicName": "qwen3-max-2025-09-23",
+    "id": "cb0f1e24-e8e9-4745-aabc-b926ffde7475",
+    "organization": "openai",
+    "provider": "openai",
+    "publicName": "o3-2025-04-16",
     "capabilities": {
       "inputCapabilities": {
-        "text": true
+        "text": true,
+        "image": true
       },
       "outputCapabilities": {
         "text": true
       }
     },
-    "rank": 10
+    "rank": 4
   },
   {
     "id": "f595e6f1-6175-4880-a9eb-377e390819e4",
@@ -201,7 +170,38 @@
         "web": true
       }
     },
-    "rank": 10
+    "rank": 5
+  },
+  {
+    "id": "4b11c78c-08c8-461c-938e-5fc97d56a40d",
+    "organization": "openai",
+    "provider": "openai",
+    "publicName": "gpt-5-chat",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 9
+  },
+  {
+    "id": "98ad8b8b-12cd-46cd-98de-99edde7e03eb",
+    "organization": "alibaba",
+    "provider": "alibaba",
+    "publicName": "qwen3-max-2025-09-23",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 9
   },
   {
     "id": "3b5e9593-3dc0-4492-a3da-19784c4bde75",
@@ -249,22 +249,6 @@
     "rank": 11
   },
   {
-    "id": "716aa8ca-d729-427f-93ab-9579e4a13e98",
-    "organization": "alibaba",
-    "provider": "alibaba",
-    "publicName": "qwen3-vl-235b-a22b-instruct",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 11
-  },
-  {
     "id": "d4cdb846-a711-4b2b-9de1-63a852c2c99c",
     "organization": "deepseek",
     "provider": "deepseek",
@@ -280,10 +264,10 @@
     "rank": 11
   },
   {
-    "id": "b9edb8e9-4e98-49e7-8aaf-ae67e9797a11",
-    "organization": "xai",
-    "provider": "openrouter",
-    "publicName": "grok-4-0709",
+    "id": "716aa8ca-d729-427f-93ab-9579e4a13e98",
+    "organization": "alibaba",
+    "provider": "alibaba",
+    "publicName": "qwen3-vl-235b-a22b-instruct",
     "capabilities": {
       "inputCapabilities": {
         "text": true,
@@ -310,22 +294,7 @@
         "web": true
       }
     },
-    "rank": 12
-  },
-  {
-    "id": "ee116d12-64d6-48a8-88e5-b2d06325cdd2",
-    "organization": "anthropic",
-    "provider": "googleVertexAnthropic",
-    "publicName": "claude-opus-4-20250514",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 12
+    "rank": 13
   },
   {
     "id": "14e9311c-94d2-40c2-8c54-273947e208b0",
@@ -341,22 +310,7 @@
         "text": true
       }
     },
-    "rank": 13
-  },
-  {
-    "id": "d079ef40-3b20-4c58-ab5e-243738dbada5",
-    "organization": "zai",
-    "provider": "zai",
-    "publicName": "glm-4.5",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 18
+    "rank": 15
   },
   {
     "id": "27035fb8-a25b-4ec9-8410-34be18328afd",
@@ -372,7 +326,69 @@
         "text": true
       }
     },
-    "rank": 18
+    "rank": 15
+  },
+  {
+    "id": "ee116d12-64d6-48a8-88e5-b2d06325cdd2",
+    "organization": "anthropic",
+    "provider": "googleVertexAnthropic",
+    "publicName": "claude-opus-4-20250514",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 15
+  },
+  {
+    "id": "b9edb8e9-4e98-49e7-8aaf-ae67e9797a11",
+    "organization": "xai",
+    "provider": "openrouter",
+    "publicName": "grok-4-0709",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 17
+  },
+  {
+    "id": "d079ef40-3b20-4c58-ab5e-243738dbada5",
+    "organization": "zai",
+    "provider": "zai",
+    "publicName": "glm-4.5",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 17
+  },
+  {
+    "id": "0199f059-3877-7cfe-bc80-e01b1a4a83de",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "gemini-2.5-flash",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 19
   },
   {
     "id": "fc700d46-c4c1-4fec-88b5-f086876ae0bb",
@@ -388,7 +404,7 @@
         "text": true
       }
     },
-    "rank": 18
+    "rank": 19
   },
   {
     "id": "0199e8e9-01ed-73e0-96ba-cf43b286bf10",
@@ -419,7 +435,7 @@
         "text": true
       }
     },
-    "rank": 24
+    "rank": 28
   },
   {
     "id": "6fcbe051-f521-4dc7-8986-c429eb6191bf",
@@ -437,21 +453,6 @@
     "rank": 29
   },
   {
-    "id": "1a400d9a-f61c-4bc2-89b4-a9b7e77dff12",
-    "organization": "alibaba",
-    "provider": "alibaba",
-    "publicName": "qwen3-235b-a22b-no-thinking",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 30
-  },
-  {
     "id": "4653dded-a46b-442a-a8fe-9bb9730e2453",
     "organization": "anthropic",
     "provider": "googleVertexAnthropic",
@@ -464,7 +465,22 @@
         "text": true
       }
     },
-    "rank": 30
+    "rank": 33
+  },
+  {
+    "id": "1a400d9a-f61c-4bc2-89b4-a9b7e77dff12",
+    "organization": "alibaba",
+    "provider": "alibaba",
+    "publicName": "qwen3-235b-a22b-no-thinking",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 34
   },
   {
     "id": "5fd3caa8-fe4c-41a5-a22c-0025b58f4b42",
@@ -480,7 +496,7 @@
         "text": true
       }
     },
-    "rank": 32
+    "rank": 35
   },
   {
     "id": "03c511f5-0d35-4751-aae6-24f918b0d49e",
@@ -496,7 +512,7 @@
         "text": true
       }
     },
-    "rank": 32
+    "rank": 35
   },
   {
     "id": "2f5253e4-75be-473c-bcfc-baeb3df0f8ad",
@@ -511,7 +527,7 @@
         "text": true
       }
     },
-    "rank": 36
+    "rank": 38
   },
   {
     "id": "23848331-9f93-404f-85f0-3c3b4ece177e",
@@ -526,7 +542,7 @@
         "text": true
       }
     },
-    "rank": 36
+    "rank": 38
   },
   {
     "id": "f1102bbf-34ca-468f-a9fc-14bcf63f315b",
@@ -542,7 +558,7 @@
         "text": true
       }
     },
-    "rank": 36
+    "rank": 38
   },
   {
     "id": "ac44dd10-0666-451c-b824-386ccfea7bcc",
@@ -557,22 +573,7 @@
         "text": true
       }
     },
-    "rank": 38
-  },
-  {
-    "id": "a8d1d310-e485-4c50-8f27-4bff18292a99",
-    "organization": "alibaba",
-    "provider": "alibaba",
-    "publicName": "qwen3-30b-a3b-instruct-2507",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 39
+    "rank": 40
   },
   {
     "id": "be98fcfd-345c-4ae1-9a82-a19123ebf1d2",
@@ -587,7 +588,7 @@
         "text": true
       }
     },
-    "rank": 40
+    "rank": 42
   },
   {
     "id": "af033cbd-ec6c-42cc-9afa-e227fc12efe8",
@@ -603,7 +604,7 @@
         "web": true
       }
     },
-    "rank": 41
+    "rank": 43
   },
   {
     "id": "27b9f8c6-3ee1-464a-9479-a8b3c2a48fd4",
@@ -619,23 +620,22 @@
         "text": true
       }
     },
-    "rank": 44
+    "rank": 45
   },
   {
-    "id": "6a5437a7-c786-467b-b701-17b0bc8c8231",
-    "organization": "openai",
-    "provider": "openai",
-    "publicName": "gpt-4.1-mini-2025-04-14",
+    "id": "a8d1d310-e485-4c50-8f27-4bff18292a99",
+    "organization": "alibaba",
+    "provider": "alibaba",
+    "publicName": "qwen3-30b-a3b-instruct-2507",
     "capabilities": {
       "inputCapabilities": {
-        "text": true,
-        "image": true
+        "text": true
       },
       "outputCapabilities": {
         "text": true
       }
     },
-    "rank": 47
+    "rank": 45
   },
   {
     "id": "75555628-8c14-402a-8d6e-43c19cb40116",
@@ -651,7 +651,23 @@
         "text": true
       }
     },
-    "rank": 50
+    "rank": 47
+  },
+  {
+    "id": "6a5437a7-c786-467b-b701-17b0bc8c8231",
+    "organization": "openai",
+    "provider": "openai",
+    "publicName": "gpt-4.1-mini-2025-04-14",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 49
   },
   {
     "id": "04ec9a17-c597-49df-acf0-963da275c246",
@@ -697,37 +713,7 @@
         "text": true
       }
     },
-    "rank": 54
-  },
-  {
-    "id": "f44e280a-7914-43ca-a25d-ecfcc5d48d09",
-    "organization": "anthropic",
-    "provider": "googleVertexAnthropic",
-    "publicName": "claude-3-5-sonnet-20241022",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 55
-  },
-  {
-    "id": "73cf8705-98c8-4b75-8d04-e3746e1c1565",
-    "organization": "alibaba",
-    "provider": "alibaba",
-    "publicName": "qwen3-next-80b-a3b-thinking",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 55
+    "rank": 56
   },
   {
     "id": "c5a11495-081a-4dc6-8d9a-64a4fd6f7bbc",
@@ -742,13 +728,13 @@
         "text": true
       }
     },
-    "rank": 55
+    "rank": 56
   },
   {
-    "id": "87e8d160-049e-4b4e-adc4-7f2511348539",
-    "organization": "minimax",
-    "provider": "minimax",
-    "publicName": "minimax-m1",
+    "id": "f44e280a-7914-43ca-a25d-ecfcc5d48d09",
+    "organization": "anthropic",
+    "provider": "googleVertexAnthropic",
+    "publicName": "claude-3-5-sonnet-20241022",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -757,13 +743,28 @@
         "text": true
       }
     },
-    "rank": 56
+    "rank": 57
   },
   {
-    "id": "149619f1-f1d5-45fd-a53e-7d790f156f20",
-    "organization": "xai",
-    "provider": "xaiPublic",
-    "publicName": "grok-3-mini-high",
+    "id": "73cf8705-98c8-4b75-8d04-e3746e1c1565",
+    "organization": "alibaba",
+    "provider": "alibaba",
+    "publicName": "qwen3-next-80b-a3b-thinking",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 58
+  },
+  {
+    "id": "87e8d160-049e-4b4e-adc4-7f2511348539",
+    "organization": "minimax",
+    "provider": "minimax",
+    "publicName": "minimax-m1",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -789,6 +790,21 @@
       }
     },
     "rank": 60
+  },
+  {
+    "id": "149619f1-f1d5-45fd-a53e-7d790f156f20",
+    "organization": "xai",
+    "provider": "xaiPublic",
+    "publicName": "grok-3-mini-high",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 62
   },
   {
     "id": "7699c8d4-0742-42f9-a117-d10e84688dab",
@@ -822,22 +838,6 @@
     "rank": 64
   },
   {
-    "id": "9dab0475-a0cc-4524-84a2-3fd25aa8c768",
-    "organization": "zai",
-    "provider": "zai",
-    "publicName": "glm-4.5v",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 65
-  },
-  {
     "id": "bbad1d17-6aa5-4321-949c-d11fb6289241",
     "organization": "mistral",
     "provider": "mistral",
@@ -851,7 +851,23 @@
         "text": true
       }
     },
-    "rank": 66
+    "rank": 67
+  },
+  {
+    "id": "9dab0475-a0cc-4524-84a2-3fd25aa8c768",
+    "organization": "zai",
+    "provider": "zai",
+    "publicName": "glm-4.5v",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 67
   },
   {
     "id": "0f785ba1-efcb-472d-961e-69f7b251c7e3",
@@ -866,7 +882,7 @@
         "text": true
       }
     },
-    "rank": 69
+    "rank": 70
   },
   {
     "id": "0199ef5a-f987-785a-b18e-613fde30a0f1",
@@ -881,7 +897,7 @@
         "text": true
       }
     },
-    "rank": 69
+    "rank": 70
   },
   {
     "id": "6ee9f901-17b5-4fbe-9cc2-13c16497c23b",
@@ -896,22 +912,7 @@
         "text": true
       }
     },
-    "rank": 69
-  },
-  {
-    "id": "c680645e-efac-4a81-b0af-da16902b2541",
-    "organization": "openai",
-    "provider": "openai",
-    "publicName": "o3-mini",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 71
+    "rank": 70
   },
   {
     "id": "71f96ca9-4cf8-4be7-bac2-2231613930a6",
@@ -926,7 +927,7 @@
         "text": true
       }
     },
-    "rank": 71
+    "rank": 70
   },
   {
     "id": "1ea13a81-93a7-4804-bcdd-693cd72e302d",
@@ -945,6 +946,21 @@
     "rank": 71
   },
   {
+    "id": "c680645e-efac-4a81-b0af-da16902b2541",
+    "organization": "openai",
+    "provider": "openai",
+    "publicName": "o3-mini",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 72
+  },
+  {
     "id": "2dc249b3-98da-44b4-8d1e-6666346a8012",
     "organization": "openai",
     "provider": "openai",
@@ -958,7 +974,7 @@
         "text": true
       }
     },
-    "rank": 75
+    "rank": 77
   },
   {
     "id": "885976d3-d178-48f5-a3f4-6e13e0718872",
@@ -973,7 +989,7 @@
         "text": true
       }
     },
-    "rank": 80
+    "rank": 82
   },
   {
     "id": "b5ad3ab7-fc56-4ecd-8921-bd56b55c1159",
@@ -1020,36 +1036,6 @@
         "text": true
       }
     },
-    "rank": 98
-  },
-  {
-    "id": "f6fbf06c-532c-4c8a-89c7-f3ddcfb34bd1",
-    "organization": "anthropic",
-    "provider": "googleVertexAnthropic",
-    "publicName": "claude-3-5-haiku-20241022",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 99
-  },
-  {
-    "id": "ec3beb4b-7229-4232-bab9-670ee52dd711",
-    "organization": "openai",
-    "provider": "fireworks",
-    "publicName": "gpt-oss-20b",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
     "rank": 99
   },
   {
@@ -1068,6 +1054,36 @@
     "rank": 99
   },
   {
+    "id": "f6fbf06c-532c-4c8a-89c7-f3ddcfb34bd1",
+    "organization": "anthropic",
+    "provider": "googleVertexAnthropic",
+    "publicName": "claude-3-5-haiku-20241022",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 100
+  },
+  {
+    "id": "ec3beb4b-7229-4232-bab9-670ee52dd711",
+    "organization": "openai",
+    "provider": "fireworks",
+    "publicName": "gpt-oss-20b",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 100
+  },
+  {
     "id": "dcbd7897-5a37-4a34-93f1-76a24c7bb028",
     "organization": "meta",
     "provider": "fireworks",
@@ -1080,7 +1096,7 @@
         "text": true
       }
     },
-    "rank": 102
+    "rank": 103
   },
   {
     "id": "6337f479-2fc8-4311-a76b-8c957765cd68",
@@ -1095,7 +1111,7 @@
         "text": true
       }
     },
-    "rank": 119
+    "rank": 121
   },
   {
     "id": "69f5d38a-45f5-4d3a-9320-b866a4035ed9",
@@ -1111,38 +1127,11 @@
         "text": true
       }
     },
-    "rank": 124
-  },
-  {
-    "id": "0199f059-3877-7cfe-bc80-e01b1a4a83de",
-    "organization": "google",
-    "provider": "googleVertex",
-    "publicName": "gemini-2.5-flash",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
+    "rank": 125
   },
   {
     "id": "0199de70-e6ad-7276-9020-a7502bed99ad",
     "publicName": "flying-octopus",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
-    "id": "019a4c75-256c-790b-9088-4694cc63c507",
-    "publicName": "phantom-1030-1",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1273,18 +1262,6 @@
     }
   },
   {
-    "id": "019a33c6-e248-7091-94c0-af68f29390b8",
-    "publicName": "blackhawk",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
     "id": "8d1f38a1-51a6-4030-ae4b-e19fb503e4fa",
     "publicName": "x1-turbo-0906",
     "capabilities": {
@@ -1299,42 +1276,6 @@
   {
     "id": "019a4ca9-720d-75f5-9012-883ce8ff61df",
     "publicName": "bridge-mind",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
-    "id": "019a4ce4-2b78-7db0-ad88-f6c942d8b151",
-    "publicName": "phantom-1031-1",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
-    "id": "019a4ce4-31af-7cbb-b064-d3270482e772",
-    "publicName": "phantom-1030-3",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
-    "id": "019a4ce4-3737-7956-9969-1afb0ae07e93",
-    "publicName": "phantom-1030-2",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1365,6 +1306,18 @@
       "inputCapabilities": {
         "text": true,
         "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
+    "id": "5f2ced37-e2f0-4ddd-9e5a-7ddd13c32564",
+    "publicName": "anonymous-922",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
       },
       "outputCapabilities": {
         "text": true
@@ -1420,18 +1373,6 @@
     }
   },
   {
-    "id": "019a5028-3b35-79be-9560-3f19c3c60cdf",
-    "publicName": "newton",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
     "id": "c15b93ed-e87b-467f-8f9f-d830fd7aa54d",
     "publicName": "lmarena-internal-test-only",
     "capabilities": {
@@ -1456,8 +1397,8 @@
     }
   },
   {
-    "id": "e9dd5a96-c066-48b0-869f-eb762030b5ed",
-    "publicName": "EB45-turbo",
+    "id": "019a4ce4-3737-7956-9969-1afb0ae07e93",
+    "publicName": "phantom-1030-2",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1468,8 +1409,8 @@
     }
   },
   {
-    "id": "019a5028-3f5b-7c13-858f-206214b15022",
-    "publicName": "newton-with-reasoning",
+    "id": "e9dd5a96-c066-48b0-869f-eb762030b5ed",
+    "publicName": "EB45-turbo",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1492,32 +1433,8 @@
     }
   },
   {
-    "id": "019a5028-42ba-750c-b6ef-65fa46d0db8f",
-    "publicName": "gauss",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
     "id": "9af435c8-1f53-4b78-a400-c1f5e9fe09b0",
     "publicName": "leepwal",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
-    "id": "019a5028-45c7-73db-b3b8-6dec3af9ecb4",
-    "publicName": "gauss-with-reasoning",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1655,18 +1572,6 @@
     }
   },
   {
-    "id": "019a3e64-eae6-7178-a9ae-2894c25ada46",
-    "publicName": "sunshine-ai",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
     "id": "0304b4de-e544-48d4-8490-ad9123bc26e3",
     "publicName": "monster",
     "capabilities": {
@@ -1708,18 +1613,6 @@
     }
   },
   {
-    "id": "019a0f0e-55ee-7434-82eb-ef462033a7ca",
-    "publicName": "ernie-exp-251022",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    }
-  },
-  {
     "id": "0199fdfb-8d7f-7435-a362-e68678c308c2",
     "publicName": "raptor-llm-1017",
     "capabilities": {
@@ -1732,8 +1625,80 @@
     }
   },
   {
+    "id": "019a4c75-256c-790b-9088-4694cc63c507",
+    "publicName": "phantom-1030-1",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
+    "id": "019a5658-b301-7c8e-acb2-707cad8d6177",
+    "publicName": "newton",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
+    "id": "019a5658-b6fa-7a70-ad8e-8454717e3203",
+    "publicName": "newton-with-reasoning",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
+    "id": "019a5658-ba6f-7185-b79d-51516ef94314",
+    "publicName": "gauss",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
+    "id": "019a5658-bd78-7e04-ba2e-4a2d9d09e93a",
+    "publicName": "gauss-with-reasoning",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
     "id": "019a1866-63f7-7004-a980-301aedebf6ab",
     "publicName": "phantom-1017-1",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
+    "id": "019a4ce4-2b78-7db0-ad88-f6c942d8b151",
+    "publicName": "phantom-1031-1",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1769,8 +1734,8 @@
     }
   },
   {
-    "id": "019a26b4-2a20-7864-b1f7-d471ec1f4e3f",
-    "publicName": "ernie-exp-251027",
+    "id": "019a26b4-2f39-7a0e-818d-254d0f37a85a",
+    "publicName": "raptor-llm-1024",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1781,8 +1746,8 @@
     }
   },
   {
-    "id": "019a26b4-2f39-7a0e-818d-254d0f37a85a",
-    "publicName": "raptor-llm-1024",
+    "id": "019a4ce4-31af-7cbb-b064-d3270482e772",
+    "publicName": "phantom-1030-3",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1837,7 +1802,24 @@
         }
       }
     },
-    "rank": 1
+    "rank": 2
+  },
+  {
+    "id": "019a5050-2875-78ed-ae3a-d9a51a438685",
+    "publicName": "wan2.5-preview-prompt-extend",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 2
   },
   {
     "id": "0199ef2a-583f-7088-b704-b75fd169401d",
@@ -1860,7 +1842,7 @@
         }
       }
     },
-    "rank": 1
+    "rank": 2
   },
   {
     "id": "f8aec69d-e077-4ed1-99be-d34f48559bbf",
@@ -1880,6 +1862,25 @@
       }
     },
     "rank": 3
+  },
+  {
+    "id": "2ec9f1a6-126f-4c65-a102-15ac401dcea4",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "imagen-4.0-generate-preview-06-06",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 7
   },
   {
     "id": "32974d8d-333c-4d2e-abf3-f258c0ac1310",
@@ -1902,26 +1903,7 @@
         }
       }
     },
-    "rank": 4
-  },
-  {
-    "id": "2ec9f1a6-126f-4c65-a102-15ac401dcea4",
-    "organization": "google",
-    "provider": "googleVertex",
-    "publicName": "imagen-4.0-generate-preview-06-06",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rank": 6
+    "rank": 7
   },
   {
     "id": "69f90b32-01dc-43e1-8c48-bf494f8f4f38",
@@ -1968,6 +1950,23 @@
     "rank": 8
   },
   {
+    "id": "019a5050-1695-7b5d-b045-ba01ff08ec28",
+    "publicName": "wan2.5-preview",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 8
+  },
+  {
     "id": "0199c238-f8ee-7f7d-afc1-7e28fcfd21cf",
     "organization": "openai",
     "provider": "customOpenai",
@@ -1988,7 +1987,7 @@
         }
       }
     },
-    "rank": 9
+    "rank": 12
   },
   {
     "id": "1b407d5c-1806-477c-90a5-e5c5a114f3bc",
@@ -2007,7 +2006,7 @@
         }
       }
     },
-    "rank": 11
+    "rank": 13
   },
   {
     "id": "d8771262-8248-4372-90d5-eb41910db034",
@@ -2026,7 +2025,7 @@
         }
       }
     },
-    "rank": 15
+    "rank": 17
   },
   {
     "id": "0633b1ef-289f-49d4-a834-3d475a25e46b",
@@ -2046,24 +2045,7 @@
         }
       }
     },
-    "rank": 16
-  },
-  {
-    "id": "0199e980-d247-7dd3-9ca1-77092f126f05",
-    "publicName": "hunyuan-image-3.0-fal",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rank": 16
+    "rank": 18
   },
   {
     "id": "9fe82ee1-c84f-417f-b0e7-cab4ae4cf3f3",
@@ -2082,7 +2064,7 @@
         }
       }
     },
-    "rank": 19
+    "rank": 21
   },
   {
     "id": "51ad1d79-61e2-414c-99e3-faeb64bb6b1b",
@@ -2101,7 +2083,7 @@
         }
       }
     },
-    "rank": 21
+    "rank": 23
   },
   {
     "id": "28a8f330-3554-448c-9f32-2c0a08ec6477",
@@ -2123,7 +2105,24 @@
         }
       }
     },
-    "rank": 21
+    "rank": 23
+  },
+  {
+    "id": "0199e980-d247-7dd3-9ca1-77092f126f05",
+    "publicName": "hunyuan-image-3.0-fal",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 23
   },
   {
     "id": "73378be5-cdba-49e7-b3d0-027949871aa6",
@@ -2142,7 +2141,7 @@
         }
       }
     },
-    "rank": 26
+    "rank": 30
   },
   {
     "id": "f44fd4f8-af30-480f-8ce2-80b2bdfea55e",
@@ -2161,26 +2160,7 @@
         }
       }
     },
-    "rank": 27
-  },
-  {
-    "id": "5a3b3520-c87d-481f-953c-1364687b6e8f",
-    "organization": "leonardo-ai",
-    "provider": "leonardo-ai",
-    "publicName": "lucid-origin",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rank": 29
+    "rank": 33
   },
   {
     "id": "e7c9fa2d-6f5d-40eb-8305-0980b11c7cab",
@@ -2199,7 +2179,26 @@
         }
       }
     },
-    "rank": 30
+    "rank": 33
+  },
+  {
+    "id": "5a3b3520-c87d-481f-953c-1364687b6e8f",
+    "organization": "leonardo-ai",
+    "provider": "leonardo-ai",
+    "publicName": "lucid-origin",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 33
   },
   {
     "id": "b88d5814-1d20-49cc-9eb6-e362f5851661",
@@ -2218,7 +2217,7 @@
         }
       }
     },
-    "rank": 33
+    "rank": 37
   },
   {
     "id": "69bbf7d4-9f44-447e-a868-abc4f7a31810",
@@ -2241,7 +2240,7 @@
         }
       }
     },
-    "rank": 41
+    "rank": 45
   },
   {
     "id": "bb97bc68-131c-4ea4-a59e-03a6252de0d2",
@@ -2260,7 +2259,7 @@
         }
       }
     },
-    "rank": 42
+    "rank": 46
   },
   {
     "id": "eb90ae46-a73a-4f27-be8b-40f090592c9a",
@@ -2282,7 +2281,7 @@
         }
       }
     },
-    "rank": 43
+    "rank": 47
   },
   {
     "id": "a9a26426-5377-4efa-bef9-de71e29ad943",
@@ -2301,7 +2300,7 @@
         }
       }
     },
-    "rank": 45
+    "rank": 49
   },
   {
     "id": "32bff2df-00e6-409b-ad3f-bfbad87cc49f",
@@ -2366,38 +2365,6 @@
     }
   },
   {
-    "id": "019a5050-1695-7b5d-b045-ba01ff08ec28",
-    "publicName": "wan2.5-preview",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    }
-  },
-  {
-    "id": "019a5050-2875-78ed-ae3a-d9a51a438685",
-    "publicName": "wan2.5-preview-prompt-extend",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    }
-  },
-  {
     "id": "0199e980-ba42-737b-9436-927b6e7ca73e",
     "organization": "reve",
     "provider": "reve",
@@ -2408,6 +2375,28 @@
         "image": {
           "requiresUpload": true,
           "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "id": "019a5675-0a56-7835-abdd-1cb9e7870afa",
+    "organization": "reve",
+    "provider": "fal",
+    "publicName": "reve-fast-edit",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true,
+          "multipleImages": false
         }
       },
       "outputCapabilities": {
@@ -2495,10 +2484,10 @@
     "rank": 2
   },
   {
-    "id": "d14d9b23-1e46-4659-b157-a3804ba7e2ef",
-    "organization": "openai",
-    "provider": "openaiResponses",
-    "publicName": "gpt-5-search",
+    "id": "24145149-86c9-4690-b7c9-79c7db216e5c",
+    "organization": "perplexity",
+    "provider": "perplexity",
+    "publicName": "ppl-sonar-reasoning-pro-high",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -2507,7 +2496,7 @@
         "search": true
       }
     },
-    "rank": 2
+    "rank": 6
   },
   {
     "id": "25bcb878-749e-49f4-ac05-de84d964bcee",
@@ -2540,10 +2529,10 @@
     "rank": 6
   },
   {
-    "id": "24145149-86c9-4690-b7c9-79c7db216e5c",
-    "organization": "perplexity",
-    "provider": "perplexity",
-    "publicName": "ppl-sonar-reasoning-pro-high",
+    "id": "d14d9b23-1e46-4659-b157-a3804ba7e2ef",
+    "organization": "openai",
+    "provider": "openaiResponses",
+    "publicName": "gpt-5-search",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -2552,7 +2541,7 @@
         "search": true
       }
     },
-    "rank": 9
+    "rank": 6
   },
   {
     "id": "0862885e-ef53-4d0d-b9c4-4c8f68f453ce",

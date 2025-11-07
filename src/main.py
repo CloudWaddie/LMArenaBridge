@@ -1492,38 +1492,15 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modelAId": model_id,
                 "userMessageId": user_msg_id,
                 "modelAMessageId": model_msg_id,
-                "messages": [
-                    {
-                        "id": user_msg_id,
-                        "role": "user",
-                        "content": prompt,
-                        "experimental_attachments": experimental_attachments,
-                        "parentMessageIds": [],
-                        "participantPosition": "a",
-                        "modelId": None,
-                        "evaluationSessionId": session_id,
-                        "status": "pending",
-                        "failureReason": None
-                    },
-                    {
-                        "id": model_msg_id,
-                        "role": "assistant",
-                        "content": "",
-                        "reasoning": "",
-                        "experimental_attachments": [],
-                        "parentMessageIds": [user_msg_id],
-                        "participantPosition": "a",
-                        "modelId": model_id,
-                        "evaluationSessionId": session_id,
-                        "status": "pending",
-                        "failureReason": None
-                    }
-                ],
+                "userMessage": {
+                    "content": prompt,
+                    "experimental_attachments": experimental_attachments
+                },
                 "modality": "chat"
             }
             url = "https://lmarena.ai/nextjs-api/stream/create-evaluation"
             debug_print(f"📤 Target URL: {url}")
-            debug_print(f"📦 Payload structure: {len(payload['messages'])} messages")
+            debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
         else:
             debug_print("🔄 Using EXISTING conversation session")
@@ -1533,69 +1510,22 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             model_msg_id = str(uuid7())
             debug_print(f"🤖 Generated followup model_msg_id: {model_msg_id}")
             
-            # Build full conversation history using stored messages with their original IDs
-            conversation_messages = []
-            stored_messages = session.get("messages", [])
-            
-            for stored_msg in stored_messages:
-                conversation_messages.append({
-                    "id": stored_msg["id"],
-                    "role": stored_msg["role"],
-                    "content": stored_msg["content"],
-                    "experimental_attachments": [],
-                    "parentMessageIds": [conversation_messages[-1]["id"]] if conversation_messages else [],
-                    "participantPosition": "a",
-                    "modelId": model_id if stored_msg["role"] == "assistant" else None,
-                    "evaluationSessionId": session["conversation_id"],
-                    "status": "success" if stored_msg["role"] == "assistant" else "pending",
-                    "failureReason": None
-                })
-                if stored_msg["role"] == "assistant":
-                    conversation_messages[-1]["reasoning"] = ""
-            
-            # Add new user message
-            last_msg_id = conversation_messages[-1]["id"] if conversation_messages else session.get("messages", [])[-1]["id"]
-            conversation_messages.append({
-                "id": user_msg_id,
-                "role": "user",
-                "content": prompt,
-                "experimental_attachments": experimental_attachments,
-                "parentMessageIds": [last_msg_id],
-                "participantPosition": "a",
-                "modelId": None,
-                "evaluationSessionId": session["conversation_id"],
-                "status": "pending",
-                "failureReason": None
-            })
-            
-            # Add pending assistant message
-            conversation_messages.append({
-                "id": model_msg_id,
-                "role": "assistant",
-                "content": "",
-                "reasoning": "",
-                "experimental_attachments": [],
-                "parentMessageIds": [user_msg_id],
-                "participantPosition": "a",
-                "modelId": model_id,
-                "evaluationSessionId": session["conversation_id"],
-                "status": "pending",
-                "failureReason": None
-            })
-            
             payload = {
                 "id": session["conversation_id"],
                 "mode": "direct",
                 "modelAId": model_id,
                 "userMessageId": user_msg_id,
                 "modelAMessageId": model_msg_id,
-                "messages": conversation_messages,
+                "userMessage": {
+                    "content": prompt,
+                    "experimental_attachments": experimental_attachments
+                },
                 "modality": "chat"
             }
             url = f"https://lmarena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
             debug_print(f"📤 Target URL: {url}")
-            debug_print(f"📦 Payload structure: {len(payload['messages'])} messages")
-            debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
+            debug_print(f"📦 Payload structure: Simple userMessage format")
+            debug_print(f" Full payload: {json.dumps(payload, indent=2)}")
 
         debug_print(f"\n🚀 Making API request to LMArena...")
         debug_print(f"⏱️  Timeout set to: 120 seconds")

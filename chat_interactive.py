@@ -24,13 +24,30 @@ def chat_session(client, model_name):
     print(f"\n{'='*60}")
     print(f"🤖 Chat Session with {model_name}")
     print(f"{'='*60}")
+    
+    # Ask for system prompt
+    print("\n📋 System Prompt (optional):")
+    print("Set the behavior/personality of the assistant.")
+    print("Press Enter to skip, or type your system prompt below:")
+    system_prompt = input("System: ").strip()
+    
+    conversation_history = []
+    
+    # Add system message if provided
+    if system_prompt:
+        conversation_history.append({
+            "role": "system",
+            "content": system_prompt
+        })
+        print(f"✅ System prompt set: {system_prompt[:50]}{'...' if len(system_prompt) > 50 else ''}")
+    
+    print(f"\n{'='*60}")
     print("Type your messages below. Commands:")
     print("  - 'exit' or 'quit' to end the session")
     print("  - 'clear' to start a new conversation")
+    print("  - 'system' to view/change system prompt")
     print("  - 'models' to switch models")
     print(f"{'='*60}\n")
-    
-    conversation_history = []
     
     while True:
         # Get user input
@@ -49,8 +66,42 @@ def chat_session(client, model_name):
             break
         
         if user_input.lower() == 'clear':
+            # Keep system prompt if it exists
+            system_msg = None
+            if conversation_history and conversation_history[0]["role"] == "system":
+                system_msg = conversation_history[0]
+            
             conversation_history = []
+            if system_msg:
+                conversation_history.append(system_msg)
             print("\n🔄 Conversation cleared!\n")
+            continue
+        
+        if user_input.lower() == 'system':
+            # Show or update system prompt
+            current_system = None
+            if conversation_history and conversation_history[0]["role"] == "system":
+                current_system = conversation_history[0]["content"]
+                print(f"\n📋 Current system prompt:\n{current_system}\n")
+            else:
+                print("\n📋 No system prompt set.\n")
+            
+            print("Enter new system prompt (or press Enter to keep current):")
+            new_system = input("System: ").strip()
+            
+            if new_system:
+                # Remove old system message if exists
+                if conversation_history and conversation_history[0]["role"] == "system":
+                    conversation_history.pop(0)
+                
+                # Add new system message at the start
+                conversation_history.insert(0, {
+                    "role": "system",
+                    "content": new_system
+                })
+                print(f"✅ System prompt updated: {new_system[:50]}{'...' if len(new_system) > 50 else ''}\n")
+            else:
+                print("System prompt unchanged.\n")
             continue
         
         if user_input.lower() == 'models':

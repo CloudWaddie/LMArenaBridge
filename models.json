@@ -1748,6 +1748,18 @@
     }
   },
   {
+    "id": "019a26b4-2a20-7864-b1f7-d471ec1f4e3f",
+    "publicName": "ernie-exp-251027",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    }
+  },
+  {
     "id": "019a26b4-2f39-7a0e-818d-254d0f37a85a",
     "publicName": "raptor-llm-1024",
     "capabilities": {

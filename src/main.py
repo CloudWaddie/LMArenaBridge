@@ -1409,10 +1409,22 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             # Don't fail the request if usage logging fails
             debug_print(f"⚠️  Failed to log usage stats: {e}")
 
+        # Extract system prompt if present and prepend to first user message
+        system_prompt = ""
+        system_messages = [m for m in messages if m.get("role") == "system"]
+        if system_messages:
+            system_prompt = "\n\n".join([m.get("content", "") for m in system_messages])
+            debug_print(f"📋 System prompt found: {system_prompt[:100]}..." if len(system_prompt) > 100 else f"📋 System prompt: {system_prompt}")
+        
         # Process last message content (may include images)
         try:
             last_message_content = messages[-1].get("content", "")
             prompt, experimental_attachments = await process_message_content(last_message_content, model_capabilities)
+            
+            # If there's a system prompt and this is the first user message, prepend it
+            if system_prompt:
+                prompt = f"{system_prompt}\n\n{prompt}"
+                debug_print(f"✅ System prompt prepended to user message")
         except Exception as e:
             debug_print(f"❌ Failed to process message content: {e}")
             raise HTTPException(

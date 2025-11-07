@@ -61,6 +61,35 @@ python src/main.py
 
 The application will start a server on `localhost:8000`.
 
+## Integration with OpenWebUI
+
+You can use this project as a backend for [OpenWebUI](https://openwebui.com/), a user-friendly web interface for Large Language Models.
+
+### Instructions
+
+1.  **Run the LM Arena Bridge:**
+    Make sure the `lmarenabridge` application is running.
+    ```bash
+    python src/main.py
+    ```
+
+2.  **Open OpenWebUI:**
+    Open the OpenWebUI interface in your web browser.
+
+3.  **Configure the OpenAI Connection:**
+    - Go to your **Profile**.
+    - Open the **Admin Panel**.
+    - Go to **Settings**.
+    - Go to **Connections**.
+    - Modify the **OpenAI connection**.
+
+4.  **Set the API Base URL:**
+    - In the OpenAI connection settings, set the **API Base URL** to the URL of the LM Arena Bridge API, which is `http://localhost:8000/api/v1`.
+    - You can leave the **API Key** field empty or enter any value. It is not used for authentication by the bridge itself.
+
+5.  **Start Chatting:**
+    You should now be able to select and chat with the models available on LM Arena through OpenWebUI.
+
 ## Image Support
 
 LMArenaBridge supports sending images to vision-capable models on LMArena. When you send a message with images to a model that supports image input, the images are automatically uploaded to LMArena's R2 storage and included in the request.

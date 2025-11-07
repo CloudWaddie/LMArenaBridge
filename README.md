@@ -1,92 +1,69 @@
-# LMArenaBridge
-LMArena scripts to enable hosting an OpenAI compatible API endpoint that interacts with models on LMArena including experimental support for stealth models.
+# LM Arena Bridge
+
+## Description
+
+A bridge to interact with LM Arena. This project provides an OpenAI compatible API endpoint that interacts with models on LM Arena, including experimental support for stealth models.
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.x
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/CloudWaddie/LMArenaBridge.git
+   ```
+2. Navigate to the project directory:
+   ```bash
+   cd LMArenaBridge
+   ```
+3. Install the required packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+## Usage
+
+### 1. Get your Authentication Token
+
+To use the LM Arena Bridge, you need to get your authentication token from the LM Arena website.
+
+1.  Open your web browser and go to the LM Arena website.
+2.  Send a message in the chat to any model.
+3.  After the model responds, open the developer tools in your browser (usually by pressing F12).
+4.  Go to the "Application" or "Storage" tab (the name may vary depending on your browser).
+5.  In the "Cookies" section, find the cookies for the LM Arena site.
+6.  Look for a cookie named `arena-auth-prod-v1` and copy its value. This is your authentication token.
+
+### 2. Configure the Application
+
+1.  In the root of the project, create a file named `config.json`.
+2.  Add the following content to the `config.json` file:
+
+    ```json
+    {
+      "auth_token": "YOUR_AUTH_TOKEN"
+    }
+    ```
+
+3.  Replace `"YOUR_AUTH_TOKEN"` with the `arena-auth-prod-v1` token you copied from your browser.
+
+### 3. Run the Application
+
+Once you have configured your authentication token, you can run the application:
+
+```bash
+python src/main.py
+```
+
+The application will start a server on `localhost:8000`.
 
 ## Image Support
 
-LMArenaBridge now supports sending images to vision-capable models on LMArena. When you send a message with images to a model that supports image input, the images are automatically uploaded to LMArena's R2 storage and included in the request.
-
-### How It Works
-
-1. **Automatic Detection**: The bridge automatically detects if a model supports image input by checking its capabilities.
-2. **Image Upload**: Base64-encoded images are uploaded to LMArena's storage using the same flow as the web interface.
-3. **Attachment Handling**: Uploaded images are included as `experimental_attachments` in the message payload.
-
-### OpenAI API Format
-
-Send images using the standard OpenAI vision API format:
-
-```json
-{
-  "model": "gpt-4-vision-preview",
-  "messages": [
-    {
-      "role": "user",
-      "content": [
-        {
-          "type": "text",
-          "text": "What's in this image?"
-        },
-        {
-          "type": "image_url",
-          "image_url": {
-            "url": "data:image/png;base64,iVBORw0KGgoAAAANS..."
-          }
-        }
-      ]
-    }
-  ]
-}
-```
-
-### Supported Formats
-
-- **Image Types**: PNG, JPEG, GIF, WebP
-- **Input Methods**: Base64-encoded data URLs
-- **Model Requirements**: Only models with `inputCapabilities.image: true` support images
-
-### Example
-
-```python
-import openai
-import base64
-
-client = openai.OpenAI(
-    base_url="http://localhost:8000/api/v1",
-    api_key="sk-lmab-your-key-here"
-)
-
-# Read and encode image
-with open("image.png", "rb") as f:
-    image_data = base64.b64encode(f.read()).decode("utf-8")
-
-response = client.chat.completions.create(
-    model="gpt-4-vision-preview",  # Use a vision-capable model
-    messages=[
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": "What's in this image?"},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:image/png;base64,{image_data}"
-                    }
-                }
-            ]
-        }
-    ]
-)
-
-print(response.choices[0].message.content)
-```
-
-### Notes
-
-- Images are uploaded during request processing, which may add latency
-- External image URLs (http/https) are not yet supported
-- Models without image support will ignore image content
-- Check model capabilities using `/api/v1/models` endpoint
-- Maximum image size: 10MB per image
+LMArenaBridge supports sending images to vision-capable models on LMArena. When you send a message with images to a model that supports image input, the images are automatically uploaded to LMArena's R2 storage and included in the request.
 
 ## Production Deployment
 

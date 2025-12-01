@@ -1297,9 +1297,11 @@ async def health_check():
 @app.get("/api/v1/models")
 async def list_models(api_key: dict = Depends(rate_limit_api_key)):
     models = get_models()
-    # Filter for text-based models with an organization (exclude stealth models)
-    text_models = [m for m in models 
-                   if m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
+    # Filter for models with text OR search output capability and an organization (exclude stealth models)
+    # Include chat, search, and web dev models
+    valid_models = [m for m in models 
+                   if (m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
+                       or m.get('capabilities', {}).get('outputCapabilities', {}).get('search'))
                    and m.get('organization')]
     
     return {
@@ -1310,7 +1312,7 @@ async def list_models(api_key: dict = Depends(rate_limit_api_key)):
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": model.get("organization", "lmarena")
-            } for model in text_models if model.get("publicName")
+            } for model in valid_models if model.get("publicName")
         ]
     }
 
@@ -1397,6 +1399,16 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         
         debug_print(f"✅ Found model ID: {model_id}")
         debug_print(f"🔧 Model capabilities: {model_capabilities}")
+        
+        # Determine modality based on model capabilities
+        # Priority: image > search > chat
+        if model_capabilities.get('outputCapabilities', {}).get('image'):
+            modality = "image"
+        elif model_capabilities.get('outputCapabilities', {}).get('search'):
+            modality = "search"
+        else:
+            modality = "chat"
+        debug_print(f"🔍 Model modality: {modality}")
 
         # Log usage
         try:
@@ -1475,7 +1487,36 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         # Check if conversation exists for this API key
         session = chat_sessions[api_key_str].get(conversation_id)
         
-        if not session:
+        # Detect retry: if session exists and last message is same user message (no assistant response after it)
+        is_retry = False
+        retry_message_id = None
+        
+        if session and len(session.get("messages", [])) >= 2:
+            stored_messages = session["messages"]
+            # Check if last stored message is from user with same content
+            if stored_messages[-1]["role"] == "user" and stored_messages[-1]["content"] == prompt:
+                # This is a retry - client sent same message again without assistant response
+                is_retry = True
+                retry_message_id = stored_messages[-1]["id"]
+                # Get the assistant message ID that needs to be regenerated
+                if len(stored_messages) >= 2 and stored_messages[-2]["role"] == "assistant":
+                    # There was a previous assistant response - we'll retry that one
+                    retry_message_id = stored_messages[-2]["id"]
+                    debug_print(f"🔁 RETRY DETECTED - Regenerating assistant message {retry_message_id}")
+        
+        if is_retry and retry_message_id:
+            debug_print(f"🔁 Using RETRY endpoint")
+            # Use LMArena's retry endpoint
+            # Format: PUT /nextjs-api/stream/retry-evaluation-session-message/{sessionId}/messages/{messageId}
+            # Note: We don't need a payload for retry, just the recaptchaV3Token (optional)
+            payload = {
+                "recaptchaV3Token": ""  # Optional, can be empty
+            }
+            url = f"https://lmarena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
+            debug_print(f"📤 Target URL: {url}")
+            debug_print(f"📦 Using PUT method for retry")
+            http_method = "PUT"
+        elif not session:
             debug_print("🆕 Creating NEW conversation session")
             # New conversation - Generate all IDs at once (like the browser does)
             session_id = str(uuid7())
@@ -1496,12 +1537,13 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     "content": prompt,
                     "experimental_attachments": experimental_attachments
                 },
-                "modality": "chat"
+                "modality": modality
             }
             url = "https://lmarena.ai/nextjs-api/stream/create-evaluation"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
+            http_method = "POST"
         else:
             debug_print("🔄 Using EXISTING conversation session")
             # Follow-up message - Generate new message IDs
@@ -1520,12 +1562,13 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     "content": prompt,
                     "experimental_attachments": experimental_attachments
                 },
-                "modality": "chat"
+                "modality": modality
             }
             url = f"https://lmarena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
-            debug_print(f" Full payload: {json.dumps(payload, indent=2)}")
+            debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
+            http_method = "POST"
 
         debug_print(f"\n🚀 Making API request to LMArena...")
         debug_print(f"⏱️  Timeout set to: 120 seconds")
@@ -1534,6 +1577,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         if stream:
             async def generate_stream():
                 response_text = ""
+                reasoning_text = ""
+                citations = []
                 chunk_id = f"chatcmpl-{uuid.uuid4()}"
                 
                 async with httpx.AsyncClient() as client:
@@ -1548,8 +1593,34 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 if not line:
                                     continue
                                 
+                                # Parse thinking/reasoning chunks: ag:"thinking text"
+                                if line.startswith("ag:"):
+                                    chunk_data = line[3:]
+                                    try:
+                                        reasoning_chunk = json.loads(chunk_data)
+                                        reasoning_text += reasoning_chunk
+                                        
+                                        # Send SSE-formatted chunk with reasoning_content
+                                        chunk_response = {
+                                            "id": chunk_id,
+                                            "object": "chat.completion.chunk",
+                                            "created": int(time.time()),
+                                            "model": model_public_name,
+                                            "choices": [{
+                                                "index": 0,
+                                                "delta": {
+                                                    "reasoning_content": reasoning_chunk
+                                                },
+                                                "finish_reason": None
+                                            }]
+                                        }
+                                        yield f"data: {json.dumps(chunk_response)}\n\n"
+                                        
+                                    except json.JSONDecodeError:
+                                        continue
+                                
                                 # Parse text chunks: a0:"Hello "
-                                if line.startswith("a0:"):
+                                elif line.startswith("a0:"):
                                     chunk_data = line[3:]
                                     try:
                                         text_chunk = json.loads(chunk_data)
@@ -1573,6 +1644,42 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         
                                     except json.JSONDecodeError:
                                         continue
+                                
+                                # Parse image generation: a2:[{...}] (for image models)
+                                elif line.startswith("a2:"):
+                                    image_data = line[3:]
+                                    try:
+                                        image_list = json.loads(image_data)
+                                        # OpenAI format: return URL in content
+                                        if isinstance(image_list, list) and len(image_list) > 0:
+                                            image_obj = image_list[0]
+                                            if image_obj.get('type') == 'image':
+                                                image_url = image_obj.get('image', '')
+                                                # Store image URL as response text for now
+                                                # Will format properly in final response
+                                                response_text = image_url
+                                                debug_print(f"  🖼️  Image URL received: {image_url[:100]}...")
+                                    except json.JSONDecodeError:
+                                        pass
+                                
+                                # Parse citations/tool calls: ac:{...} (for search models)
+                                elif line.startswith("ac:"):
+                                    citation_data = line[3:]
+                                    try:
+                                        citation_obj = json.loads(citation_data)
+                                        # Extract source information from argsTextDelta
+                                        if 'argsTextDelta' in citation_obj:
+                                            args_data = json.loads(citation_obj['argsTextDelta'])
+                                            if 'source' in args_data:
+                                                source = args_data['source']
+                                                # Can be a single source or array of sources
+                                                if isinstance(source, list):
+                                                    citations.extend(source)
+                                                elif isinstance(source, dict):
+                                                    citations.append(source)
+                                        debug_print(f"  🔗 Citation added: {citation_obj.get('toolCallId')}")
+                                    except json.JSONDecodeError:
+                                        pass
                                 
                                 # Parse error messages
                                 elif line.startswith("a3:"):
@@ -1606,14 +1713,32 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     except json.JSONDecodeError:
                                         continue
                             
-                            # Update session - Store message history with IDs
+                            # Update session - Store message history with IDs (including reasoning and citations if present)
+                            assistant_message = {
+                                "id": model_msg_id, 
+                                "role": "assistant", 
+                                "content": response_text.strip()
+                            }
+                            if reasoning_text:
+                                assistant_message["reasoning_content"] = reasoning_text.strip()
+                            if citations:
+                                # Deduplicate citations by URL
+                                unique_citations = []
+                                seen_urls = set()
+                                for citation in citations:
+                                    citation_url = citation.get('url')
+                                    if citation_url and citation_url not in seen_urls:
+                                        seen_urls.add(citation_url)
+                                        unique_citations.append(citation)
+                                assistant_message["citations"] = unique_citations
+                            
                             if not session:
                                 chat_sessions[api_key_str][conversation_id] = {
                                     "conversation_id": session_id,
                                     "model": model_public_name,
                                     "messages": [
                                         {"id": user_msg_id, "role": "user", "content": prompt},
-                                        {"id": model_msg_id, "role": "assistant", "content": response_text.strip()}
+                                        assistant_message
                                     ]
                                 }
                                 debug_print(f"💾 Saved new session for conversation {conversation_id}")
@@ -1623,7 +1748,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     {"id": user_msg_id, "role": "user", "content": prompt}
                                 )
                                 chat_sessions[api_key_str][conversation_id]["messages"].append(
-                                    {"id": model_msg_id, "role": "assistant", "content": response_text.strip()}
+                                    assistant_message
                                 )
                                 debug_print(f"💾 Updated existing session for conversation {conversation_id}")
                             
@@ -1631,12 +1756,22 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             debug_print(f"✅ Stream completed - {len(response_text)} chars sent")
                             
                     except httpx.HTTPStatusError as e:
-                        error_msg = f"LMArena API error: {e.response.status_code}"
+                        # Provide user-friendly error messages
+                        if e.response.status_code == 429:
+                            error_msg = "Rate limit exceeded on LMArena. Please try again in a few moments."
+                            error_type = "rate_limit_error"
+                        elif e.response.status_code == 401:
+                            error_msg = "Unauthorized: Your LMArena auth token has expired or is invalid. Please get a new auth token from the dashboard."
+                            error_type = "authentication_error"
+                        else:
+                            error_msg = f"LMArena API error: {e.response.status_code}"
+                            error_type = "api_error"
+                        
                         print(f"❌ {error_msg}")
                         error_chunk = {
                             "error": {
                                 "message": error_msg,
-                                "type": "api_error",
+                                "type": error_type,
                                 "code": e.response.status_code
                             }
                         }
@@ -1653,11 +1788,14 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             
             return StreamingResponse(generate_stream(), media_type="text/event-stream")
         
-        # Handle non-streaming mode (original code)
+        # Handle non-streaming mode
         async with httpx.AsyncClient() as client:
             try:
-                debug_print("📡 Sending POST request...")
-                response = await client.post(url, json=payload, headers=headers, timeout=120)
+                debug_print(f"📡 Sending {http_method} request...")
+                if http_method == "PUT":
+                    response = await client.put(url, json=payload, headers=headers, timeout=120)
+                else:
+                    response = await client.post(url, json=payload, headers=headers, timeout=120)
                 
                 debug_print(f"✅ Response received - Status: {response.status_code}")
                 debug_print(f"📏 Response length: {len(response.text)} characters")
@@ -1669,11 +1807,15 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 debug_print(f"📄 First 500 chars of response:\n{response.text[:500]}")
                 
                 # Process response in lmarena format
-                # Format: a0:"text chunk" for content, ad:{...} for metadata
+                # Format: ag:"thinking" for reasoning, a0:"text chunk" for content, ac:{...} for citations, ad:{...} for metadata
                 response_text = ""
+                reasoning_text = ""
+                citations = []
                 finish_reason = None
                 line_count = 0
                 text_chunks_found = 0
+                reasoning_chunks_found = 0
+                citation_chunks_found = 0
                 metadata_found = 0
                 
                 debug_print(f"📊 Parsing response lines...")
@@ -1685,8 +1827,22 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     if not line:
                         continue
                     
+                    # Parse thinking/reasoning chunks: ag:"thinking text"
+                    if line.startswith("ag:"):
+                        chunk_data = line[3:]  # Remove "ag:" prefix
+                        reasoning_chunks_found += 1
+                        try:
+                            # Parse as JSON string (includes quotes)
+                            reasoning_chunk = json.loads(chunk_data)
+                            reasoning_text += reasoning_chunk
+                            if reasoning_chunks_found <= 3:  # Log first 3 reasoning chunks
+                                debug_print(f"  🧠 Reasoning chunk {reasoning_chunks_found}: {repr(reasoning_chunk[:50])}")
+                        except json.JSONDecodeError as e:
+                            debug_print(f"  ⚠️ Failed to parse reasoning chunk on line {line_count}: {chunk_data[:100]} - {e}")
+                            continue
+                    
                     # Parse text chunks: a0:"Hello "
-                    if line.startswith("a0:"):
+                    elif line.startswith("a0:"):
                         chunk_data = line[3:]  # Remove "a0:" prefix
                         text_chunks_found += 1
                         try:
@@ -1697,6 +1853,45 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 debug_print(f"  ✅ Chunk {text_chunks_found}: {repr(text_chunk[:50])}")
                         except json.JSONDecodeError as e:
                             debug_print(f"  ⚠️ Failed to parse text chunk on line {line_count}: {chunk_data[:100]} - {e}")
+                            continue
+                    
+                    # Parse image generation: a2:[{...}] (for image models)
+                    elif line.startswith("a2:"):
+                        image_data = line[3:]  # Remove "a2:" prefix
+                        try:
+                            image_list = json.loads(image_data)
+                            # OpenAI format expects URL in content
+                            if isinstance(image_list, list) and len(image_list) > 0:
+                                image_obj = image_list[0]
+                                if image_obj.get('type') == 'image':
+                                    image_url = image_obj.get('image', '')
+                                    # For image models, the URL IS the response
+                                    response_text = image_url
+                                    debug_print(f"  🖼️  Image URL: {image_url[:100]}...")
+                        except json.JSONDecodeError as e:
+                            debug_print(f"  ⚠️ Failed to parse image data on line {line_count}: {image_data[:100]} - {e}")
+                            continue
+                    
+                    # Parse citations/tool calls: ac:{...} (for search models)
+                    elif line.startswith("ac:"):
+                        citation_data = line[3:]  # Remove "ac:" prefix
+                        citation_chunks_found += 1
+                        try:
+                            citation_obj = json.loads(citation_data)
+                            # Extract source information from argsTextDelta
+                            if 'argsTextDelta' in citation_obj:
+                                args_data = json.loads(citation_obj['argsTextDelta'])
+                                if 'source' in args_data:
+                                    source = args_data['source']
+                                    # Can be a single source or array of sources
+                                    if isinstance(source, list):
+                                        citations.extend(source)
+                                    elif isinstance(source, dict):
+                                        citations.append(source)
+                            if citation_chunks_found <= 3:  # Log first 3 citations
+                                debug_print(f"  🔗 Citation chunk {citation_chunks_found}: {citation_obj.get('toolCallId')}")
+                        except json.JSONDecodeError as e:
+                            debug_print(f"  ⚠️ Failed to parse citation chunk on line {line_count}: {citation_data[:100]} - {e}")
                             continue
                     
                     # Parse error messages: a3:"An error occurred"
@@ -1726,9 +1921,13 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                 debug_print(f"\n📊 Parsing Summary:")
                 debug_print(f"  - Total lines: {line_count}")
+                debug_print(f"  - Reasoning chunks found: {reasoning_chunks_found}")
                 debug_print(f"  - Text chunks found: {text_chunks_found}")
+                debug_print(f"  - Citation chunks found: {citation_chunks_found}")
                 debug_print(f"  - Metadata entries: {metadata_found}")
                 debug_print(f"  - Final response length: {len(response_text)} chars")
+                debug_print(f"  - Final reasoning length: {len(reasoning_text)} chars")
+                debug_print(f"  - Citations found: {len(citations)}")
                 debug_print(f"  - Finish reason: {finish_reason}")
                 
                 if not response_text:
@@ -1759,14 +1958,32 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 else:
                     debug_print(f"✅ Response text preview: {response_text[:200]}...")
                 
-                # Update session - Store message history with IDs
+                # Update session - Store message history with IDs (including reasoning and citations if present)
+                assistant_message = {
+                    "id": model_msg_id, 
+                    "role": "assistant", 
+                    "content": response_text.strip()
+                }
+                if reasoning_text:
+                    assistant_message["reasoning_content"] = reasoning_text.strip()
+                if citations:
+                    # Deduplicate citations by URL
+                    unique_citations = []
+                    seen_urls = set()
+                    for citation in citations:
+                        citation_url = citation.get('url')
+                        if citation_url and citation_url not in seen_urls:
+                            seen_urls.add(citation_url)
+                            unique_citations.append(citation)
+                    assistant_message["citations"] = unique_citations
+                
                 if not session:
                     chat_sessions[api_key_str][conversation_id] = {
                         "conversation_id": session_id,
                         "model": model_public_name,
                         "messages": [
                             {"id": user_msg_id, "role": "user", "content": prompt},
-                            {"id": model_msg_id, "role": "assistant", "content": response_text.strip()}
+                            assistant_message
                         ]
                     }
                     debug_print(f"💾 Saved new session for conversation {conversation_id}")
@@ -1776,10 +1993,43 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         {"id": user_msg_id, "role": "user", "content": prompt}
                     )
                     chat_sessions[api_key_str][conversation_id]["messages"].append(
-                        {"id": model_msg_id, "role": "assistant", "content": response_text.strip()}
+                        assistant_message
                     )
                     debug_print(f"💾 Updated existing session for conversation {conversation_id}")
 
+                # Build message object with reasoning and citations if present
+                message_obj = {
+                    "role": "assistant",
+                    "content": response_text.strip(),
+                }
+                if reasoning_text:
+                    message_obj["reasoning_content"] = reasoning_text.strip()
+                if citations:
+                    # Deduplicate citations by URL
+                    unique_citations = []
+                    seen_urls = set()
+                    for citation in citations:
+                        citation_url = citation.get('url')
+                        if citation_url and citation_url not in seen_urls:
+                            seen_urls.add(citation_url)
+                            unique_citations.append(citation)
+                    message_obj["citations"] = unique_citations
+                
+                # Calculate token counts (including reasoning tokens)
+                prompt_tokens = len(prompt)
+                completion_tokens = len(response_text)
+                reasoning_tokens = len(reasoning_text)
+                total_tokens = prompt_tokens + completion_tokens + reasoning_tokens
+                
+                # Build usage object with reasoning tokens if present
+                usage_obj = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens
+                }
+                if reasoning_tokens > 0:
+                    usage_obj["reasoning_tokens"] = reasoning_tokens
+                
                 final_response = {
                     "id": f"chatcmpl-{uuid.uuid4()}",
                     "object": "chat.completion",
@@ -1788,17 +2038,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     "conversation_id": conversation_id,
                     "choices": [{
                         "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": response_text.strip(),
-                        },
+                        "message": message_obj,
                         "finish_reason": "stop"
                     }],
-                    "usage": {
-                        "prompt_tokens": len(prompt),
-                        "completion_tokens": len(response_text),
-                        "total_tokens": len(prompt) + len(response_text)
-                    }
+                    "usage": usage_obj
                 }
                 
                 debug_print(f"\n✅ REQUEST COMPLETED SUCCESSFULLY")
@@ -1807,12 +2050,22 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 return final_response
 
             except httpx.HTTPStatusError as e:
-                error_detail = f"LMArena API error: {e.response.status_code}"
-                try:
-                    error_body = e.response.json()
-                    error_detail += f" - {error_body}"
-                except:
-                    error_detail += f" - {e.response.text[:200]}"
+                # Provide user-friendly error messages
+                if e.response.status_code == 429:
+                    error_detail = "Rate limit exceeded on LMArena. Please try again in a few moments."
+                    error_type = "rate_limit_error"
+                elif e.response.status_code == 401:
+                    error_detail = "Unauthorized: Your LMArena auth token has expired or is invalid. Please get a new auth token from the dashboard."
+                    error_type = "authentication_error"
+                else:
+                    error_detail = f"LMArena API error: {e.response.status_code}"
+                    try:
+                        error_body = e.response.json()
+                        error_detail += f" - {error_body}"
+                    except:
+                        error_detail += f" - {e.response.text[:200]}"
+                    error_type = "upstream_error"
+                
                 print(f"\n❌ HTTP STATUS ERROR")
                 print(f"📛 Error detail: {error_detail}")
                 print(f"📤 Request URL: {url}")
@@ -1821,7 +2074,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 print("="*80 + "\n")
                 
                 # Return OpenAI-compatible error response
-                error_type = "rate_limit_error" if e.response.status_code == 429 else "upstream_error"
                 return {
                     "error": {
                         "message": error_detail,

@@ -308,6 +308,8 @@ dashboard_sessions = {}
 api_key_usage = defaultdict(list)
 # { "model_id": count }
 model_usage_stats = defaultdict(int)
+# Token cycling: current index for round-robin selection
+current_token_index = 0
 
 # --- Helper Functions ---
 
@@ -321,6 +323,7 @@ def get_config():
     # Ensure default keys exist
     config.setdefault("password", "admin")
     config.setdefault("auth_token", "")
+    config.setdefault("auth_tokens", [])  # Multiple auth tokens
     config.setdefault("cf_clearance", "")
     config.setdefault("api_keys", [])
     config.setdefault("usage_stats", {})
@@ -361,6 +364,34 @@ def get_request_headers():
         "Content-Type": "application/json",
         "Cookie": f"cf_clearance={cf_clearance}; arena-auth-prod-v1={auth_token}",
     }
+
+def get_request_headers_with_token(token: str):
+    """Get request headers with a specific auth token"""
+    config = get_config()
+    cf_clearance = config.get("cf_clearance", "").strip()
+    return {
+        "Content-Type": "application/json",
+        "Cookie": f"cf_clearance={cf_clearance}; arena-auth-prod-v1={token}",
+    }
+
+def get_next_auth_token():
+    """Get next auth token using round-robin selection"""
+    global current_token_index
+    config = get_config()
+    
+    # Get all available tokens
+    auth_tokens = config.get("auth_tokens", [])
+    if not auth_tokens:
+        # Fallback to single token
+        single_token = config.get("auth_token", "").strip()
+        if single_token:
+            return single_token
+        raise HTTPException(status_code=500, detail="No auth tokens configured")
+    
+    # Round-robin selection
+    token = auth_tokens[current_token_index % len(auth_tokens)]
+    current_token_index = (current_token_index + 1) % len(auth_tokens)
+    return token
 
 # --- Dashboard Authentication ---
 
@@ -1001,15 +1032,44 @@ async def dashboard(session: str = Depends(get_current_session)):
                 <!-- Arena Auth Token -->
                 <div class="section">
                     <div class="section-header">
-                        <h2>🔐 Arena Authentication</h2>
+                        <h2>🔐 Arena Authentication Tokens</h2>
                         <span class="status-badge {token_class}">{token_status}</span>
                     </div>
+                    
+                    <h3 style="margin-bottom: 15px; font-size: 16px;">Multiple Auth Tokens (Round-Robin)</h3>
+                    <p style="color: #666; margin-bottom: 15px;">Add multiple tokens for automatic cycling. Each conversation will use a consistent token.</p>
+                    
+                    {''.join([f'''
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px;">
+                        <code style="flex: 1; font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all;">{token[:50]}...</code>
+                        <form action="/delete-auth-token" method="post" style="margin: 0;" onsubmit="return confirm('Delete this token?');">
+                            <input type="hidden" name="token_index" value="{i}">
+                            <button type="submit" class="btn-delete">Delete</button>
+                        </form>
+                    </div>
+                    ''' for i, token in enumerate(config.get("auth_tokens", []))])}
+                    
+                    {('<div class="no-data">No tokens configured. Add tokens below.</div>' if not config.get("auth_tokens") else '')}
+                    
+                    <h3 style="margin-top: 25px; margin-bottom: 15px; font-size: 16px;">Add New Token</h3>
+                    <form action="/add-auth-token" method="post">
+                        <div class="form-group">
+                            <label for="new_auth_token">New Arena Auth Token</label>
+                            <textarea id="new_auth_token" name="new_auth_token" placeholder="Paste a new arena-auth-prod-v1 token here" required></textarea>
+                        </div>
+                        <button type="submit">Add Token</button>
+                    </form>
+                    
+                    <hr style="margin: 25px 0; border: none; border-top: 1px solid #e0e0e0;">
+                    
+                    <h3 style="margin-bottom: 15px; font-size: 16px;">Legacy Single Token (Deprecated)</h3>
+                    <p style="color: #999; margin-bottom: 15px; font-size: 13px;">This single token is used as fallback if no tokens are configured above.</p>
                     <form action="/update-auth-token" method="post">
                         <div class="form-group">
-                            <label for="auth_token">Arena Auth Token</label>
+                            <label for="auth_token">Legacy Auth Token</label>
                             <textarea id="auth_token" name="auth_token" placeholder="Paste your arena-auth-prod-v1 token here">{config.get("auth_token", "")}</textarea>
                         </div>
-                        <button type="submit">Update Token</button>
+                        <button type="submit" style="background: #6c757d;">Update Legacy Token</button>
                     </form>
                 </div>
 
@@ -1254,6 +1314,31 @@ async def delete_key(session: str = Depends(get_current_session), key_id: str = 
     save_config(config)
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
+@app.post("/add-auth-token")
+async def add_auth_token(session: str = Depends(get_current_session), new_auth_token: str = Form(...)):
+    if not session:
+        return RedirectResponse(url="/login")
+    config = get_config()
+    token = new_auth_token.strip()
+    if token and token not in config.get("auth_tokens", []):
+        if "auth_tokens" not in config:
+            config["auth_tokens"] = []
+        config["auth_tokens"].append(token)
+        save_config(config)
+    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+@app.post("/delete-auth-token")
+async def delete_auth_token(session: str = Depends(get_current_session), token_index: int = Form(...)):
+    if not session:
+        return RedirectResponse(url="/login")
+    config = get_config()
+    auth_tokens = config.get("auth_tokens", [])
+    if 0 <= token_index < len(auth_tokens):
+        auth_tokens.pop(token_index)
+        config["auth_tokens"] = auth_tokens
+        save_config(config)
+    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
 @app.post("/refresh-tokens")
 async def refresh_tokens(session: str = Depends(get_current_session)):
     if not session:
@@ -1297,11 +1382,17 @@ async def health_check():
 @app.get("/api/v1/models")
 async def list_models(api_key: dict = Depends(rate_limit_api_key)):
     models = get_models()
-    # Filter for models with text OR search output capability and an organization (exclude stealth models)
-    # Include chat, search, and web dev models
+    
+    # Check if API key ends with -openwebui
+    api_key_str = api_key.get("key", "")
+    is_openwebui = api_key_str.endswith("-openwebui")
+    
+    # Filter for models with text OR search OR image output capability and an organization (exclude stealth models)
+    # Include chat, search, web dev, and image generation models (if openwebui key)
     valid_models = [m for m in models 
                    if (m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
-                       or m.get('capabilities', {}).get('outputCapabilities', {}).get('search'))
+                       or m.get('capabilities', {}).get('outputCapabilities', {}).get('search')
+                       or (is_openwebui and m.get('capabilities', {}).get('outputCapabilities', {}).get('image')))
                    and m.get('organization')]
     
     return {
@@ -2014,6 +2105,36 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             seen_urls.add(citation_url)
                             unique_citations.append(citation)
                     message_obj["citations"] = unique_citations
+                
+                # For OpenWebUI keys with image models, convert image URL to base64 data URL
+                is_openwebui = api_key_str.endswith("-openwebui")
+                is_image_model = modality == "image"
+                
+                if is_openwebui and is_image_model and response_text.startswith("http"):
+                    debug_print(f"🖼️  Converting image URL to base64 for OpenWebUI compatibility")
+                    try:
+                        # Download the image
+                        async with httpx.AsyncClient() as img_client:
+                            img_response = await img_client.get(response_text, timeout=30.0)
+                            img_response.raise_for_status()
+                            
+                            # Get content type
+                            content_type = img_response.headers.get('content-type', 'image/png')
+                            
+                            # Encode to base64
+                            img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+                            
+                            # Create data URL
+                            data_url = f"data:{content_type};base64,{img_base64}"
+                            
+                            # Format as markdown for OpenWebUI
+                            message_obj["content"] = f"![Generated Image]({data_url})"
+                            
+                            debug_print(f"✅ Image converted to base64 data URL ({len(img_base64)} chars)")
+                    except Exception as img_error:
+                        debug_print(f"⚠️  Failed to convert image to base64: {img_error}")
+                        # Keep original URL as fallback
+                        message_obj["content"] = f"![Generated Image]({response_text})"
                 
                 # Calculate token counts (including reasoning tokens)
                 prompt_tokens = len(prompt)

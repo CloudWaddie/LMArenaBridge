@@ -1819,7 +1819,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 assistant_message["citations"] = unique_citations
                             
                             if not session:
-                                chat_sessions[base_key_for_sessions][conversation_id] = {
+                                chat_sessions[api_key_str][conversation_id] = {
                                     "conversation_id": session_id,
                                     "model": model_public_name,
                                     "messages": [
@@ -1830,10 +1830,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 debug_print(f"💾 Saved new session for conversation {conversation_id}")
                             else:
                                 # Append new messages to history
-                                chat_sessions[base_key_for_sessions][conversation_id]["messages"].append(
+                                chat_sessions[api_key_str][conversation_id]["messages"].append(
                                     {"id": user_msg_id, "role": "user", "content": prompt}
                                 )
-                                chat_sessions[base_key_for_sessions][conversation_id]["messages"].append(
+                                chat_sessions[api_key_str][conversation_id]["messages"].append(
                                     assistant_message
                                 )
                                 debug_print(f"💾 Updated existing session for conversation {conversation_id}")
@@ -2064,7 +2064,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     assistant_message["citations"] = unique_citations
                 
                 if not session:
-                    chat_sessions[base_key_for_sessions][conversation_id] = {
+                    chat_sessions[api_key_str][conversation_id] = {
                         "conversation_id": session_id,
                         "model": model_public_name,
                         "messages": [
@@ -2075,10 +2075,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     debug_print(f"💾 Saved new session for conversation {conversation_id}")
                 else:
                     # Append new messages to history
-                    chat_sessions[base_key_for_sessions][conversation_id]["messages"].append(
+                    chat_sessions[api_key_str][conversation_id]["messages"].append(
                         {"id": user_msg_id, "role": "user", "content": prompt}
                     )
-                    chat_sessions[base_key_for_sessions][conversation_id]["messages"].append(
+                    chat_sessions[api_key_str][conversation_id]["messages"].append(
                         assistant_message
                     )
                     debug_print(f"💾 Updated existing session for conversation {conversation_id}")

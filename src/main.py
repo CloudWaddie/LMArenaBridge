@@ -414,29 +414,20 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
     api_key_str = key[7:].strip()
     config = get_config()
     
-    # Check if API key ends with -openwebui suffix
-    # If so, strip it for authentication but preserve it in the returned key_data
-    base_api_key = api_key_str
-    is_openwebui_mode = api_key_str.endswith("-openwebui")
-    if is_openwebui_mode:
-        base_api_key = api_key_str[:-11]  # Remove "-openwebui" suffix (11 characters)
-        debug_print(f"🔑 OpenWebUI mode detected - stripped suffix from key")
-    
-    # Look up the key without the suffix
-    key_data = next((k for k in config["api_keys"] if k["key"] == base_api_key), None)
+    key_data = next((k for k in config["api_keys"] if k["key"] == api_key_str), None)
     if not key_data:
         raise HTTPException(status_code=401, detail="Invalid API Key.")
 
-    # Rate Limiting (use base key for rate limiting)
+    # Rate Limiting
     rate_limit = key_data.get("rpm", 60)
     current_time = time.time()
     
     # Clean up old timestamps (older than 60 seconds)
-    api_key_usage[base_api_key] = [t for t in api_key_usage[base_api_key] if current_time - t < 60]
+    api_key_usage[api_key_str] = [t for t in api_key_usage[api_key_str] if current_time - t < 60]
 
-    if len(api_key_usage[base_api_key]) >= rate_limit:
+    if len(api_key_usage[api_key_str]) >= rate_limit:
         # Calculate seconds until oldest request expires (60 seconds window)
-        oldest_timestamp = min(api_key_usage[base_api_key])
+        oldest_timestamp = min(api_key_usage[api_key_str])
         retry_after = int(60 - (current_time - oldest_timestamp))
         retry_after = max(1, retry_after)  # At least 1 second
         
@@ -446,11 +437,9 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
             headers={"Retry-After": str(retry_after)}
         )
         
-    api_key_usage[base_api_key].append(current_time)
+    api_key_usage[api_key_str].append(current_time)
     
-    # Return key_data with the original key string (including -openwebui suffix if present)
-    # This allows downstream code to check for OpenWebUI mode
-    return {**key_data, "key": api_key_str}
+    return key_data
 
 # --- Core Logic ---
 
@@ -1394,25 +1383,13 @@ async def health_check():
 async def list_models(api_key: dict = Depends(rate_limit_api_key)):
     models = get_models()
     
-    # Check if API key ends with -openwebui
-    api_key_str = api_key.get("key", "")
-    is_openwebui = api_key_str.endswith("-openwebui")
-    
-    debug_print(f"🔑 API key check: ends with -openwebui = {is_openwebui}")
-    
     # Filter for models with text OR search OR image output capability and an organization (exclude stealth models)
-    # Include chat, search, web dev, and image generation models (if openwebui key)
+    # Always include image models - no special key needed
     valid_models = [m for m in models 
                    if (m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
                        or m.get('capabilities', {}).get('outputCapabilities', {}).get('search')
-                       or (is_openwebui and m.get('capabilities', {}).get('outputCapabilities', {}).get('image')))
+                       or m.get('capabilities', {}).get('outputCapabilities', {}).get('image'))
                    and m.get('organization')]
-    
-    # Log image models when using openwebui key
-    if is_openwebui:
-        image_models = [m.get("publicName") for m in valid_models 
-                       if m.get('capabilities', {}).get('outputCapabilities', {}).get('image')]
-        debug_print(f"🖼️  Image models available for OpenWebUI key: {image_models}")
     
     return {
         "object": "list",
@@ -2132,11 +2109,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             unique_citations.append(citation)
                     message_obj["citations"] = unique_citations
                 
-                # For OpenWebUI keys with image models, convert image URL to base64 data URL
-                is_openwebui = api_key_str.endswith("-openwebui")
+                # For image models used in chat endpoint, convert URL to markdown with base64
                 is_image_model = modality == "image"
                 
-                if is_openwebui and is_image_model and response_text.startswith("http"):
+                if is_image_model and response_text.startswith("http"):
                     debug_print(f"🖼️  Converting image URL to base64 for OpenWebUI compatibility")
                     try:
                         # Download the image
@@ -2153,7 +2129,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             # Create data URL
                             data_url = f"data:{content_type};base64,{img_base64}"
                             
-                            # Format as markdown for OpenWebUI
+                            # Format as markdown
                             message_obj["content"] = f"![Generated Image]({data_url})"
                             
                             debug_print(f"✅ Image converted to base64 data URL ({len(img_base64)} chars)")

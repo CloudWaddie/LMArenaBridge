@@ -1575,27 +1575,34 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             raise HTTPException(status_code=400, detail=error_msg)
         
         # Use API key + conversation tracking
+        # Use the original key (with -openwebui suffix if present) from api_key dict
         api_key_str = api_key["key"]
         
+        # Extract base key for session tracking (strip -openwebui if present)
+        base_key_for_sessions = api_key_str
+        if api_key_str.endswith("-openwebui"):
+            base_key_for_sessions = api_key_str[:-11]  # Remove "-openwebui" suffix
+        
         # Generate conversation ID from context (API key + model + first user message)
-        # This allows automatic session continuation without client modifications
+        # Use base key (without suffix) for consistent session tracking
         import hashlib
         first_user_message = next((m.get("content", "") for m in messages if m.get("role") == "user"), "")
         if isinstance(first_user_message, list):
             # Handle array content format
             first_user_message = str(first_user_message)
-        conversation_key = f"{api_key_str}_{model_public_name}_{first_user_message[:100]}"
+        conversation_key = f"{base_key_for_sessions}_{model_public_name}_{first_user_message[:100]}"
         conversation_id = hashlib.sha256(conversation_key.encode()).hexdigest()[:16]
         
         debug_print(f"🔑 API Key: {api_key_str[:20]}...")
+        debug_print(f"🔑 Base Key (for sessions): {base_key_for_sessions[:20]}...")
         debug_print(f"💭 Auto-generated Conversation ID: {conversation_id}")
         debug_print(f"🔑 Conversation key: {conversation_key[:100]}...")
         
         headers = get_request_headers()
         debug_print(f"📋 Headers prepared (auth token length: {len(headers.get('Cookie', '').split('arena-auth-prod-v1=')[-1].split(';')[0])} chars)")
         
-        # Check if conversation exists for this API key
-        session = chat_sessions[api_key_str].get(conversation_id)
+        # Check if conversation exists for this API key (use base key without suffix)
+        session = chat_sessions[base_key_for_sessions].get(conversation_id)
         
         # Detect retry: if session exists and last message is same user message (no assistant response after it)
         is_retry = False
@@ -1843,7 +1850,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 assistant_message["citations"] = unique_citations
                             
                             if not session:
-                                chat_sessions[api_key_str][conversation_id] = {
+                                chat_sessions[base_key_for_sessions][conversation_id] = {
                                     "conversation_id": session_id,
                                     "model": model_public_name,
                                     "messages": [
@@ -1854,10 +1861,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 debug_print(f"💾 Saved new session for conversation {conversation_id}")
                             else:
                                 # Append new messages to history
-                                chat_sessions[api_key_str][conversation_id]["messages"].append(
+                                chat_sessions[base_key_for_sessions][conversation_id]["messages"].append(
                                     {"id": user_msg_id, "role": "user", "content": prompt}
                                 )
-                                chat_sessions[api_key_str][conversation_id]["messages"].append(
+                                chat_sessions[base_key_for_sessions][conversation_id]["messages"].append(
                                     assistant_message
                                 )
                                 debug_print(f"💾 Updated existing session for conversation {conversation_id}")
@@ -2088,7 +2095,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     assistant_message["citations"] = unique_citations
                 
                 if not session:
-                    chat_sessions[api_key_str][conversation_id] = {
+                    chat_sessions[base_key_for_sessions][conversation_id] = {
                         "conversation_id": session_id,
                         "model": model_public_name,
                         "messages": [
@@ -2099,10 +2106,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     debug_print(f"💾 Saved new session for conversation {conversation_id}")
                 else:
                     # Append new messages to history
-                    chat_sessions[api_key_str][conversation_id]["messages"].append(
+                    chat_sessions[base_key_for_sessions][conversation_id]["messages"].append(
                         {"id": user_msg_id, "role": "user", "content": prompt}
                     )
-                    chat_sessions[api_key_str][conversation_id]["messages"].append(
+                    chat_sessions[base_key_for_sessions][conversation_id]["messages"].append(
                         assistant_message
                     )
                     debug_print(f"💾 Updated existing session for conversation {conversation_id}")

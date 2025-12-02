@@ -1,4 +1,4 @@
-# LM Arena Bridge
+# LM Arena Bridge - BROKEN ATM DUE TO LMARENA API CHANGES
 
 ## Description
 

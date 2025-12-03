@@ -17,7 +17,7 @@
     "rank": 1,
     "rankByModality": {
       "chat": 1,
-      "webdev": 3
+      "webdev": 2
     }
   },
   {
@@ -37,14 +37,14 @@
     "rank": 2,
     "rankByModality": {
       "chat": 2,
-      "webdev": 20
+      "webdev": 21
     }
   },
   {
-    "id": "019ab746-30aa-7bbd-ba45-9f5c4ecb5c86",
+    "id": "019ab8b2-9bcf-79b5-9fb5-149a7c67b7c0",
     "organization": "anthropic",
-    "provider": "anthropic",
-    "publicName": "claude-opus-4-5-20251101",
+    "provider": "googleVertexAnthropic",
+    "publicName": "claude-opus-4-5-20251101-thinking-32k",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -57,7 +57,7 @@
     "rank": 3,
     "rankByModality": {
       "chat": 3,
-      "webdev": 2
+      "webdev": 1
     }
   },
   {
@@ -79,6 +79,26 @@
     }
   },
   {
+    "id": "019adbec-8396-71cc-87d5-b47f8431a6a6",
+    "organization": "anthropic",
+    "provider": "googleVertexAnthropic",
+    "publicName": "claude-opus-4-5-20251101",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "rank": 5,
+    "rankByModality": {
+      "chat": 5,
+      "webdev": 3
+    }
+  },
+  {
     "id": "019a8548-a2b1-70ce-b1be-eba096d41f58",
     "organization": "openai",
     "provider": "openai",
@@ -93,30 +113,10 @@
         "web": true
       }
     },
-    "rank": 5,
-    "rankByModality": {
-      "chat": 5,
-      "webdev": 9007199254740991
-    }
-  },
-  {
-    "id": "019ab8b2-9bcf-79b5-9fb5-149a7c67b7c0",
-    "organization": "anthropic",
-    "provider": "googleVertexAnthropic",
-    "publicName": "claude-opus-4-5-20251101-thinking-32k",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true,
-        "web": true
-      }
-    },
     "rank": 6,
     "rankByModality": {
       "chat": 6,
-      "webdev": 1
+      "webdev": 9007199254740991
     }
   },
   {
@@ -153,7 +153,7 @@
     "rank": 7,
     "rankByModality": {
       "chat": 7,
-      "webdev": 19
+      "webdev": 20
     }
   },
   {
@@ -290,7 +290,7 @@
     "rank": 15,
     "rankByModality": {
       "chat": 15,
-      "webdev": 11
+      "webdev": 10
     }
   },
   {
@@ -331,6 +331,26 @@
     }
   },
   {
+    "id": "019aa41a-0a13-714a-beb1-be4a918a4b56",
+    "organization": "xai",
+    "provider": "xaiPublic",
+    "publicName": "grok-4-1-fast-reasoning",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "rank": 18,
+    "rankByModality": {
+      "chat": 18,
+      "webdev": 19
+    }
+  },
+  {
     "id": "019a59bc-8bb8-7933-92eb-fe143770c211",
     "organization": "moonshot",
     "provider": "moonshot",
@@ -344,10 +364,10 @@
         "web": true
       }
     },
-    "rank": 18,
+    "rank": 19,
     "rankByModality": {
-      "chat": 18,
-      "webdev": 10
+      "chat": 19,
+      "webdev": 11
     }
   },
   {
@@ -364,9 +384,9 @@
         "web": true
       }
     },
-    "rank": 19,
+    "rank": 20,
     "rankByModality": {
-      "chat": 19,
+      "chat": 20,
       "webdev": 9
     }
   },
@@ -384,29 +404,9 @@
         "text": true
       }
     },
-    "rank": 20,
-    "rankByModality": {
-      "chat": 20
-    }
-  },
-  {
-    "id": "019a4fff-c017-726d-abb1-99b0aaf87f43",
-    "organization": "deepseek",
-    "provider": "deepseek",
-    "publicName": "deepseek-v3.2-exp",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true,
-        "web": true
-      }
-    },
     "rank": 21,
     "rankByModality": {
-      "chat": 21,
-      "webdev": 14
+      "chat": 21
     }
   },
   {
@@ -440,29 +440,9 @@
         "text": true
       }
     },
-    "rank": 23,
-    "rankByModality": {
-      "chat": 23
-    }
-  },
-  {
-    "id": "019aa41a-0a13-714a-beb1-be4a918a4b56",
-    "organization": "xai",
-    "provider": "xaiPublic",
-    "publicName": "grok-4-1-fast-reasoning",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true,
-        "web": true
-      }
-    },
     "rank": 24,
     "rankByModality": {
-      "chat": 24,
-      "webdev": 18
+      "chat": 24
     }
   },
   {
@@ -470,24 +450,6 @@
     "organization": "alibaba",
     "provider": "alibaba",
     "publicName": "qwen3-235b-a22b-instruct-2507",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 25,
-    "rankByModality": {
-      "chat": 25
-    }
-  },
-  {
-    "id": "d4cdb846-a711-4b2b-9de1-63a852c2c99c",
-    "organization": "deepseek",
-    "provider": "deepseek",
-    "publicName": "deepseek-v3.2-exp-thinking",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -520,6 +482,24 @@
     }
   },
   {
+    "id": "019acbac-df7c-73dc-9716-ebe040daaa4e",
+    "organization": "mistral",
+    "provider": "mistral",
+    "publicName": "mistral-large-3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 28,
+    "rankByModality": {
+      "chat": 28
+    }
+  },
+  {
     "id": "b88e983b-9459-473d-8bf1-753932f1679a",
     "organization": "moonshot",
     "provider": "moonshot",
@@ -532,9 +512,9 @@
         "text": true
       }
     },
-    "rank": 28,
+    "rank": 29,
     "rankByModality": {
-      "chat": 28
+      "chat": 29
     }
   },
   {
@@ -550,9 +530,9 @@
         "text": true
       }
     },
-    "rank": 29,
+    "rank": 31,
     "rankByModality": {
-      "chat": 29
+      "chat": 31
     }
   },
   {
@@ -568,9 +548,9 @@
         "text": true
       }
     },
-    "rank": 31,
+    "rank": 32,
     "rankByModality": {
-      "chat": 31
+      "chat": 32
     }
   },
   {
@@ -587,9 +567,9 @@
         "text": true
       }
     },
-    "rank": 34,
+    "rank": 35,
     "rankByModality": {
-      "chat": 34
+      "chat": 35
     }
   },
   {
@@ -605,9 +585,9 @@
         "text": true
       }
     },
-    "rank": 37,
+    "rank": 38,
     "rankByModality": {
-      "chat": 37
+      "chat": 38
     }
   },
   {
@@ -624,9 +604,9 @@
         "text": true
       }
     },
-    "rank": 38,
+    "rank": 39,
     "rankByModality": {
-      "chat": 38
+      "chat": 39
     }
   },
   {
@@ -662,9 +642,9 @@
         "text": true
       }
     },
-    "rank": 41,
+    "rank": 42,
     "rankByModality": {
-      "chat": 41
+      "chat": 42
     }
   },
   {
@@ -680,9 +660,9 @@
         "text": true
       }
     },
-    "rank": 42,
+    "rank": 43,
     "rankByModality": {
-      "chat": 42
+      "chat": 43
     }
   },
   {
@@ -699,9 +679,9 @@
         "text": true
       }
     },
-    "rank": 43,
+    "rank": 44,
     "rankByModality": {
-      "chat": 43
+      "chat": 44
     }
   },
   {
@@ -718,9 +698,9 @@
         "text": true
       }
     },
-    "rank": 44,
+    "rank": 45,
     "rankByModality": {
-      "chat": 44
+      "chat": 45
     }
   },
   {
@@ -737,9 +717,9 @@
         "web": true
       }
     },
-    "rank": 45,
+    "rank": 46,
     "rankByModality": {
-      "chat": 45,
+      "chat": 46,
       "webdev": 22
     }
   },
@@ -757,9 +737,9 @@
         "web": true
       }
     },
-    "rank": 46,
+    "rank": 47,
     "rankByModality": {
-      "chat": 46,
+      "chat": 47,
       "webdev": 16
     }
   },
@@ -768,24 +748,6 @@
     "organization": "alibaba",
     "provider": "alibaba",
     "publicName": "qwen3-next-80b-a3b-instruct",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 48,
-    "rankByModality": {
-      "chat": 48
-    }
-  },
-  {
-    "id": "4653dded-a46b-442a-a8fe-9bb9730e2453",
-    "organization": "anthropic",
-    "provider": "googleVertexAnthropic",
-    "publicName": "claude-sonnet-4-20250514-thinking-32k",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -836,6 +798,24 @@
     }
   },
   {
+    "id": "4653dded-a46b-442a-a8fe-9bb9730e2453",
+    "organization": "anthropic",
+    "provider": "googleVertexAnthropic",
+    "publicName": "claude-sonnet-4-20250514-thinking-32k",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 52,
+    "rankByModality": {
+      "chat": 52
+    }
+  },
+  {
     "id": "16b8e53a-cc7b-4608-a29a-20d4dac77cf2",
     "organization": "alibaba",
     "provider": "alibaba",
@@ -848,9 +828,9 @@
         "text": true
       }
     },
-    "rank": 52,
+    "rank": 53,
     "rankByModality": {
-      "chat": 52
+      "chat": 53
     }
   },
   {
@@ -867,9 +847,9 @@
         "text": true
       }
     },
-    "rank": 54,
+    "rank": 55,
     "rankByModality": {
-      "chat": 54
+      "chat": 55
     }
   },
   {
@@ -886,9 +866,9 @@
         "text": true
       }
     },
-    "rank": 55,
+    "rank": 56,
     "rankByModality": {
-      "chat": 55
+      "chat": 56
     }
   },
   {
@@ -899,25 +879,6 @@
     "capabilities": {
       "inputCapabilities": {
         "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 56,
-    "rankByModality": {
-      "chat": 56
-    }
-  },
-  {
-    "id": "f1102bbf-34ca-468f-a9fc-14bcf63f315b",
-    "organization": "openai",
-    "provider": "openai",
-    "publicName": "o4-mini-2025-04-16",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": true
       },
       "outputCapabilities": {
         "text": true
@@ -948,6 +909,25 @@
     }
   },
   {
+    "id": "f1102bbf-34ca-468f-a9fc-14bcf63f315b",
+    "organization": "openai",
+    "provider": "openai",
+    "publicName": "o4-mini-2025-04-16",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 59,
+    "rankByModality": {
+      "chat": 59
+    }
+  },
+  {
     "id": "23848331-9f93-404f-85f0-3c3b4ece177e",
     "organization": "microsoft-ai",
     "provider": "microsoftAi",
@@ -960,9 +940,9 @@
         "text": true
       }
     },
-    "rank": 59,
+    "rank": 60,
     "rankByModality": {
-      "chat": 59
+      "chat": 60
     }
   },
   {
@@ -978,9 +958,9 @@
         "text": true
       }
     },
-    "rank": 60,
+    "rank": 61,
     "rankByModality": {
-      "chat": 60
+      "chat": 61
     }
   },
   {
@@ -996,9 +976,9 @@
         "text": true
       }
     },
-    "rank": 62,
+    "rank": 63,
     "rankByModality": {
-      "chat": 62
+      "chat": 63
     }
   },
   {
@@ -1015,9 +995,9 @@
         "web": true
       }
     },
-    "rank": 63,
+    "rank": 64,
     "rankByModality": {
-      "chat": 63,
+      "chat": 64,
       "webdev": 15
     }
   },
@@ -1034,9 +1014,9 @@
         "text": true
       }
     },
-    "rank": 64,
+    "rank": 65,
     "rankByModality": {
-      "chat": 64
+      "chat": 65
     }
   },
   {
@@ -1053,9 +1033,9 @@
         "text": true
       }
     },
-    "rank": 65,
+    "rank": 66,
     "rankByModality": {
-      "chat": 65
+      "chat": 66
     }
   },
   {
@@ -1071,9 +1051,9 @@
         "text": true
       }
     },
-    "rank": 66,
+    "rank": 67,
     "rankByModality": {
-      "chat": 66
+      "chat": 67
     }
   },
   {
@@ -1090,9 +1070,9 @@
         "text": true
       }
     },
-    "rank": 67,
+    "rank": 68,
     "rankByModality": {
-      "chat": 67
+      "chat": 68
     }
   },
   {
@@ -1109,9 +1089,9 @@
         "text": true
       }
     },
-    "rank": 69,
+    "rank": 70,
     "rankByModality": {
-      "chat": 69
+      "chat": 70
     }
   },
   {
@@ -1128,9 +1108,9 @@
         "text": true
       }
     },
-    "rank": 70,
+    "rank": 71,
     "rankByModality": {
-      "chat": 70
+      "chat": 71
     }
   },
   {
@@ -1146,9 +1126,9 @@
         "text": true
       }
     },
-    "rank": 71,
+    "rank": 72,
     "rankByModality": {
-      "chat": 71
+      "chat": 72
     }
   },
   {
@@ -1164,9 +1144,9 @@
         "text": true
       }
     },
-    "rank": 73,
+    "rank": 74,
     "rankByModality": {
-      "chat": 73
+      "chat": 74
     }
   },
   {
@@ -1182,9 +1162,9 @@
         "text": true
       }
     },
-    "rank": 74,
+    "rank": 75,
     "rankByModality": {
-      "chat": 74
+      "chat": 75
     }
   },
   {
@@ -1200,9 +1180,9 @@
         "text": true
       }
     },
-    "rank": 75,
+    "rank": 76,
     "rankByModality": {
-      "chat": 75
+      "chat": 76
     }
   },
   {
@@ -1218,9 +1198,9 @@
         "text": true
       }
     },
-    "rank": 76,
+    "rank": 77,
     "rankByModality": {
-      "chat": 76
+      "chat": 77
     }
   },
   {
@@ -1236,9 +1216,9 @@
         "text": true
       }
     },
-    "rank": 77,
+    "rank": 78,
     "rankByModality": {
-      "chat": 77
+      "chat": 78
     }
   },
   {
@@ -1255,9 +1235,9 @@
         "text": true
       }
     },
-    "rank": 78,
+    "rank": 79,
     "rankByModality": {
-      "chat": 78
+      "chat": 79
     }
   },
   {
@@ -1273,9 +1253,9 @@
         "text": true
       }
     },
-    "rank": 80,
+    "rank": 81,
     "rankByModality": {
-      "chat": 80
+      "chat": 81
     }
   },
   {
@@ -1292,9 +1272,9 @@
         "text": true
       }
     },
-    "rank": 81,
+    "rank": 82,
     "rankByModality": {
-      "chat": 81
+      "chat": 82
     }
   },
   {
@@ -1310,9 +1290,9 @@
         "text": true
       }
     },
-    "rank": 83,
+    "rank": 84,
     "rankByModality": {
-      "chat": 83
+      "chat": 84
     }
   },
   {
@@ -1329,9 +1309,9 @@
         "text": true
       }
     },
-    "rank": 84,
+    "rank": 85,
     "rankByModality": {
-      "chat": 84
+      "chat": 85
     }
   },
   {
@@ -1365,9 +1345,9 @@
         "text": true
       }
     },
-    "rank": 87,
+    "rank": 88,
     "rankByModality": {
-      "chat": 87
+      "chat": 88
     }
   },
   {
@@ -1384,27 +1364,9 @@
         "text": true
       }
     },
-    "rank": 88,
+    "rank": 89,
     "rankByModality": {
-      "chat": 88
-    }
-  },
-  {
-    "id": "019a4c75-256c-790b-9088-4694cc63c507",
-    "organization": "amazon",
-    "provider": "amazon",
-    "publicName": "amazon-nova-experimental-chat-10-20",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 90,
-    "rankByModality": {
-      "chat": 90
+      "chat": 89
     }
   },
   {
@@ -1426,6 +1388,24 @@
     }
   },
   {
+    "id": "019a4c75-256c-790b-9088-4694cc63c507",
+    "organization": "amazon",
+    "provider": "amazon",
+    "publicName": "amazon-nova-experimental-chat-10-20",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rank": 92,
+    "rankByModality": {
+      "chat": 92
+    }
+  },
+  {
     "id": "71f96ca9-4cf8-4be7-bac2-2231613930a6",
     "organization": "ant-group",
     "provider": "antgroup",
@@ -1438,9 +1418,9 @@
         "text": true
       }
     },
-    "rank": 92,
+    "rank": 94,
     "rankByModality": {
-      "chat": 92
+      "chat": 94
     }
   },
   {
@@ -1457,9 +1437,9 @@
         "web": true
       }
     },
-    "rank": 94,
+    "rank": 95,
     "rankByModality": {
-      "chat": 94,
+      "chat": 95,
       "webdev": 13
     }
   },
@@ -1477,27 +1457,9 @@
         "text": true
       }
     },
-    "rank": 95,
+    "rank": 96,
     "rankByModality": {
-      "chat": 95
-    }
-  },
-  {
-    "id": "0199ef5a-f987-785a-b18e-613fde30a0f1",
-    "organization": "amazon",
-    "provider": "amazon",
-    "publicName": "amazon-nova-experimental-chat-10-09",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rank": 98,
-    "rankByModality": {
-      "chat": 98
+      "chat": 96
     }
   },
   {
@@ -1514,9 +1476,9 @@
         "text": true
       }
     },
-    "rank": 105,
+    "rank": 107,
     "rankByModality": {
-      "chat": 105
+      "chat": 107
     }
   },
   {
@@ -1532,9 +1494,9 @@
         "text": true
       }
     },
-    "rank": 112,
+    "rank": 113,
     "rankByModality": {
-      "chat": 112
+      "chat": 113
     }
   },
   {
@@ -1551,9 +1513,9 @@
         "text": true
       }
     },
-    "rank": 116,
+    "rank": 117,
     "rankByModality": {
-      "chat": 116
+      "chat": 117
     }
   },
   {
@@ -1569,9 +1531,9 @@
         "text": true
       }
     },
-    "rank": 117,
+    "rank": 118,
     "rankByModality": {
-      "chat": 117
+      "chat": 118
     }
   },
   {
@@ -1587,9 +1549,9 @@
         "text": true
       }
     },
-    "rank": 121,
+    "rank": 122,
     "rankByModality": {
-      "chat": 121
+      "chat": 122
     }
   },
   {
@@ -1606,9 +1568,9 @@
         "text": true
       }
     },
-    "rank": 122,
+    "rank": 123,
     "rankByModality": {
-      "chat": 122
+      "chat": 123
     }
   },
   {
@@ -1624,9 +1586,9 @@
         "text": true
       }
     },
-    "rank": 127,
+    "rank": 128,
     "rankByModality": {
-      "chat": 127
+      "chat": 128
     }
   },
   {
@@ -1642,9 +1604,9 @@
         "text": true
       }
     },
-    "rank": 128,
+    "rank": 130,
     "rankByModality": {
-      "chat": 128
+      "chat": 130
     }
   },
   {
@@ -1660,9 +1622,9 @@
         "text": true
       }
     },
-    "rank": 130,
+    "rank": 131,
     "rankByModality": {
-      "chat": 130
+      "chat": 131
     }
   },
   {
@@ -1678,9 +1640,9 @@
         "text": true
       }
     },
-    "rank": 132,
+    "rank": 133,
     "rankByModality": {
-      "chat": 132
+      "chat": 133
     }
   },
   {
@@ -1696,9 +1658,9 @@
         "text": true
       }
     },
-    "rank": 140,
+    "rank": 141,
     "rankByModality": {
-      "chat": 140
+      "chat": 141
     }
   },
   {
@@ -1714,9 +1676,9 @@
         "text": true
       }
     },
-    "rank": 145,
+    "rank": 146,
     "rankByModality": {
-      "chat": 145
+      "chat": 146
     }
   },
   {
@@ -1733,9 +1695,9 @@
         "text": true
       }
     },
-    "rank": 148,
+    "rank": 149,
     "rankByModality": {
-      "chat": 148
+      "chat": 149
     }
   },
   {
@@ -1754,8 +1716,40 @@
     }
   },
   {
+    "id": "019adb32-b716-7591-9a2f-c6882973e340",
+    "organization": "deepseek",
+    "provider": "deepseek",
+    "publicName": "deepseek-v3.2",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rankByModality": {
+      "chat": 9007199254740991
+    }
+  },
+  {
     "id": "019ab82f-1034-7656-b59b-85642c6973b6",
     "publicName": "raptor-llm-1125",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rankByModality": {
+      "chat": 9007199254740991
+    }
+  },
+  {
+    "id": "019adcc2-c05e-7b1a-a950-92b1ca78087b",
+    "publicName": "evo-logic",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -1791,6 +1785,38 @@
       "inputCapabilities": {
         "text": true,
         "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rankByModality": {
+      "chat": 9007199254740991
+    }
+  },
+  {
+    "id": "019adb32-bb7a-77eb-882f-b8e3aaa2b2fd",
+    "organization": "deepseek",
+    "provider": "deepseek",
+    "publicName": "deepseek-v3.2-thinking",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rankByModality": {
+      "chat": 9007199254740991
+    }
+  },
+  {
+    "id": "019ade1a-a918-79dd-9ef9-ba22f97c977d",
+    "publicName": "micro-mango",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
       },
       "outputCapabilities": {
         "text": true
@@ -2095,6 +2121,23 @@
     }
   },
   {
+    "id": "019ae043-1fa9-7175-8e1b-c91b9b2b052b",
+    "organization": "prime-intellect",
+    "provider": "openrouter",
+    "publicName": "intellect-3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "rankByModality": {
+      "chat": 9007199254740991
+    }
+  },
+  {
     "id": "019ac2ef-27e1-769f-8258-d131f79e28ef",
     "organization": "allenai",
     "provider": "openrouter",
@@ -2174,36 +2217,6 @@
   {
     "id": "019acca2-fc2c-7797-a7b1-67955780a0dc",
     "publicName": "phantom-1125-1",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rankByModality": {
-      "chat": 9007199254740991
-    }
-  },
-  {
-    "id": "019acbac-df7c-73dc-9716-ebe040daaa4e",
-    "publicName": "jaguar",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rankByModality": {
-      "chat": 9007199254740991
-    }
-  },
-  {
-    "id": "019ad0e3-cc93-7e9f-8cf9-751b8405861b",
-    "publicName": "micro-mango",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -2784,23 +2797,6 @@
     }
   },
   {
-    "id": "d799a034-0ab6-48c1-817a-62e591143f39",
-    "organization": "amazon",
-    "provider": "amazon",
-    "publicName": "amazon-nova-experimental-chat-05-14",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "text": true
-      }
-    },
-    "rankByModality": {
-      "chat": 9007199254740991
-    }
-  },
-  {
     "id": "019a842c-7e62-725a-8a2a-f76f5ec786dd",
     "publicName": "neon",
     "capabilities": {
@@ -3245,6 +3241,24 @@
     }
   },
   {
+    "id": "019a9b1b-4c52-7245-83de-4cdaaf9e0f2b",
+    "organization": "kwai",
+    "provider": "kwai",
+    "publicName": "KAT-Coder-Pro-V1",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "web": true
+      }
+    },
+    "rank": 17,
+    "rankByModality": {
+      "webdev": 17
+    }
+  },
+  {
     "id": "019a84e2-e6bd-7123-a5f6-626d1766d4f2",
     "organization": "openai",
     "provider": "openaiResponses",
@@ -3257,9 +3271,9 @@
         "web": true
       }
     },
-    "rank": 17,
+    "rank": 18,
     "rankByModality": {
-      "webdev": 17
+      "webdev": 18
     }
   },
   {
@@ -3275,31 +3289,14 @@
         "web": true
       }
     },
-    "rank": 21,
+    "rank": 23,
     "rankByModality": {
-      "webdev": 21
+      "webdev": 23
     }
   },
   {
     "id": "019abd9a-f6ff-7081-8bdb-ff0a352dc601",
     "publicName": "robin",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "web": true
-      }
-    },
-    "rankByModality": {
-      "webdev": 9007199254740991
-    }
-  },
-  {
-    "id": "019a9b1b-4c52-7245-83de-4cdaaf9e0f2b",
-    "organization": "kwai",
-    "provider": "kwai",
-    "publicName": "KAT-Coder-Pro-V1",
     "capabilities": {
       "inputCapabilities": {
         "text": true
@@ -3360,10 +3357,10 @@
     }
   },
   {
-    "id": "019aa208-5c19-7162-ae3b-0a9ddbb1e16a",
+    "id": "019abc10-e78d-7932-b725-7f1563ed8a12",
     "organization": "google",
     "provider": "google-genai",
-    "publicName": "gemini-3-pro-image-preview (nano-banana-pro)",
+    "publicName": "gemini-3-pro-image-preview-2k (nano-banana-pro)",
     "capabilities": {
       "inputCapabilities": {
         "text": true,
@@ -3386,13 +3383,17 @@
     }
   },
   {
-    "id": "7766a45c-1b6b-4fb8-9823-2557291e1ddd",
-    "organization": "tencent",
-    "provider": "tencent",
-    "publicName": "hunyuan-image-3.0",
+    "id": "019aa208-5c19-7162-ae3b-0a9ddbb1e16a",
+    "organization": "google",
+    "provider": "google-genai",
+    "publicName": "gemini-3-pro-image-preview (nano-banana-pro)",
     "capabilities": {
       "inputCapabilities": {
-        "text": true
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
       },
       "outputCapabilities": {
         "image": {
@@ -3434,6 +3435,80 @@
     }
   },
   {
+    "id": "7766a45c-1b6b-4fb8-9823-2557291e1ddd",
+    "organization": "tencent",
+    "provider": "tencent",
+    "publicName": "hunyuan-image-3.0",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 4,
+    "rankByModality": {
+      "image": 4
+    }
+  },
+  {
+    "id": "019abed6-d96e-7a2b-bf69-198c28bef281",
+    "organization": "bfl",
+    "provider": "bfl",
+    "publicName": "flux-2-flex",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 5,
+    "rankByModality": {
+      "image": 5
+    }
+  },
+  {
+    "id": "019abcf4-5600-7a8b-864d-9b8ab7ab7328",
+    "organization": "bfl",
+    "provider": "bfl",
+    "publicName": "flux-2-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 6,
+    "rankByModality": {
+      "image": 6
+    }
+  },
+  {
     "id": "f8aec69d-e077-4ed1-99be-d34f48559bbf",
     "organization": "google",
     "provider": "googleVertex",
@@ -3450,9 +3525,9 @@
         }
       }
     },
-    "rank": 5,
+    "rank": 7,
     "rankByModality": {
-      "image": 5
+      "image": 7
     }
   },
   {
@@ -3472,9 +3547,9 @@
         }
       }
     },
-    "rank": 6,
+    "rank": 9,
     "rankByModality": {
-      "image": 6
+      "image": 9
     }
   },
   {
@@ -3498,9 +3573,9 @@
         }
       }
     },
-    "rank": 7,
+    "rank": 10,
     "rankByModality": {
-      "image": 7
+      "image": 10
     }
   },
   {
@@ -3520,9 +3595,9 @@
         }
       }
     },
-    "rank": 8,
+    "rank": 11,
     "rankByModality": {
-      "image": 8
+      "image": 11
     }
   },
   {
@@ -3540,9 +3615,9 @@
         }
       }
     },
-    "rank": 8,
+    "rank": 11,
     "rankByModality": {
-      "image": 8
+      "image": 11
     }
   },
   {
@@ -3564,9 +3639,9 @@
         }
       }
     },
-    "rank": 9,
+    "rank": 12,
     "rankByModality": {
-      "image": 9
+      "image": 12
     }
   },
   {
@@ -3590,9 +3665,9 @@
         }
       }
     },
-    "rank": 9,
+    "rank": 12,
     "rankByModality": {
-      "image": 9
+      "image": 12
     }
   },
   {
@@ -3616,9 +3691,9 @@
         }
       }
     },
-    "rank": 11,
+    "rank": 14,
     "rankByModality": {
-      "image": 11
+      "image": 14
     }
   },
   {
@@ -3638,9 +3713,9 @@
         }
       }
     },
-    "rank": 12,
+    "rank": 15,
     "rankByModality": {
-      "image": 12
+      "image": 15
     }
   },
   {
@@ -3660,9 +3735,9 @@
         }
       }
     },
-    "rank": 13,
+    "rank": 16,
     "rankByModality": {
-      "image": 13
+      "image": 16
     }
   },
   {
@@ -3683,9 +3758,9 @@
         }
       }
     },
-    "rank": 14,
+    "rank": 17,
     "rankByModality": {
-      "image": 14
+      "image": 17
     }
   },
   {
@@ -3705,9 +3780,9 @@
         }
       }
     },
-    "rank": 15,
+    "rank": 18,
     "rankByModality": {
-      "image": 15
+      "image": 18
     }
   },
   {
@@ -3731,9 +3806,9 @@
         }
       }
     },
-    "rank": 16,
+    "rank": 19,
     "rankByModality": {
-      "image": 16
+      "image": 19
     }
   },
   {
@@ -3753,9 +3828,9 @@
         }
       }
     },
-    "rank": 17,
+    "rank": 20,
     "rankByModality": {
-      "image": 17
+      "image": 20
     }
   },
   {
@@ -3775,9 +3850,9 @@
         }
       }
     },
-    "rank": 19,
+    "rank": 22,
     "rankByModality": {
-      "image": 19
+      "image": 22
     }
   },
   {
@@ -3797,31 +3872,9 @@
         }
       }
     },
-    "rank": 20,
+    "rank": 23,
     "rankByModality": {
-      "image": 20
-    }
-  },
-  {
-    "id": "5a3b3520-c87d-481f-953c-1364687b6e8f",
-    "organization": "leonardo-ai",
-    "provider": "leonardo-ai",
-    "publicName": "lucid-origin",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rank": 21,
-    "rankByModality": {
-      "image": 21
+      "image": 23
     }
   },
   {
@@ -3841,9 +3894,31 @@
         }
       }
     },
-    "rank": 22,
+    "rank": 24,
     "rankByModality": {
-      "image": 22
+      "image": 24
+    }
+  },
+  {
+    "id": "5a3b3520-c87d-481f-953c-1364687b6e8f",
+    "organization": "leonardo-ai",
+    "provider": "leonardo-ai",
+    "publicName": "lucid-origin",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rank": 25,
+    "rankByModality": {
+      "image": 25
     }
   },
   {
@@ -3867,9 +3942,9 @@
         }
       }
     },
-    "rank": 25,
+    "rank": 28,
     "rankByModality": {
-      "image": 25
+      "image": 28
     }
   },
   {
@@ -3889,9 +3964,9 @@
         }
       }
     },
-    "rank": 26,
+    "rank": 29,
     "rankByModality": {
-      "image": 26
+      "image": 29
     }
   },
   {
@@ -3915,9 +3990,9 @@
         }
       }
     },
-    "rank": 28,
+    "rank": 31,
     "rankByModality": {
-      "image": 28
+      "image": 31
     }
   },
   {
@@ -3926,6 +4001,31 @@
     "capabilities": {
       "inputCapabilities": {
         "text": true
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "019adb32-afa4-749e-9992-39653b52fe13",
+    "organization": "shengshu",
+    "provider": "shengshu",
+    "publicName": "vidu-q2-image",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": false
+        }
       },
       "outputCapabilities": {
         "image": {
@@ -3961,81 +4061,31 @@
     }
   },
   {
-    "id": "019abcf4-5600-7a8b-864d-9b8ab7ab7328",
-    "organization": "bfl",
-    "provider": "bfl",
-    "publicName": "flux-2-pro",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": {
-          "requiresUpload": false,
-          "multipleImages": true
-        }
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rankByModality": {
-      "image": 9007199254740991
-    }
-  },
-  {
-    "id": "019abc10-e78d-7932-b725-7f1563ed8a12",
-    "publicName": "gemini-3-pro-image-preview-2k (nano-banana-pro)",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": {
-          "requiresUpload": false,
-          "multipleImages": true
-        }
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rankByModality": {
-      "image": 9007199254740991
-    }
-  },
-  {
-    "id": "019abed6-d96e-7a2b-bf69-198c28bef281",
-    "organization": "bfl",
-    "provider": "bfl",
-    "publicName": "flux-2-flex",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": {
-          "requiresUpload": false,
-          "multipleImages": true
-        }
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rankByModality": {
-      "image": 9007199254740991
-    }
-  },
-  {
     "id": "019abd43-b052-7eec-aa57-e895e45c9723",
     "publicName": "autumn",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "019ae2a3-304d-773b-b333-daa050124a92",
+    "publicName": "gemini-3-pro-image-preview-4k (nano-banana-pro)",
     "capabilities": {
       "inputCapabilities": {
         "text": true,
@@ -4218,29 +4268,10 @@
     }
   },
   {
-    "id": "019a9495-61ba-7dda-b28c-ac5265cfcadc",
-    "publicName": "birch",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "image": {
-          "aspectRatios": [
-            "1:1"
-          ]
-        }
-      }
-    },
-    "rankByModality": {
-      "image": 9007199254740991
-    }
-  },
-  {
-    "id": "0199eacf-0d64-736a-8309-07cc254b849d",
+    "id": "0199eacf-1119-7e20-a53e-86b740c32f03",
     "organization": "google",
     "provider": "googleVertex",
-    "publicName": "veo-3.1-audio",
+    "publicName": "veo-3.1-fast-audio",
     "capabilities": {
       "inputCapabilities": {
         "text": true,
@@ -4256,10 +4287,10 @@
     }
   },
   {
-    "id": "0199eacf-1119-7e20-a53e-86b740c32f03",
+    "id": "0199eacf-0d64-736a-8309-07cc254b849d",
     "organization": "google",
     "provider": "googleVertex",
-    "publicName": "veo-3.1-fast-audio",
+    "publicName": "veo-3.1-audio",
     "capabilities": {
       "inputCapabilities": {
         "text": true,
@@ -4325,9 +4356,9 @@
         "video": true
       }
     },
-    "rank": 6,
+    "rank": 5,
     "rankByModality": {
-      "video": 6
+      "video": 5
     }
   },
   {
@@ -4343,9 +4374,9 @@
         "video": true
       }
     },
-    "rank": 8,
+    "rank": 6,
     "rankByModality": {
-      "video": 8
+      "video": 6
     }
   },
   {
@@ -4362,28 +4393,9 @@
         "video": true
       }
     },
-    "rank": 9,
+    "rank": 7,
     "rankByModality": {
-      "video": 9
-    }
-  },
-  {
-    "id": "1b677c7e-49dd-4045-9ce0-d1aedcb9bbbc",
-    "organization": "google",
-    "provider": "googleVertex",
-    "publicName": "veo-3-fast",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": true
-      },
-      "outputCapabilities": {
-        "video": true
-      }
-    },
-    "rank": 10,
-    "rankByModality": {
-      "video": 10
+      "video": 7
     }
   },
   {
@@ -4400,9 +4412,28 @@
         "video": true
       }
     },
-    "rank": 11,
+    "rank": 8,
     "rankByModality": {
-      "video": 11
+      "video": 8
+    }
+  },
+  {
+    "id": "1b677c7e-49dd-4045-9ce0-d1aedcb9bbbc",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "veo-3-fast",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "rank": 9,
+    "rankByModality": {
+      "video": 9
     }
   },
   {
@@ -4419,9 +4450,9 @@
         "video": true
       }
     },
-    "rank": 12,
+    "rank": 10,
     "rankByModality": {
-      "video": 12
+      "video": 10
     }
   },
   {
@@ -4440,9 +4471,9 @@
         "video": true
       }
     },
-    "rank": 13,
+    "rank": 11,
     "rankByModality": {
-      "video": 13
+      "video": 11
     }
   },
   {
@@ -4461,42 +4492,9 @@
         "video": true
       }
     },
-    "rank": 14,
+    "rank": 12,
     "rankByModality": {
-      "video": 14
-    }
-  },
-  {
-    "id": "019a12d5-eef6-7975-8345-36e48ca8aa10",
-    "publicName": "vision-flow",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true
-      },
-      "outputCapabilities": {
-        "video": true
-      }
-    },
-    "rank": 15,
-    "rankByModality": {
-      "video": 15
-    }
-  },
-  {
-    "id": "52f5e9b7-c36b-41e4-8e35-bce8e8d5b12b",
-    "publicName": "nimble-bean",
-    "capabilities": {
-      "inputCapabilities": {
-        "text": true,
-        "image": true
-      },
-      "outputCapabilities": {
-        "video": true
-      }
-    },
-    "rank": 16,
-    "rankByModality": {
-      "video": 16
+      "video": 12
     }
   },
   {
@@ -4512,9 +4510,9 @@
         "video": true
       }
     },
-    "rank": 17,
+    "rank": 13,
     "rankByModality": {
-      "video": 17
+      "video": 13
     }
   },
   {
@@ -4533,9 +4531,9 @@
         "video": true
       }
     },
-    "rank": 17,
+    "rank": 13,
     "rankByModality": {
-      "video": 17
+      "video": 13
     }
   },
   {
@@ -4551,9 +4549,9 @@
         "video": true
       }
     },
-    "rank": 18,
+    "rank": 14,
     "rankByModality": {
-      "video": 18
+      "video": 14
     }
   },
   {
@@ -4572,9 +4570,9 @@
         "video": true
       }
     },
-    "rank": 18,
+    "rank": 14,
     "rankByModality": {
-      "video": 18
+      "video": 14
     }
   },
   {
@@ -4593,9 +4591,9 @@
         "video": true
       }
     },
-    "rank": 19,
+    "rank": 15,
     "rankByModality": {
-      "video": 19
+      "video": 15
     }
   },
   {
@@ -4611,9 +4609,9 @@
         "video": true
       }
     },
-    "rank": 19,
+    "rank": 15,
     "rankByModality": {
-      "video": 19
+      "video": 15
     }
   },
   {
@@ -4629,9 +4627,9 @@
         "video": true
       }
     },
-    "rank": 20,
+    "rank": 16,
     "rankByModality": {
-      "video": 20
+      "video": 16
     }
   },
   {
@@ -4650,9 +4648,9 @@
         "video": true
       }
     },
-    "rank": 20,
+    "rank": 16,
     "rankByModality": {
-      "video": 20
+      "video": 16
     }
   },
   {
@@ -4669,9 +4667,9 @@
         "video": true
       }
     },
-    "rank": 21,
+    "rank": 17,
     "rankByModality": {
-      "video": 21
+      "video": 17
     }
   },
   {
@@ -4690,9 +4688,9 @@
         "video": true
       }
     },
-    "rank": 22,
+    "rank": 18,
     "rankByModality": {
-      "video": 22
+      "video": 18
     }
   },
   {
@@ -4708,9 +4706,9 @@
         "video": true
       }
     },
-    "rank": 22,
+    "rank": 18,
     "rankByModality": {
-      "video": 22
+      "video": 18
     }
   },
   {
@@ -4729,9 +4727,9 @@
         "video": true
       }
     },
-    "rank": 23,
+    "rank": 19,
     "rankByModality": {
-      "video": 23
+      "video": 19
     }
   },
   {
@@ -4747,9 +4745,9 @@
         "video": true
       }
     },
-    "rank": 23,
+    "rank": 19,
     "rankByModality": {
-      "video": 23
+      "video": 19
     }
   },
   {
@@ -4765,9 +4763,9 @@
         "video": true
       }
     },
-    "rank": 25,
+    "rank": 20,
     "rankByModality": {
-      "video": 25
+      "video": 20
     }
   },
   {
@@ -4783,9 +4781,9 @@
         "video": true
       }
     },
-    "rank": 26,
+    "rank": 21,
     "rankByModality": {
-      "video": 26
+      "video": 21
     }
   },
   {
@@ -4804,9 +4802,9 @@
         "video": true
       }
     },
-    "rank": 26,
+    "rank": 21,
     "rankByModality": {
-      "video": 26
+      "video": 21
     }
   },
   {
@@ -4822,9 +4820,9 @@
         "video": true
       }
     },
-    "rank": 27,
+    "rank": 22,
     "rankByModality": {
-      "video": 27
+      "video": 22
     }
   },
   {
@@ -4843,9 +4841,9 @@
         "video": true
       }
     },
-    "rank": 27,
+    "rank": 22,
     "rankByModality": {
-      "video": 27
+      "video": 22
     }
   },
   {
@@ -4861,9 +4859,29 @@
         "video": true
       }
     },
-    "rank": 28,
+    "rank": 23,
     "rankByModality": {
-      "video": 28
+      "video": 23
+    }
+  },
+  {
+    "id": "019adbbe-bce5-769b-a68c-d0e78cff8a05",
+    "organization": "kling",
+    "provider": "fal",
+    "publicName": "kling-o1-video",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "rankByModality": {
+      "video": 9007199254740991
     }
   },
   {
@@ -4927,6 +4945,21 @@
     }
   },
   {
+    "id": "019a12d5-eef6-7975-8345-36e48ca8aa10",
+    "publicName": "vision-flow",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
     "id": "ea96cfc8-953a-4c3c-a229-1107c55b7479",
     "organization": "kling",
     "provider": "fal",
@@ -4977,6 +5010,22 @@
         "image": {
           "requiresUpload": true
         }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "52f5e9b7-c36b-41e4-8e35-bce8e8d5b12b",
+    "publicName": "nimble-bean",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
       },
       "outputCapabilities": {
         "video": true

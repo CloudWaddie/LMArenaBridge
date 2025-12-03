@@ -22,10 +22,171 @@ import httpx
 # CONFIGURATION
 # ============================================================
 # Set to True for detailed logging, False for minimal logging
-DEBUG = False
+DEBUG = True
 
 # Port to run the server on
 PORT = 8000
+
+# HTTP Status Codes
+class HTTPStatus:
+    # 1xx Informational
+    CONTINUE = 100
+    SWITCHING_PROTOCOLS = 101
+    PROCESSING = 102
+    EARLY_HINTS = 103
+    
+    # 2xx Success
+    OK = 200
+    CREATED = 201
+    ACCEPTED = 202
+    NON_AUTHORITATIVE_INFORMATION = 203
+    NO_CONTENT = 204
+    RESET_CONTENT = 205
+    PARTIAL_CONTENT = 206
+    MULTI_STATUS = 207
+    
+    # 3xx Redirection
+    MULTIPLE_CHOICES = 300
+    MOVED_PERMANENTLY = 301
+    MOVED_TEMPORARILY = 302
+    SEE_OTHER = 303
+    NOT_MODIFIED = 304
+    USE_PROXY = 305
+    TEMPORARY_REDIRECT = 307
+    PERMANENT_REDIRECT = 308
+    
+    # 4xx Client Errors
+    BAD_REQUEST = 400
+    UNAUTHORIZED = 401
+    PAYMENT_REQUIRED = 402
+    FORBIDDEN = 403
+    NOT_FOUND = 404
+    METHOD_NOT_ALLOWED = 405
+    NOT_ACCEPTABLE = 406
+    PROXY_AUTHENTICATION_REQUIRED = 407
+    REQUEST_TIMEOUT = 408
+    CONFLICT = 409
+    GONE = 410
+    LENGTH_REQUIRED = 411
+    PRECONDITION_FAILED = 412
+    REQUEST_TOO_LONG = 413
+    REQUEST_URI_TOO_LONG = 414
+    UNSUPPORTED_MEDIA_TYPE = 415
+    REQUESTED_RANGE_NOT_SATISFIABLE = 416
+    EXPECTATION_FAILED = 417
+    IM_A_TEAPOT = 418
+    INSUFFICIENT_SPACE_ON_RESOURCE = 419
+    METHOD_FAILURE = 420
+    MISDIRECTED_REQUEST = 421
+    UNPROCESSABLE_ENTITY = 422
+    LOCKED = 423
+    FAILED_DEPENDENCY = 424
+    UPGRADE_REQUIRED = 426
+    PRECONDITION_REQUIRED = 428
+    TOO_MANY_REQUESTS = 429
+    REQUEST_HEADER_FIELDS_TOO_LARGE = 431
+    UNAVAILABLE_FOR_LEGAL_REASONS = 451
+    
+    # 5xx Server Errors
+    INTERNAL_SERVER_ERROR = 500
+    NOT_IMPLEMENTED = 501
+    BAD_GATEWAY = 502
+    SERVICE_UNAVAILABLE = 503
+    GATEWAY_TIMEOUT = 504
+    HTTP_VERSION_NOT_SUPPORTED = 505
+    INSUFFICIENT_STORAGE = 507
+    NETWORK_AUTHENTICATION_REQUIRED = 511
+
+# Status code descriptions for logging
+STATUS_MESSAGES = {
+    100: "Continue",
+    101: "Switching Protocols",
+    102: "Processing",
+    103: "Early Hints",
+    200: "OK - Success",
+    201: "Created",
+    202: "Accepted",
+    203: "Non-Authoritative Information",
+    204: "No Content",
+    205: "Reset Content",
+    206: "Partial Content",
+    207: "Multi-Status",
+    300: "Multiple Choices",
+    301: "Moved Permanently",
+    302: "Moved Temporarily",
+    303: "See Other",
+    304: "Not Modified",
+    305: "Use Proxy",
+    307: "Temporary Redirect",
+    308: "Permanent Redirect",
+    400: "Bad Request - Invalid request syntax",
+    401: "Unauthorized - Invalid or expired token",
+    402: "Payment Required",
+    403: "Forbidden - Access denied",
+    404: "Not Found - Resource doesn't exist",
+    405: "Method Not Allowed",
+    406: "Not Acceptable",
+    407: "Proxy Authentication Required",
+    408: "Request Timeout",
+    409: "Conflict",
+    410: "Gone - Resource permanently deleted",
+    411: "Length Required",
+    412: "Precondition Failed",
+    413: "Request Too Long - Payload too large",
+    414: "Request URI Too Long",
+    415: "Unsupported Media Type",
+    416: "Requested Range Not Satisfiable",
+    417: "Expectation Failed",
+    418: "I'm a Teapot",
+    419: "Insufficient Space on Resource",
+    420: "Method Failure",
+    421: "Misdirected Request",
+    422: "Unprocessable Entity",
+    423: "Locked",
+    424: "Failed Dependency",
+    426: "Upgrade Required",
+    428: "Precondition Required",
+    429: "Too Many Requests - Rate limit exceeded",
+    431: "Request Header Fields Too Large",
+    451: "Unavailable For Legal Reasons",
+    500: "Internal Server Error",
+    501: "Not Implemented",
+    502: "Bad Gateway",
+    503: "Service Unavailable",
+    504: "Gateway Timeout",
+    505: "HTTP Version Not Supported",
+    507: "Insufficient Storage",
+    511: "Network Authentication Required"
+}
+
+def get_status_emoji(status_code: int) -> str:
+    """Get emoji for status code"""
+    if 200 <= status_code < 300:
+        return "✅"
+    elif 300 <= status_code < 400:
+        return "↪️"
+    elif 400 <= status_code < 500:
+        if status_code == 401:
+            return "🔒"
+        elif status_code == 403:
+            return "🚫"
+        elif status_code == 404:
+            return "❓"
+        elif status_code == 429:
+            return "⏱️"
+        return "⚠️"
+    elif 500 <= status_code < 600:
+        return "❌"
+    return "ℹ️"
+
+def log_http_status(status_code: int, context: str = ""):
+    """Log HTTP status with readable message"""
+    emoji = get_status_emoji(status_code)
+    message = STATUS_MESSAGES.get(status_code, f"Unknown Status {status_code}")
+    if context:
+        debug_print(f"{emoji} HTTP {status_code}: {message} ({context})")
+    else:
+        debug_print(f"{emoji} HTTP {status_code}: {message}")
 # ============================================================
 
 def debug_print(*args, **kwargs):
@@ -76,12 +237,21 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         # Step 1: Request upload URL
         debug_print(f"📤 Step 1: Requesting upload URL for {filename}")
         
+        # Get Next-Action IDs from config
+        config = get_config()
+        upload_action_id = config.get("next_action_upload")
+        signed_url_action_id = config.get("next_action_signed_url")
+        
+        if not upload_action_id or not signed_url_action_id:
+            debug_print("❌ Next-Action IDs not found in config. Please refresh tokens from dashboard.")
+            return None
+        
         # Prepare headers for Next.js Server Action
         request_headers = get_request_headers()
         request_headers.update({
             "Accept": "text/x-component",
             "Content-Type": "text/plain;charset=UTF-8",
-            "Next-Action": "70cb393626e05a5f0ce7dcb46977c36c139fa85f91",
+            "Next-Action": upload_action_id,
             "Referer": "https://lmarena.ai/?mode=direct",
         })
         
@@ -142,7 +312,7 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             # Step 3: Get signed download URL (uses different Next-Action)
             debug_print(f"📤 Step 3: Requesting signed download URL")
             request_headers_step3 = request_headers.copy()
-            request_headers_step3["Next-Action"] = "6064c365792a3eaf40a60a874b327fe031ea6f22d7"
+            request_headers_step3["Next-Action"] = signed_url_action_id
             
             try:
                 response = await client.post(
@@ -310,6 +480,10 @@ api_key_usage = defaultdict(list)
 model_usage_stats = defaultdict(int)
 # Token cycling: current index for round-robin selection
 current_token_index = 0
+# Track which token is assigned to each conversation (conversation_id -> token)
+conversation_tokens: Dict[str, str] = {}
+# Track failed tokens per request to avoid retrying with same token
+request_failed_tokens: Dict[str, set] = {}
 
 # --- Helper Functions ---
 
@@ -317,30 +491,44 @@ def get_config():
     try:
         with open(CONFIG_FILE, "r") as f:
             config = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        debug_print(f"⚠️  Config file error: {e}, using defaults")
+        config = {}
+    except Exception as e:
+        debug_print(f"⚠️  Unexpected error reading config: {e}, using defaults")
         config = {}
 
     # Ensure default keys exist
-    config.setdefault("password", "admin")
-    config.setdefault("auth_token", "")
-    config.setdefault("auth_tokens", [])  # Multiple auth tokens
-    config.setdefault("cf_clearance", "")
-    config.setdefault("api_keys", [])
-    config.setdefault("usage_stats", {})
+    try:
+        config.setdefault("password", "admin")
+        config.setdefault("auth_token", "")
+        config.setdefault("auth_tokens", [])  # Multiple auth tokens
+        config.setdefault("cf_clearance", "")
+        config.setdefault("api_keys", [])
+        config.setdefault("usage_stats", {})
+    except Exception as e:
+        debug_print(f"⚠️  Error setting config defaults: {e}")
     
     return config
 
 def load_usage_stats():
     """Load usage stats from config into memory"""
     global model_usage_stats
-    config = get_config()
-    model_usage_stats = defaultdict(int, config.get("usage_stats", {}))
+    try:
+        config = get_config()
+        model_usage_stats = defaultdict(int, config.get("usage_stats", {}))
+    except Exception as e:
+        debug_print(f"⚠️  Error loading usage stats: {e}, using empty stats")
+        model_usage_stats = defaultdict(int)
 
 def save_config(config):
-    # Persist in-memory stats to the config dict before saving
-    config["usage_stats"] = dict(model_usage_stats)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=4)
+    try:
+        # Persist in-memory stats to the config dict before saving
+        config["usage_stats"] = dict(model_usage_stats)
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(config, f, indent=4)
+    except Exception as e:
+        debug_print(f"❌ Error saving config: {e}")
 
 def get_models():
     try:
@@ -350,48 +538,76 @@ def get_models():
         return []
 
 def save_models(models):
-    with open(MODELS_FILE, "w") as f:
-        json.dump(models, f, indent=2)
+    try:
+        with open(MODELS_FILE, "w") as f:
+            json.dump(models, f, indent=2)
+    except Exception as e:
+        debug_print(f"❌ Error saving models: {e}")
+
 
 def get_request_headers():
+    """Get request headers with the first available auth token (for compatibility)"""
     config = get_config()
-    auth_token = config.get("auth_token", "").strip()
-    if not auth_token:
-        raise HTTPException(status_code=500, detail="Arena auth token not set in dashboard.")
     
-    cf_clearance = config.get("cf_clearance", "").strip()
-    return {
-        "Content-Type": "application/json",
-        "Cookie": f"cf_clearance={cf_clearance}; arena-auth-prod-v1={auth_token}",
-    }
+    # Try to get token from auth_tokens first, then fallback to single token
+    auth_tokens = config.get("auth_tokens", [])
+    if auth_tokens:
+        token = auth_tokens[0]  # Just use first token for non-API requests
+    else:
+        token = config.get("auth_token", "").strip()
+        if not token:
+            raise HTTPException(status_code=500, detail="Arena auth token not set in dashboard.")
+    
+    return get_request_headers_with_token(token)
 
 def get_request_headers_with_token(token: str):
     """Get request headers with a specific auth token"""
     config = get_config()
     cf_clearance = config.get("cf_clearance", "").strip()
     return {
-        "Content-Type": "application/json",
+        "Content-Type": "text/plain;charset=UTF-8",
         "Cookie": f"cf_clearance={cf_clearance}; arena-auth-prod-v1={token}",
     }
 
-def get_next_auth_token():
-    """Get next auth token using round-robin selection"""
+def get_next_auth_token(exclude_tokens: set = None):
+    """Get next auth token using round-robin selection
+    
+    Args:
+        exclude_tokens: Set of tokens to exclude from selection (e.g., already tried tokens)
+    """
     global current_token_index
     config = get_config()
     
     # Get all available tokens
     auth_tokens = config.get("auth_tokens", [])
     if not auth_tokens:
-        # Fallback to single token
-        single_token = config.get("auth_token", "").strip()
-        if single_token:
-            return single_token
         raise HTTPException(status_code=500, detail="No auth tokens configured")
     
-    # Round-robin selection
-    token = auth_tokens[current_token_index % len(auth_tokens)]
+    # Filter out excluded tokens
+    if exclude_tokens:
+        available_tokens = [t for t in auth_tokens if t not in exclude_tokens]
+        if not available_tokens:
+            raise HTTPException(status_code=500, detail="No more auth tokens available to try")
+    else:
+        available_tokens = auth_tokens
+    
+    # Round-robin selection from available tokens
+    token = available_tokens[current_token_index % len(available_tokens)]
     current_token_index = (current_token_index + 1) % len(auth_tokens)
     return token
+
+def remove_auth_token(token: str):
+    """Remove an expired/invalid auth token from the list"""
+    try:
+        config = get_config()
+        auth_tokens = config.get("auth_tokens", [])
+        if token in auth_tokens:
+            auth_tokens.remove(token)
+            config["auth_tokens"] = auth_tokens
+            save_config(config)
+            debug_print(f"🗑️  Removed expired token from list: {token[:20]}...")
+    except Exception as e:
+        debug_print(f"⚠️  Error removing auth token: {e}")
 
 # --- Dashboard Authentication ---
 
@@ -444,25 +660,57 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
 # --- Core Logic ---
 
 async def get_initial_data():
-    print("Starting initial data retrieval...")
+    debug_print("Starting initial data retrieval...")
     try:
         async with AsyncCamoufox(headless=True) as browser:
             page = await browser.new_page()
             
-            print("Navigating to lmarena.ai...")
+            # Set up route interceptor BEFORE navigating
+            debug_print("  🎯 Setting up route interceptor for JS chunks...")
+            captured_responses = []
+            
+            async def capture_js_route(route):
+                """Intercept and capture JS chunk responses"""
+                url = route.request.url
+                if '/_next/static/chunks/' in url and '.js' in url:
+                    try:
+                        # Fetch the original response
+                        response = await route.fetch()
+                        # Get the response body
+                        body = await response.body()
+                        text = body.decode('utf-8')
+
+                        # debug_print(f"    📥 Captured JS chunk: {url.split('/')[-1][:50]}...")
+                        captured_responses.append({'url': url, 'text': text})
+                        
+                        # Continue with the original response (don't modify)
+                        await route.fulfill(response=response, body=body)
+                    except Exception as e:
+                        debug_print(f"    ⚠️  Error capturing response: {e}")
+                        # If something fails, just continue normally
+                        await route.continue_()
+                else:
+                    # Not a JS chunk, just continue normally
+                    await route.continue_()
+            
+            # Register the route interceptor
+            await page.route('**/*', capture_js_route)
+            
+            debug_print("Navigating to lmarena.ai...")
             await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
 
-            print("Waiting for Cloudflare challenge to complete...")
+            debug_print("Waiting for Cloudflare challenge to complete...")
             try:
                 await page.wait_for_function(
                     "() => document.title.indexOf('Just a moment...') === -1", 
                     timeout=45000
                 )
-                print("✅ Cloudflare challenge passed.")
+                debug_print("✅ Cloudflare challenge passed.")
             except Exception as e:
-                print(f"❌ Cloudflare challenge took too long or failed: {e}")
+                debug_print(f"❌ Cloudflare challenge took too long or failed: {e}")
                 return
 
+            # Give it time to capture all JS responses
             await asyncio.sleep(5)
 
             # Extract cf_clearance
@@ -473,12 +721,12 @@ async def get_initial_data():
             if cf_clearance_cookie:
                 config["cf_clearance"] = cf_clearance_cookie["value"]
                 save_config(config)
-                print(f"✅ Saved cf_clearance token: {cf_clearance_cookie['value'][:20]}...")
+                debug_print(f"✅ Saved cf_clearance token: {cf_clearance_cookie['value'][:20]}...")
             else:
-                print("⚠️ Could not find cf_clearance cookie.")
+                debug_print("⚠️ Could not find cf_clearance cookie.")
 
             # Extract models
-            print("Extracting models from page...")
+            debug_print("Extracting models from page...")
             try:
                 body = await page.content()
                 match = re.search(r'{\\"initialModels\\":(\[.*?\]),\\"initialModel[A-Z]Id', body, re.DOTALL)
@@ -486,15 +734,88 @@ async def get_initial_data():
                     models_json = match.group(1).encode().decode('unicode_escape')
                     models = json.loads(models_json)
                     save_models(models)
-                    print(f"✅ Saved {len(models)} models")
+                    debug_print(f"✅ Saved {len(models)} models")
                 else:
-                    print("⚠️ Could not find models in page")
+                    debug_print("⚠️ Could not find models in page")
             except Exception as e:
-                print(f"❌ Error extracting models: {e}")
+                debug_print(f"❌ Error extracting models: {e}")
 
-            print("✅ Initial data retrieval complete")
+            # Extract Next-Action IDs from captured JavaScript responses
+            debug_print(f"\nExtracting Next-Action IDs from {len(captured_responses)} captured JS responses...")
+            try:
+                upload_action_id = None
+                signed_url_action_id = None
+                
+                if not captured_responses:
+                    debug_print("  ⚠️  No JavaScript responses were captured")
+                else:
+                    debug_print(f"  📦 Processing {len(captured_responses)} JavaScript chunk files")
+                    
+                    for item in captured_responses:
+                        url = item['url']
+                        text = item['text']
+                        
+                        try:
+                            # debug_print(f"  🔎 Checking: {url.split('/')[-1][:50]}...")
+                            
+                            # Look for getSignedUrl action ID (ID captured in group 1)
+                            signed_url_matches = re.findall(
+                                r'\(0,[a-zA-Z].createServerReference\)\(\"([\w\d]*?)\",[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\']getSignedUrl["\']\)',
+                                text
+                            )
+                            
+                            # Look for generateUploadUrl action ID (ID captured in group 1)
+                            upload_matches = re.findall(
+                                r'\(0,[a-zA-Z].createServerReference\)\(\"([\w\d]*?)\",[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\']generateUploadUrl["\']\)',
+                                text
+                            )
+                            
+                            # Process matches
+                            if signed_url_matches and not signed_url_action_id:
+                                signed_url_action_id = signed_url_matches[0]
+                                debug_print(f"    📥 Found getSignedUrl action ID: {signed_url_action_id[:20]}...")
+                            
+                            if upload_matches and not upload_action_id:
+                                upload_action_id = upload_matches[0]
+                                debug_print(f"    📤 Found generateUploadUrl action ID: {upload_action_id[:20]}...")
+                            
+                            if upload_action_id and signed_url_action_id:
+                                debug_print(f"  ✅ Found both action IDs, stopping search")
+                                break
+                                
+                        except Exception as e:
+                            debug_print(f"    ⚠️  Error parsing response from {url}: {e}")
+                            continue
+                
+                # Save the action IDs to config
+                if upload_action_id:
+                    config["next_action_upload"] = upload_action_id
+                if signed_url_action_id:
+                    config["next_action_signed_url"] = signed_url_action_id
+                
+                if upload_action_id and signed_url_action_id:
+                    save_config(config)
+                    debug_print(f"\n✅ Saved both Next-Action IDs to config")
+                    debug_print(f"   Upload: {upload_action_id}")
+                    debug_print(f"   Signed URL: {signed_url_action_id}")
+                elif upload_action_id or signed_url_action_id:
+                    save_config(config)
+                    debug_print(f"\n⚠️ Saved partial Next-Action IDs:")
+                    if upload_action_id:
+                        debug_print(f"   Upload: {upload_action_id}")
+                    if signed_url_action_id:
+                        debug_print(f"   Signed URL: {signed_url_action_id}")
+                else:
+                    debug_print(f"\n⚠️ Could not extract Next-Action IDs from JavaScript chunks")
+                    debug_print(f"   This is optional - image upload may not work without them")
+                    
+            except Exception as e:
+                debug_print(f"❌ Error extracting Next-Action IDs: {e}")
+                debug_print(f"   This is optional - continuing without them")
+
+            debug_print("✅ Initial data retrieval complete")
     except Exception as e:
-        print(f"❌ An error occurred during initial data retrieval: {e}")
+        debug_print(f"❌ An error occurred during initial data retrieval: {e}")
 
 async def periodic_refresh_task():
     """Background task to refresh cf_clearance and models every 30 minutes"""
@@ -502,28 +823,32 @@ async def periodic_refresh_task():
         try:
             # Wait 30 minutes (1800 seconds)
             await asyncio.sleep(1800)
-            print("\n" + "="*60)
-            print("🔄 Starting scheduled 30-minute refresh...")
-            print("="*60)
+            debug_print("\n" + "="*60)
+            debug_print("🔄 Starting scheduled 30-minute refresh...")
+            debug_print("="*60)
             await get_initial_data()
-            print("✅ Scheduled refresh completed")
-            print("="*60 + "\n")
+            debug_print("✅ Scheduled refresh completed")
+            debug_print("="*60 + "\n")
         except Exception as e:
-            print(f"❌ Error in periodic refresh task: {e}")
+            debug_print(f"❌ Error in periodic refresh task: {e}")
             # Continue the loop even if there's an error
             continue
 
 @app.on_event("startup")
 async def startup_event():
-    # Ensure config and models files exist
-    save_config(get_config())
-    save_models(get_models())
-    # Load usage stats from config
-    load_usage_stats()
-    # Start initial data fetch
-    asyncio.create_task(get_initial_data())
-    # Start periodic refresh task (every 30 minutes)
-    asyncio.create_task(periodic_refresh_task())
+    try:
+        # Ensure config and models files exist
+        save_config(get_config())
+        save_models(get_models())
+        # Load usage stats from config
+        load_usage_stats()
+        # Start initial data fetch
+        asyncio.create_task(get_initial_data())
+        # Start periodic refresh task (every 30 minutes)
+        asyncio.create_task(periodic_refresh_task())
+    except Exception as e:
+        debug_print(f"❌ Error during startup: {e}")
+        # Continue anyway - server should still start
 
 # --- UI Endpoints (Login/Dashboard) ---
 
@@ -664,8 +989,19 @@ async def dashboard(session: str = Depends(get_current_session)):
     if not session:
         return RedirectResponse(url="/login")
 
-    config = get_config()
-    models = get_models()
+    try:
+        config = get_config()
+        models = get_models()
+    except Exception as e:
+        debug_print(f"❌ Error loading dashboard data: {e}")
+        # Return error page
+        return HTMLResponse(f"""
+            <html><body style="font-family: sans-serif; padding: 40px; text-align: center;">
+                <h1>⚠️ Dashboard Error</h1>
+                <p>Failed to load configuration: {str(e)}</p>
+                <p><a href="/logout">Logout</a> | <a href="/dashboard">Retry</a></p>
+            </body></html>
+        """, status_code=500)
 
     # Render API Keys
     keys_html = ""
@@ -1059,18 +1395,6 @@ async def dashboard(session: str = Depends(get_current_session)):
                         </div>
                         <button type="submit">Add Token</button>
                     </form>
-                    
-                    <hr style="margin: 25px 0; border: none; border-top: 1px solid #e0e0e0;">
-                    
-                    <h3 style="margin-bottom: 15px; font-size: 16px;">Legacy Single Token (Deprecated)</h3>
-                    <p style="color: #999; margin-bottom: 15px; font-size: 13px;">This single token is used as fallback if no tokens are configured above.</p>
-                    <form action="/update-auth-token" method="post">
-                        <div class="form-group">
-                            <label for="auth_token">Legacy Auth Token</label>
-                            <textarea id="auth_token" name="auth_token" placeholder="Paste your arena-auth-prod-v1 token here">{config.get("auth_token", "")}</textarea>
-                        </div>
-                        <button type="submit" style="background: #6c757d;">Update Legacy Token</button>
-                    </form>
                 </div>
 
                 <!-- Cloudflare Clearance -->
@@ -1294,56 +1618,71 @@ async def update_auth_token(session: str = Depends(get_current_session), auth_to
 async def create_key(session: str = Depends(get_current_session), name: str = Form(...), rpm: int = Form(...)):
     if not session:
         return RedirectResponse(url="/login")
-    config = get_config()
-    new_key = {
-        "name": name.strip(),
-        "key": f"sk-lmab-{uuid.uuid4()}",
-        "rpm": max(1, min(rpm, 1000)),  # Clamp between 1-1000
-        "created": int(time.time())
-    }
-    config["api_keys"].append(new_key)
-    save_config(config)
+    try:
+        config = get_config()
+        new_key = {
+            "name": name.strip(),
+            "key": f"sk-lmab-{uuid.uuid4()}",
+            "rpm": max(1, min(rpm, 1000)),  # Clamp between 1-1000
+            "created": int(time.time())
+        }
+        config["api_keys"].append(new_key)
+        save_config(config)
+    except Exception as e:
+        debug_print(f"❌ Error creating key: {e}")
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/delete-key")
 async def delete_key(session: str = Depends(get_current_session), key_id: str = Form(...)):
     if not session:
         return RedirectResponse(url="/login")
-    config = get_config()
-    config["api_keys"] = [k for k in config["api_keys"] if k["key"] != key_id]
-    save_config(config)
+    try:
+        config = get_config()
+        config["api_keys"] = [k for k in config["api_keys"] if k["key"] != key_id]
+        save_config(config)
+    except Exception as e:
+        debug_print(f"❌ Error deleting key: {e}")
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/add-auth-token")
 async def add_auth_token(session: str = Depends(get_current_session), new_auth_token: str = Form(...)):
     if not session:
         return RedirectResponse(url="/login")
-    config = get_config()
-    token = new_auth_token.strip()
-    if token and token not in config.get("auth_tokens", []):
-        if "auth_tokens" not in config:
-            config["auth_tokens"] = []
-        config["auth_tokens"].append(token)
-        save_config(config)
+    try:
+        config = get_config()
+        token = new_auth_token.strip()
+        if token and token not in config.get("auth_tokens", []):
+            if "auth_tokens" not in config:
+                config["auth_tokens"] = []
+            config["auth_tokens"].append(token)
+            save_config(config)
+    except Exception as e:
+        debug_print(f"❌ Error adding auth token: {e}")
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/delete-auth-token")
 async def delete_auth_token(session: str = Depends(get_current_session), token_index: int = Form(...)):
     if not session:
         return RedirectResponse(url="/login")
-    config = get_config()
-    auth_tokens = config.get("auth_tokens", [])
-    if 0 <= token_index < len(auth_tokens):
-        auth_tokens.pop(token_index)
-        config["auth_tokens"] = auth_tokens
-        save_config(config)
+    try:
+        config = get_config()
+        auth_tokens = config.get("auth_tokens", [])
+        if 0 <= token_index < len(auth_tokens):
+            auth_tokens.pop(token_index)
+            config["auth_tokens"] = auth_tokens
+            save_config(config)
+    except Exception as e:
+        debug_print(f"❌ Error deleting auth token: {e}")
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 @app.post("/refresh-tokens")
 async def refresh_tokens(session: str = Depends(get_current_session)):
     if not session:
         return RedirectResponse(url="/login")
-    await get_initial_data()
+    try:
+        await get_initial_data()
+    except Exception as e:
+        debug_print(f"❌ Error refreshing tokens: {e}")
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 # --- OpenAI Compatible API Endpoints ---
@@ -1381,27 +1720,31 @@ async def health_check():
 
 @app.get("/api/v1/models")
 async def list_models(api_key: dict = Depends(rate_limit_api_key)):
-    models = get_models()
-    
-    # Filter for models with text OR search OR image output capability and an organization (exclude stealth models)
-    # Always include image models - no special key needed
-    valid_models = [m for m in models 
-                   if (m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
-                       or m.get('capabilities', {}).get('outputCapabilities', {}).get('search')
-                       or m.get('capabilities', {}).get('outputCapabilities', {}).get('image'))
-                   and m.get('organization')]
-    
-    return {
-        "object": "list",
-        "data": [
-            {
-                "id": model.get("publicName"),
-                "object": "model",
-                "created": int(time.time()),
-                "owned_by": model.get("organization", "lmarena")
-            } for model in valid_models if model.get("publicName")
-        ]
-    }
+    try:
+        models = get_models()
+        
+        # Filter for models with text OR search OR image output capability and an organization (exclude stealth models)
+        # Always include image models - no special key needed
+        valid_models = [m for m in models 
+                       if (m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
+                           or m.get('capabilities', {}).get('outputCapabilities', {}).get('search')
+                           or m.get('capabilities', {}).get('outputCapabilities', {}).get('image'))
+                       and m.get('organization')]
+        
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": model.get("publicName"),
+                    "object": "model",
+                    "created": int(time.time()),
+                    "owned_by": model.get("organization", "lmarena")
+                } for model in valid_models if model.get("publicName")
+            ]
+        }
+    except Exception as e:
+        debug_print(f"❌ Error listing models: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load models: {str(e)}")
 
 @app.post("/api/v1/chat/completions")
 async def api_chat_completions(request: Request, api_key: dict = Depends(rate_limit_api_key)):
@@ -1594,10 +1937,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             debug_print(f"🔁 Using RETRY endpoint")
             # Use LMArena's retry endpoint
             # Format: PUT /nextjs-api/stream/retry-evaluation-session-message/{sessionId}/messages/{messageId}
-            # Note: We don't need a payload for retry, just the recaptchaV3Token (optional)
-            payload = {
-                "recaptchaV3Token": ""  # Optional, can be empty
-            }
+            payload = {}
             url = f"https://lmarena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Using PUT method for retry")
@@ -1621,7 +1961,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modelAMessageId": model_msg_id,
                 "userMessage": {
                     "content": prompt,
-                    "experimental_attachments": experimental_attachments
+                    "experimental_attachments": experimental_attachments,
+                    "metadata": {}
                 },
                 "modality": modality
             }
@@ -1640,13 +1981,13 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             
             payload = {
                 "id": session["conversation_id"],
-                "mode": "direct",
                 "modelAId": model_id,
                 "userMessageId": user_msg_id,
                 "modelAMessageId": model_msg_id,
                 "userMessage": {
                     "content": prompt,
-                    "experimental_attachments": experimental_attachments
+                    "experimental_attachments": experimental_attachments,
+                    "metadata": {}
                 },
                 "modality": modality
             }
@@ -1659,145 +2000,276 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         debug_print(f"\n🚀 Making API request to LMArena...")
         debug_print(f"⏱️  Timeout set to: 120 seconds")
         
+        # Initialize failed tokens tracking for this request
+        request_id = str(uuid.uuid4())
+        failed_tokens = set()
+        
+        # Get initial auth token using round-robin (excluding any failed ones)
+        current_token = get_next_auth_token(exclude_tokens=failed_tokens)
+        headers = get_request_headers_with_token(current_token)
+        debug_print(f"🔑 Using token (round-robin): {current_token[:20]}...")
+        
+        # Retry logic wrapper
+        async def make_request_with_retry(url, payload, http_method, max_retries=3):
+            """Make request with automatic retry on 429/401 errors"""
+            nonlocal current_token, headers, failed_tokens
+            
+            for attempt in range(max_retries):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        if http_method == "PUT":
+                            response = await client.put(url, json=payload, headers=headers, timeout=120)
+                        else:
+                            response = await client.post(url, json=payload, headers=headers, timeout=120)
+                        
+                        # Log status with human-readable message
+                        log_http_status(response.status_code, "LMArena API")
+                        
+                        # Check for retry-able errors
+                        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+                            debug_print(f"⏱️  Attempt {attempt + 1}/{max_retries} - Rate limit with token {current_token[:20]}...")
+                            # Add current token to failed set
+                            failed_tokens.add(current_token)
+                            debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
+                            
+                            if attempt < max_retries - 1:
+                                try:
+                                    # Try with next token (excluding failed ones)
+                                    current_token = get_next_auth_token(exclude_tokens=failed_tokens)
+                                    headers = get_request_headers_with_token(current_token)
+                                    debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
+                                    await asyncio.sleep(1)  # Brief delay
+                                    continue
+                                except HTTPException as e:
+                                    debug_print(f"❌ No more tokens available: {e.detail}")
+                                    break
+                        
+                        elif response.status_code == HTTPStatus.UNAUTHORIZED:
+                            debug_print(f"🔒 Attempt {attempt + 1}/{max_retries} - Auth failed with token {current_token[:20]}...")
+                            # Add current token to failed set
+                            failed_tokens.add(current_token)
+                            # Remove the expired token from config
+                            remove_auth_token(current_token)
+                            debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
+                            
+                            if attempt < max_retries - 1:
+                                try:
+                                    # Try with next available token (excluding failed ones)
+                                    current_token = get_next_auth_token(exclude_tokens=failed_tokens)
+                                    headers = get_request_headers_with_token(current_token)
+                                    debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
+                                    await asyncio.sleep(1)  # Brief delay
+                                    continue
+                                except HTTPException as e:
+                                    debug_print(f"❌ No more tokens available: {e.detail}")
+                                    break
+                        
+                        # If we get here, return the response (success or non-retryable error)
+                        response.raise_for_status()
+                        return response
+                        
+                except httpx.HTTPStatusError as e:
+                    # Only handle 429 and 401, let other errors through
+                    if e.response.status_code not in [429, 401]:
+                        raise
+                    # If last attempt, raise the error
+                    if attempt == max_retries - 1:
+                        raise
+            
+            # Should not reach here, but just in case
+            raise HTTPException(status_code=503, detail="Max retries exceeded")
+        
         # Handle streaming mode
         if stream:
             async def generate_stream():
-                response_text = ""
-                reasoning_text = ""
-                citations = []
+                nonlocal current_token, headers
                 chunk_id = f"chatcmpl-{uuid.uuid4()}"
                 
-                async with httpx.AsyncClient() as client:
+                # Retry logic for streaming
+                max_retries = 3
+                for attempt in range(max_retries):
+                    # Reset response data for each attempt
+                    response_text = ""
+                    reasoning_text = ""
+                    citations = []
                     try:
-                        debug_print("📡 Sending POST request for streaming...")
-                        async with client.stream('POST', url, json=payload, headers=headers, timeout=120) as response:
-                            debug_print(f"✅ Stream opened - Status: {response.status_code}")
-                            response.raise_for_status()
+                        async with httpx.AsyncClient() as client:
+                            debug_print(f"📡 Sending {http_method} request for streaming (attempt {attempt + 1}/{max_retries})...")
                             
-                            async for line in response.aiter_lines():
-                                line = line.strip()
-                                if not line:
-                                    continue
+                            if http_method == "PUT":
+                                stream_context = client.stream('PUT', url, json=payload, headers=headers, timeout=120)
+                            else:
+                                stream_context = client.stream('POST', url, json=payload, headers=headers, timeout=120)
+                            
+                            async with stream_context as response:
+                                # Log status with human-readable message
+                                log_http_status(response.status_code, "LMArena API Stream")
                                 
-                                # Parse thinking/reasoning chunks: ag:"thinking text"
-                                if line.startswith("ag:"):
-                                    chunk_data = line[3:]
-                                    try:
-                                        reasoning_chunk = json.loads(chunk_data)
-                                        reasoning_text += reasoning_chunk
-                                        
-                                        # Send SSE-formatted chunk with reasoning_content
-                                        chunk_response = {
-                                            "id": chunk_id,
-                                            "object": "chat.completion.chunk",
-                                            "created": int(time.time()),
-                                            "model": model_public_name,
-                                            "choices": [{
-                                                "index": 0,
-                                                "delta": {
-                                                    "reasoning_content": reasoning_chunk
-                                                },
-                                                "finish_reason": None
-                                            }]
-                                        }
-                                        yield f"data: {json.dumps(chunk_response)}\n\n"
-                                        
-                                    except json.JSONDecodeError:
+                                # Check for retry-able errors before processing stream
+                                if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+                                    debug_print(f"⏱️  Stream attempt {attempt + 1}/{max_retries}")
+                                    if attempt < max_retries - 1:
+                                        current_token = get_next_auth_token()
+                                        headers = get_request_headers_with_token(current_token)
+                                        debug_print(f"🔄 Retrying stream with next token: {current_token[:20]}...")
+                                        await asyncio.sleep(1)
                                         continue
                                 
-                                # Parse text chunks: a0:"Hello "
-                                elif line.startswith("a0:"):
-                                    chunk_data = line[3:]
-                                    try:
-                                        text_chunk = json.loads(chunk_data)
-                                        response_text += text_chunk
-                                        
-                                        # Send SSE-formatted chunk
-                                        chunk_response = {
-                                            "id": chunk_id,
-                                            "object": "chat.completion.chunk",
-                                            "created": int(time.time()),
-                                            "model": model_public_name,
-                                            "choices": [{
-                                                "index": 0,
-                                                "delta": {
-                                                    "content": text_chunk
-                                                },
-                                                "finish_reason": None
-                                            }]
-                                        }
-                                        yield f"data: {json.dumps(chunk_response)}\n\n"
-                                        
-                                    except json.JSONDecodeError:
+                                elif response.status_code == HTTPStatus.UNAUTHORIZED:
+                                    debug_print(f"🔒 Stream token expired")
+                                    remove_auth_token(current_token)
+                                    if attempt < max_retries - 1:
+                                        try:
+                                            current_token = get_next_auth_token()
+                                            headers = get_request_headers_with_token(current_token)
+                                            debug_print(f"🔄 Retrying stream with next token: {current_token[:20]}...")
+                                            await asyncio.sleep(1)
+                                            continue
+                                        except HTTPException:
+                                            debug_print(f"❌ No more tokens available")
+                                            break
+                                
+                                log_http_status(response.status_code, "Stream Connection")
+                                response.raise_for_status()
+                                
+                                async for line in response.aiter_lines():
+                                    line = line.strip()
+                                    if not line:
                                         continue
-                                
-                                # Parse image generation: a2:[{...}] (for image models)
-                                elif line.startswith("a2:"):
-                                    image_data = line[3:]
-                                    try:
-                                        image_list = json.loads(image_data)
-                                        # OpenAI format: return URL in content
-                                        if isinstance(image_list, list) and len(image_list) > 0:
-                                            image_obj = image_list[0]
-                                            if image_obj.get('type') == 'image':
-                                                image_url = image_obj.get('image', '')
-                                                # Store image URL as response text for now
-                                                # Will format properly in final response
-                                                response_text = image_url
-                                                debug_print(f"  🖼️  Image URL received: {image_url[:100]}...")
-                                    except json.JSONDecodeError:
-                                        pass
-                                
-                                # Parse citations/tool calls: ac:{...} (for search models)
-                                elif line.startswith("ac:"):
-                                    citation_data = line[3:]
-                                    try:
-                                        citation_obj = json.loads(citation_data)
-                                        # Extract source information from argsTextDelta
-                                        if 'argsTextDelta' in citation_obj:
-                                            args_data = json.loads(citation_obj['argsTextDelta'])
-                                            if 'source' in args_data:
-                                                source = args_data['source']
-                                                # Can be a single source or array of sources
-                                                if isinstance(source, list):
-                                                    citations.extend(source)
-                                                elif isinstance(source, dict):
-                                                    citations.append(source)
-                                        debug_print(f"  🔗 Citation added: {citation_obj.get('toolCallId')}")
-                                    except json.JSONDecodeError:
-                                        pass
-                                
-                                # Parse error messages
-                                elif line.startswith("a3:"):
-                                    error_data = line[3:]
-                                    try:
-                                        error_message = json.loads(error_data)
-                                        print(f"  ❌ Error in stream: {error_message}")
-                                    except json.JSONDecodeError:
-                                        pass
-                                
-                                # Parse metadata for finish
-                                elif line.startswith("ad:"):
-                                    metadata_data = line[3:]
-                                    try:
-                                        metadata = json.loads(metadata_data)
-                                        finish_reason = metadata.get("finishReason", "stop")
-                                        
-                                        # Send final chunk with finish_reason
-                                        final_chunk = {
-                                            "id": chunk_id,
-                                            "object": "chat.completion.chunk",
-                                            "created": int(time.time()),
-                                            "model": model_public_name,
-                                            "choices": [{
-                                                "index": 0,
-                                                "delta": {},
-                                                "finish_reason": finish_reason
-                                            }]
-                                        }
-                                        yield f"data: {json.dumps(final_chunk)}\n\n"
-                                    except json.JSONDecodeError:
-                                        continue
+                                    
+                                    # Parse thinking/reasoning chunks: ag:"thinking text"
+                                    if line.startswith("ag:"):
+                                        chunk_data = line[3:]
+                                        try:
+                                            reasoning_chunk = json.loads(chunk_data)
+                                            reasoning_text += reasoning_chunk
+                                            
+                                            # Send SSE-formatted chunk with reasoning_content
+                                            chunk_response = {
+                                                "id": chunk_id,
+                                                "object": "chat.completion.chunk",
+                                                "created": int(time.time()),
+                                                "model": model_public_name,
+                                                "choices": [{
+                                                    "index": 0,
+                                                    "delta": {
+                                                        "reasoning_content": reasoning_chunk
+                                                    },
+                                                    "finish_reason": None
+                                                }]
+                                            }
+                                            yield f"data: {json.dumps(chunk_response)}\n\n"
+                                            
+                                        except json.JSONDecodeError:
+                                            continue
+                                    
+                                    # Parse text chunks: a0:"Hello "
+                                    elif line.startswith("a0:"):
+                                        chunk_data = line[3:]
+                                        try:
+                                            text_chunk = json.loads(chunk_data)
+                                            response_text += text_chunk
+                                            
+                                            # Send SSE-formatted chunk
+                                            chunk_response = {
+                                                "id": chunk_id,
+                                                "object": "chat.completion.chunk",
+                                                "created": int(time.time()),
+                                                "model": model_public_name,
+                                                "choices": [{
+                                                    "index": 0,
+                                                    "delta": {
+                                                        "content": text_chunk
+                                                    },
+                                                    "finish_reason": None
+                                                }]
+                                            }
+                                            yield f"data: {json.dumps(chunk_response)}\n\n"
+                                            
+                                        except json.JSONDecodeError:
+                                            continue
+                                    
+                                    # Parse image generation: a2:[{...}] (for image models)
+                                    elif line.startswith("a2:"):
+                                        image_data = line[3:]
+                                        try:
+                                            image_list = json.loads(image_data)
+                                            # OpenAI format: return URL in content
+                                            if isinstance(image_list, list) and len(image_list) > 0:
+                                                image_obj = image_list[0]
+                                                if image_obj.get('type') == 'image':
+                                                    image_url = image_obj.get('image', '')
+                                                    # Format as markdown for streaming
+                                                    response_text = f"![Generated Image]({image_url})"
+                                                    
+                                                    # Send the markdown-formatted image in a chunk
+                                                    chunk_response = {
+                                                        "id": chunk_id,
+                                                        "object": "chat.completion.chunk",
+                                                        "created": int(time.time()),
+                                                        "model": model_public_name,
+                                                        "choices": [{
+                                                            "index": 0,
+                                                            "delta": {
+                                                                "content": response_text
+                                                            },
+                                                            "finish_reason": None
+                                                        }]
+                                                    }
+                                                    yield f"data: {json.dumps(chunk_response)}\n\n"
+                                        except json.JSONDecodeError:
+                                            pass
+                                    
+                                    # Parse citations/tool calls: ac:{...} (for search models)
+                                    elif line.startswith("ac:"):
+                                        citation_data = line[3:]
+                                        try:
+                                            citation_obj = json.loads(citation_data)
+                                            # Extract source information from argsTextDelta
+                                            if 'argsTextDelta' in citation_obj:
+                                                args_data = json.loads(citation_obj['argsTextDelta'])
+                                                if 'source' in args_data:
+                                                    source = args_data['source']
+                                                    # Can be a single source or array of sources
+                                                    if isinstance(source, list):
+                                                        citations.extend(source)
+                                                    elif isinstance(source, dict):
+                                                        citations.append(source)
+                                            debug_print(f"  🔗 Citation added: {citation_obj.get('toolCallId')}")
+                                        except json.JSONDecodeError:
+                                            pass
+                                    
+                                    # Parse error messages
+                                    elif line.startswith("a3:"):
+                                        error_data = line[3:]
+                                        try:
+                                            error_message = json.loads(error_data)
+                                            print(f"  ❌ Error in stream: {error_message}")
+                                        except json.JSONDecodeError:
+                                            pass
+                                    
+                                    # Parse metadata for finish
+                                    elif line.startswith("ad:"):
+                                        metadata_data = line[3:]
+                                        try:
+                                            metadata = json.loads(metadata_data)
+                                            finish_reason = metadata.get("finishReason", "stop")
+                                            
+                                            # Send final chunk with finish_reason
+                                            final_chunk = {
+                                                "id": chunk_id,
+                                                "object": "chat.completion.chunk",
+                                                "created": int(time.time()),
+                                                "model": model_public_name,
+                                                "choices": [{
+                                                    "index": 0,
+                                                    "delta": {},
+                                                    "finish_reason": finish_reason
+                                                }]
+                                            }
+                                            yield f"data: {json.dumps(final_chunk)}\n\n"
+                                        except json.JSONDecodeError:
+                                            continue
                             
                             # Update session - Store message history with IDs (including reasoning and citations if present)
                             assistant_message = {
@@ -1840,8 +2312,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             
                             yield "data: [DONE]\n\n"
                             debug_print(f"✅ Stream completed - {len(response_text)} chars sent")
-                            
+                            return  # Success, exit retry loop
+                                
                     except httpx.HTTPStatusError as e:
+                        # Handle retry-able errors
+                        if e.response.status_code in [429, 401] and attempt < max_retries - 1:
+                            continue  # Retry loop will handle it
                         # Provide user-friendly error messages
                         if e.response.status_code == 429:
                             error_msg = "Rate limit exceeded on LMArena. Please try again in a few moments."
@@ -1862,6 +2338,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             }
                         }
                         yield f"data: {json.dumps(error_chunk)}\n\n"
+                        return
                     except Exception as e:
                         print(f"❌ Stream error: {str(e)}")
                         error_chunk = {
@@ -1871,307 +2348,316 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             }
                         }
                         yield f"data: {json.dumps(error_chunk)}\n\n"
+                        return
             
             return StreamingResponse(generate_stream(), media_type="text/event-stream")
         
-        # Handle non-streaming mode
-        async with httpx.AsyncClient() as client:
-            try:
-                debug_print(f"📡 Sending {http_method} request...")
-                if http_method == "PUT":
-                    response = await client.put(url, json=payload, headers=headers, timeout=120)
-                else:
-                    response = await client.post(url, json=payload, headers=headers, timeout=120)
+        # Handle non-streaming mode with retry
+        try:
+            response = await make_request_with_retry(url, payload, http_method)
+            
+            log_http_status(response.status_code, "LMArena API Response")
+            debug_print(f"📏 Response length: {len(response.text)} characters")
+            debug_print(f"📋 Response headers: {dict(response.headers)}")
+            
+            debug_print(f"🔍 Processing response...")
+            debug_print(f"📄 First 500 chars of response:\n{response.text[:500]}")
+            
+            # Process response in lmarena format
+            # Format: ag:"thinking" for reasoning, a0:"text chunk" for content, ac:{...} for citations, ad:{...} for metadata
+            response_text = ""
+            reasoning_text = ""
+            citations = []
+            finish_reason = None
+            line_count = 0
+            text_chunks_found = 0
+            reasoning_chunks_found = 0
+            citation_chunks_found = 0
+            metadata_found = 0
+            
+            debug_print(f"📊 Parsing response lines...")
+            
+            error_message = None
+            for line in response.text.splitlines():
+                line_count += 1
+                line = line.strip()
+                if not line:
+                    continue
                 
-                debug_print(f"✅ Response received - Status: {response.status_code}")
-                debug_print(f"📏 Response length: {len(response.text)} characters")
-                debug_print(f"📋 Response headers: {dict(response.headers)}")
-                
-                response.raise_for_status()
-                
-                debug_print(f"🔍 Processing response...")
-                debug_print(f"📄 First 500 chars of response:\n{response.text[:500]}")
-                
-                # Process response in lmarena format
-                # Format: ag:"thinking" for reasoning, a0:"text chunk" for content, ac:{...} for citations, ad:{...} for metadata
-                response_text = ""
-                reasoning_text = ""
-                citations = []
-                finish_reason = None
-                line_count = 0
-                text_chunks_found = 0
-                reasoning_chunks_found = 0
-                citation_chunks_found = 0
-                metadata_found = 0
-                
-                debug_print(f"📊 Parsing response lines...")
-                
-                error_message = None
-                for line in response.text.splitlines():
-                    line_count += 1
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    # Parse thinking/reasoning chunks: ag:"thinking text"
-                    if line.startswith("ag:"):
-                        chunk_data = line[3:]  # Remove "ag:" prefix
-                        reasoning_chunks_found += 1
-                        try:
-                            # Parse as JSON string (includes quotes)
-                            reasoning_chunk = json.loads(chunk_data)
-                            reasoning_text += reasoning_chunk
-                            if reasoning_chunks_found <= 3:  # Log first 3 reasoning chunks
-                                debug_print(f"  🧠 Reasoning chunk {reasoning_chunks_found}: {repr(reasoning_chunk[:50])}")
-                        except json.JSONDecodeError as e:
-                            debug_print(f"  ⚠️ Failed to parse reasoning chunk on line {line_count}: {chunk_data[:100]} - {e}")
-                            continue
-                    
-                    # Parse text chunks: a0:"Hello "
-                    elif line.startswith("a0:"):
-                        chunk_data = line[3:]  # Remove "a0:" prefix
-                        text_chunks_found += 1
-                        try:
-                            # Parse as JSON string (includes quotes)
-                            text_chunk = json.loads(chunk_data)
-                            response_text += text_chunk
-                            if text_chunks_found <= 3:  # Log first 3 chunks
-                                debug_print(f"  ✅ Chunk {text_chunks_found}: {repr(text_chunk[:50])}")
-                        except json.JSONDecodeError as e:
-                            debug_print(f"  ⚠️ Failed to parse text chunk on line {line_count}: {chunk_data[:100]} - {e}")
-                            continue
-                    
-                    # Parse image generation: a2:[{...}] (for image models)
-                    elif line.startswith("a2:"):
-                        image_data = line[3:]  # Remove "a2:" prefix
-                        try:
-                            image_list = json.loads(image_data)
-                            # OpenAI format expects URL in content
-                            if isinstance(image_list, list) and len(image_list) > 0:
-                                image_obj = image_list[0]
-                                if image_obj.get('type') == 'image':
-                                    image_url = image_obj.get('image', '')
-                                    # For image models, the URL IS the response
-                                    response_text = image_url
-                                    debug_print(f"  🖼️  Image URL: {image_url[:100]}...")
-                        except json.JSONDecodeError as e:
-                            debug_print(f"  ⚠️ Failed to parse image data on line {line_count}: {image_data[:100]} - {e}")
-                            continue
-                    
-                    # Parse citations/tool calls: ac:{...} (for search models)
-                    elif line.startswith("ac:"):
-                        citation_data = line[3:]  # Remove "ac:" prefix
-                        citation_chunks_found += 1
-                        try:
-                            citation_obj = json.loads(citation_data)
-                            # Extract source information from argsTextDelta
-                            if 'argsTextDelta' in citation_obj:
-                                args_data = json.loads(citation_obj['argsTextDelta'])
-                                if 'source' in args_data:
-                                    source = args_data['source']
-                                    # Can be a single source or array of sources
-                                    if isinstance(source, list):
-                                        citations.extend(source)
-                                    elif isinstance(source, dict):
-                                        citations.append(source)
-                            if citation_chunks_found <= 3:  # Log first 3 citations
-                                debug_print(f"  🔗 Citation chunk {citation_chunks_found}: {citation_obj.get('toolCallId')}")
-                        except json.JSONDecodeError as e:
-                            debug_print(f"  ⚠️ Failed to parse citation chunk on line {line_count}: {citation_data[:100]} - {e}")
-                            continue
-                    
-                    # Parse error messages: a3:"An error occurred"
-                    elif line.startswith("a3:"):
-                        error_data = line[3:]  # Remove "a3:" prefix
-                        try:
-                            error_message = json.loads(error_data)
-                            debug_print(f"  ❌ Error message received: {error_message}")
-                        except json.JSONDecodeError as e:
-                            debug_print(f"  ⚠️ Failed to parse error message on line {line_count}: {error_data[:100]} - {e}")
-                            error_message = error_data
-                    
-                    # Parse metadata: ad:{"finishReason":"stop"}
-                    elif line.startswith("ad:"):
-                        metadata_data = line[3:]  # Remove "ad:" prefix
-                        metadata_found += 1
-                        try:
-                            metadata = json.loads(metadata_data)
-                            finish_reason = metadata.get("finishReason")
-                            debug_print(f"  📋 Metadata found: finishReason={finish_reason}")
-                        except json.JSONDecodeError as e:
-                            debug_print(f"  ⚠️ Failed to parse metadata on line {line_count}: {metadata_data[:100]} - {e}")
-                            continue
-                    elif line.strip():  # Non-empty line that doesn't match expected format
-                        if line_count <= 5:  # Log first 5 unexpected lines
-                            debug_print(f"  ❓ Unexpected line format {line_count}: {line[:100]}")
-
-                debug_print(f"\n📊 Parsing Summary:")
-                debug_print(f"  - Total lines: {line_count}")
-                debug_print(f"  - Reasoning chunks found: {reasoning_chunks_found}")
-                debug_print(f"  - Text chunks found: {text_chunks_found}")
-                debug_print(f"  - Citation chunks found: {citation_chunks_found}")
-                debug_print(f"  - Metadata entries: {metadata_found}")
-                debug_print(f"  - Final response length: {len(response_text)} chars")
-                debug_print(f"  - Final reasoning length: {len(reasoning_text)} chars")
-                debug_print(f"  - Citations found: {len(citations)}")
-                debug_print(f"  - Finish reason: {finish_reason}")
-                
-                if not response_text:
-                    debug_print(f"\n⚠️  WARNING: Empty response text!")
-                    debug_print(f"📄 Full raw response:\n{response.text}")
-                    if error_message:
-                        error_detail = f"LMArena API error: {error_message}"
-                        print(f"❌ {error_detail}")
-                        # Return OpenAI-compatible error response
-                        return {
-                            "error": {
-                                "message": error_detail,
-                                "type": "upstream_error",
-                                "code": "lmarena_error"
-                            }
-                        }
-                    else:
-                        error_detail = "LMArena API returned empty response. This could be due to: invalid auth token, expired cf_clearance, model unavailable, or API rate limiting."
-                        debug_print(f"❌ {error_detail}")
-                        # Return OpenAI-compatible error response
-                        return {
-                            "error": {
-                                "message": error_detail,
-                                "type": "upstream_error",
-                                "code": "empty_response"
-                            }
-                        }
-                else:
-                    debug_print(f"✅ Response text preview: {response_text[:200]}...")
-                
-                # Update session - Store message history with IDs (including reasoning and citations if present)
-                assistant_message = {
-                    "id": model_msg_id, 
-                    "role": "assistant", 
-                    "content": response_text.strip()
-                }
-                if reasoning_text:
-                    assistant_message["reasoning_content"] = reasoning_text.strip()
-                if citations:
-                    # Deduplicate citations by URL
-                    unique_citations = []
-                    seen_urls = set()
-                    for citation in citations:
-                        citation_url = citation.get('url')
-                        if citation_url and citation_url not in seen_urls:
-                            seen_urls.add(citation_url)
-                            unique_citations.append(citation)
-                    assistant_message["citations"] = unique_citations
-                
-                if not session:
-                    chat_sessions[api_key_str][conversation_id] = {
-                        "conversation_id": session_id,
-                        "model": model_public_name,
-                        "messages": [
-                            {"id": user_msg_id, "role": "user", "content": prompt},
-                            assistant_message
-                        ]
-                    }
-                    debug_print(f"💾 Saved new session for conversation {conversation_id}")
-                else:
-                    # Append new messages to history
-                    chat_sessions[api_key_str][conversation_id]["messages"].append(
-                        {"id": user_msg_id, "role": "user", "content": prompt}
-                    )
-                    chat_sessions[api_key_str][conversation_id]["messages"].append(
-                        assistant_message
-                    )
-                    debug_print(f"💾 Updated existing session for conversation {conversation_id}")
-
-                # Build message object with reasoning and citations if present
-                message_obj = {
-                    "role": "assistant",
-                    "content": response_text.strip(),
-                }
-                if reasoning_text:
-                    message_obj["reasoning_content"] = reasoning_text.strip()
-                if citations:
-                    # Deduplicate citations by URL
-                    unique_citations = []
-                    seen_urls = set()
-                    for citation in citations:
-                        citation_url = citation.get('url')
-                        if citation_url and citation_url not in seen_urls:
-                            seen_urls.add(citation_url)
-                            unique_citations.append(citation)
-                    message_obj["citations"] = unique_citations
-                
-                # For image models used in chat endpoint, convert URL to markdown with base64
-                is_image_model = modality == "image"
-                
-                if is_image_model and response_text.startswith("http"):
-                    debug_print(f"🖼️  Converting image URL to base64 for OpenWebUI compatibility")
+                # Parse thinking/reasoning chunks: ag:"thinking text"
+                if line.startswith("ag:"):
+                    chunk_data = line[3:]  # Remove "ag:" prefix
+                    reasoning_chunks_found += 1
                     try:
-                        # Download the image
-                        async with httpx.AsyncClient() as img_client:
-                            img_response = await img_client.get(response_text, timeout=30.0)
-                            img_response.raise_for_status()
-                            
-                            # Get content type
-                            content_type = img_response.headers.get('content-type', 'image/png')
-                            
-                            # Encode to base64
-                            img_base64 = base64.b64encode(img_response.content).decode('utf-8')
-                            
-                            # Create data URL
-                            data_url = f"data:{content_type};base64,{img_base64}"
-                            
-                            # Format as markdown
-                            message_obj["content"] = f"![Generated Image]({data_url})"
-                            
-                            debug_print(f"✅ Image converted to base64 data URL ({len(img_base64)} chars)")
-                    except Exception as img_error:
-                        debug_print(f"⚠️  Failed to convert image to base64: {img_error}")
-                        # Keep original URL as fallback
-                        message_obj["content"] = f"![Generated Image]({response_text})"
+                        # Parse as JSON string (includes quotes)
+                        reasoning_chunk = json.loads(chunk_data)
+                        reasoning_text += reasoning_chunk
+                        if reasoning_chunks_found <= 3:  # Log first 3 reasoning chunks
+                            debug_print(f"  🧠 Reasoning chunk {reasoning_chunks_found}: {repr(reasoning_chunk[:50])}")
+                    except json.JSONDecodeError as e:
+                        debug_print(f"  ⚠️ Failed to parse reasoning chunk on line {line_count}: {chunk_data[:100]} - {e}")
+                        continue
                 
-                # Calculate token counts (including reasoning tokens)
-                prompt_tokens = len(prompt)
-                completion_tokens = len(response_text)
-                reasoning_tokens = len(reasoning_text)
-                total_tokens = prompt_tokens + completion_tokens + reasoning_tokens
+                # Parse text chunks: a0:"Hello "
+                elif line.startswith("a0:"):
+                    chunk_data = line[3:]  # Remove "a0:" prefix
+                    text_chunks_found += 1
+                    try:
+                        # Parse as JSON string (includes quotes)
+                        text_chunk = json.loads(chunk_data)
+                        response_text += text_chunk
+                        if text_chunks_found <= 3:  # Log first 3 chunks
+                            debug_print(f"  ✅ Chunk {text_chunks_found}: {repr(text_chunk[:50])}")
+                    except json.JSONDecodeError as e:
+                        debug_print(f"  ⚠️ Failed to parse text chunk on line {line_count}: {chunk_data[:100]} - {e}")
+                        continue
                 
-                # Build usage object with reasoning tokens if present
-                usage_obj = {
-                    "prompt_tokens": prompt_tokens,
-                    "completion_tokens": completion_tokens,
-                    "total_tokens": total_tokens
-                }
-                if reasoning_tokens > 0:
-                    usage_obj["reasoning_tokens"] = reasoning_tokens
+                # Parse image generation: a2:[{...}] (for image models)
+                elif line.startswith("a2:"):
+                    image_data = line[3:]  # Remove "a2:" prefix
+                    try:
+                        image_list = json.loads(image_data)
+                        # OpenAI format expects URL in content
+                        if isinstance(image_list, list) and len(image_list) > 0:
+                            image_obj = image_list[0]
+                            if image_obj.get('type') == 'image':
+                                image_url = image_obj.get('image', '')
+                                # Format as markdown
+                                response_text = f"![Generated Image]({image_url})"
+                    except json.JSONDecodeError as e:
+                        debug_print(f"  ⚠️ Failed to parse image data on line {line_count}: {image_data[:100]} - {e}")
+                        continue
                 
-                final_response = {
-                    "id": f"chatcmpl-{uuid.uuid4()}",
-                    "object": "chat.completion",
-                    "created": int(time.time()),
-                    "model": model_public_name,
-                    "conversation_id": conversation_id,
-                    "choices": [{
-                        "index": 0,
-                        "message": message_obj,
-                        "finish_reason": "stop"
-                    }],
-                    "usage": usage_obj
-                }
+                # Parse citations/tool calls: ac:{...} (for search models)
+                elif line.startswith("ac:"):
+                    citation_data = line[3:]  # Remove "ac:" prefix
+                    citation_chunks_found += 1
+                    try:
+                        citation_obj = json.loads(citation_data)
+                        # Extract source information from argsTextDelta
+                        if 'argsTextDelta' in citation_obj:
+                            args_data = json.loads(citation_obj['argsTextDelta'])
+                            if 'source' in args_data:
+                                source = args_data['source']
+                                # Can be a single source or array of sources
+                                if isinstance(source, list):
+                                    citations.extend(source)
+                                elif isinstance(source, dict):
+                                    citations.append(source)
+                        if citation_chunks_found <= 3:  # Log first 3 citations
+                            debug_print(f"  🔗 Citation chunk {citation_chunks_found}: {citation_obj.get('toolCallId')}")
+                    except json.JSONDecodeError as e:
+                        debug_print(f"  ⚠️ Failed to parse citation chunk on line {line_count}: {citation_data[:100]} - {e}")
+                        continue
                 
-                debug_print(f"\n✅ REQUEST COMPLETED SUCCESSFULLY")
-                debug_print("="*80 + "\n")
+                # Parse error messages: a3:"An error occurred"
+                elif line.startswith("a3:"):
+                    error_data = line[3:]  # Remove "a3:" prefix
+                    try:
+                        error_message = json.loads(error_data)
+                        debug_print(f"  ❌ Error message received: {error_message}")
+                    except json.JSONDecodeError as e:
+                        debug_print(f"  ⚠️ Failed to parse error message on line {line_count}: {error_data[:100]} - {e}")
+                        error_message = error_data
                 
-                return final_response
+                # Parse metadata: ad:{"finishReason":"stop"}
+                elif line.startswith("ad:"):
+                    metadata_data = line[3:]  # Remove "ad:" prefix
+                    metadata_found += 1
+                    try:
+                        metadata = json.loads(metadata_data)
+                        finish_reason = metadata.get("finishReason")
+                        debug_print(f"  📋 Metadata found: finishReason={finish_reason}")
+                    except json.JSONDecodeError as e:
+                        debug_print(f"  ⚠️ Failed to parse metadata on line {line_count}: {metadata_data[:100]} - {e}")
+                        continue
+                elif line.strip():  # Non-empty line that doesn't match expected format
+                    if line_count <= 5:  # Log first 5 unexpected lines
+                        debug_print(f"  ❓ Unexpected line format {line_count}: {line[:100]}")
 
-            except httpx.HTTPStatusError as e:
-                # Provide user-friendly error messages
-                if e.response.status_code == 429:
-                    error_detail = "Rate limit exceeded on LMArena. Please try again in a few moments."
-                    error_type = "rate_limit_error"
-                elif e.response.status_code == 401:
-                    error_detail = "Unauthorized: Your LMArena auth token has expired or is invalid. Please get a new auth token from the dashboard."
-                    error_type = "authentication_error"
+            debug_print(f"\n📊 Parsing Summary:")
+            debug_print(f"  - Total lines: {line_count}")
+            debug_print(f"  - Reasoning chunks found: {reasoning_chunks_found}")
+            debug_print(f"  - Text chunks found: {text_chunks_found}")
+            debug_print(f"  - Citation chunks found: {citation_chunks_found}")
+            debug_print(f"  - Metadata entries: {metadata_found}")
+            debug_print(f"  - Final response length: {len(response_text)} chars")
+            debug_print(f"  - Final reasoning length: {len(reasoning_text)} chars")
+            debug_print(f"  - Citations found: {len(citations)}")
+            debug_print(f"  - Finish reason: {finish_reason}")
+            
+            if not response_text:
+                debug_print(f"\n⚠️  WARNING: Empty response text!")
+                debug_print(f"📄 Full raw response:\n{response.text}")
+                if error_message:
+                    error_detail = f"LMArena API error: {error_message}"
+                    print(f"❌ {error_detail}")
+                    # Return OpenAI-compatible error response
+                    return {
+                        "error": {
+                            "message": error_detail,
+                            "type": "upstream_error",
+                            "code": "lmarena_error"
+                        }
+                    }
+                else:
+                    error_detail = "LMArena API returned empty response. This could be due to: invalid auth token, expired cf_clearance, model unavailable, or API rate limiting."
+                    debug_print(f"❌ {error_detail}")
+                    # Return OpenAI-compatible error response
+                    return {
+                        "error": {
+                            "message": error_detail,
+                            "type": "upstream_error",
+                            "code": "empty_response"
+                        }
+                    }
+            else:
+                debug_print(f"✅ Response text preview: {response_text[:200]}...")
+            
+            # Update session - Store message history with IDs (including reasoning and citations if present)
+            assistant_message = {
+                "id": model_msg_id, 
+                "role": "assistant", 
+                "content": response_text.strip()
+            }
+            if reasoning_text:
+                assistant_message["reasoning_content"] = reasoning_text.strip()
+            if citations:
+                # Deduplicate citations by URL
+                unique_citations = []
+                seen_urls = set()
+                for citation in citations:
+                    citation_url = citation.get('url')
+                    if citation_url and citation_url not in seen_urls:
+                        seen_urls.add(citation_url)
+                        unique_citations.append(citation)
+                assistant_message["citations"] = unique_citations
+            
+            if not session:
+                chat_sessions[api_key_str][conversation_id] = {
+                    "conversation_id": session_id,
+                    "model": model_public_name,
+                    "messages": [
+                        {"id": user_msg_id, "role": "user", "content": prompt},
+                        assistant_message
+                    ]
+                }
+                debug_print(f"💾 Saved new session for conversation {conversation_id}")
+            else:
+                # Append new messages to history
+                chat_sessions[api_key_str][conversation_id]["messages"].append(
+                    {"id": user_msg_id, "role": "user", "content": prompt}
+                )
+                chat_sessions[api_key_str][conversation_id]["messages"].append(
+                    assistant_message
+                )
+                debug_print(f"💾 Updated existing session for conversation {conversation_id}")
+
+            # Build message object with reasoning and citations if present
+            message_obj = {
+                "role": "assistant",
+                "content": response_text.strip(),
+            }
+            if reasoning_text:
+                message_obj["reasoning_content"] = reasoning_text.strip()
+            if citations:
+                # Deduplicate citations by URL
+                unique_citations = []
+                seen_urls = set()
+                for citation in citations:
+                    citation_url = citation.get('url')
+                    if citation_url and citation_url not in seen_urls:
+                        seen_urls.add(citation_url)
+                        unique_citations.append(citation)
+                message_obj["citations"] = unique_citations
+                
+                # Add citations as markdown footnotes
+                if unique_citations:
+                    footnotes = "\n\n---\n\n**Sources:**\n\n"
+                    for i, citation in enumerate(unique_citations, 1):
+                        title = citation.get('title', 'Untitled')
+                        url = citation.get('url', '')
+                        footnotes += f"{i}. [{title}]({url})\n"
+                    message_obj["content"] = response_text.strip() + footnotes
+            
+            # Image models already have markdown formatting from parsing
+            # No additional conversion needed
+            
+            # Calculate token counts (including reasoning tokens)
+            prompt_tokens = len(prompt)
+            completion_tokens = len(response_text)
+            reasoning_tokens = len(reasoning_text)
+            total_tokens = prompt_tokens + completion_tokens + reasoning_tokens
+            
+            # Build usage object with reasoning tokens if present
+            usage_obj = {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens
+            }
+            if reasoning_tokens > 0:
+                usage_obj["reasoning_tokens"] = reasoning_tokens
+            
+            final_response = {
+                "id": f"chatcmpl-{uuid.uuid4()}",
+                "object": "chat.completion",
+                "created": int(time.time()),
+                "model": model_public_name,
+                "conversation_id": conversation_id,
+                "choices": [{
+                    "index": 0,
+                    "message": message_obj,
+                    "finish_reason": "stop"
+                }],
+                "usage": usage_obj
+            }
+            
+            debug_print(f"\n✅ REQUEST COMPLETED SUCCESSFULLY")
+            debug_print("="*80 + "\n")
+            
+            return final_response
+
+        except httpx.HTTPStatusError as e:
+            # Log error status
+            log_http_status(e.response.status_code, "Error Response")
+            
+            # Try to parse JSON error response from LMArena
+            lmarena_error = None
+            try:
+                error_body = e.response.json()
+                if isinstance(error_body, dict) and "error" in error_body:
+                    lmarena_error = error_body["error"]
+                    debug_print(f"📛 LMArena error message: {lmarena_error}")
+            except:
+                pass
+            
+            # Provide user-friendly error messages
+            if e.response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+                error_detail = "Rate limit exceeded on LMArena. Please try again in a few moments."
+                error_type = "rate_limit_error"
+            elif e.response.status_code == HTTPStatus.UNAUTHORIZED:
+                error_detail = "Unauthorized: Your LMArena auth token has expired or is invalid. Please get a new auth token from the dashboard."
+                error_type = "authentication_error"
+            elif e.response.status_code == HTTPStatus.FORBIDDEN:
+                error_detail = "Forbidden: Access to this resource is denied."
+                error_type = "forbidden_error"
+            elif e.response.status_code == HTTPStatus.NOT_FOUND:
+                error_detail = "Not Found: The requested resource doesn't exist."
+                error_type = "not_found_error"
+            elif e.response.status_code == HTTPStatus.BAD_REQUEST:
+                # Use LMArena's error message if available
+                if lmarena_error:
+                    error_detail = f"Bad Request: {lmarena_error}"
+                else:
+                    error_detail = "Bad Request: Invalid request parameters."
+                error_type = "bad_request_error"
+            elif e.response.status_code >= 500:
+                error_detail = f"Server Error: LMArena API returned {e.response.status_code}"
+                error_type = "server_error"
+            else:
+                # Use LMArena's error message if available
+                if lmarena_error:
+                    error_detail = f"LMArena API error: {lmarena_error}"
                 else:
                     error_detail = f"LMArena API error: {e.response.status_code}"
                     try:
@@ -2179,52 +2665,52 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         error_detail += f" - {error_body}"
                     except:
                         error_detail += f" - {e.response.text[:200]}"
-                    error_type = "upstream_error"
-                
-                print(f"\n❌ HTTP STATUS ERROR")
-                print(f"📛 Error detail: {error_detail}")
-                print(f"📤 Request URL: {url}")
-                debug_print(f"📤 Request payload (truncated): {json.dumps(payload, indent=2)[:500]}")
-                debug_print(f"📥 Response text: {e.response.text[:500]}")
-                print("="*80 + "\n")
-                
-                # Return OpenAI-compatible error response
-                return {
-                    "error": {
-                        "message": error_detail,
-                        "type": error_type,
-                        "code": f"http_{e.response.status_code}"
-                    }
-                }
+                error_type = "upstream_error"
             
-            except httpx.TimeoutException as e:
-                print(f"\n⏱️  TIMEOUT ERROR")
-                print(f"📛 Request timed out after 120 seconds")
-                print(f"📤 Request URL: {url}")
-                print("="*80 + "\n")
-                # Return OpenAI-compatible error response
-                return {
-                    "error": {
-                        "message": "Request to LMArena API timed out after 120 seconds",
-                        "type": "timeout_error",
-                        "code": "request_timeout"
-                    }
-                }
+            print(f"\n❌ HTTP STATUS ERROR")
+            print(f"📛 Error detail: {error_detail}")
+            print(f"📤 Request URL: {url}")
+            debug_print(f"📤 Request payload (truncated): {json.dumps(payload, indent=2)[:500]}")
+            debug_print(f"📥 Response text: {e.response.text[:500]}")
+            print("="*80 + "\n")
             
-            except Exception as e:
-                print(f"\n❌ UNEXPECTED ERROR IN HTTP CLIENT")
-                print(f"📛 Error type: {type(e).__name__}")
-                print(f"📛 Error message: {str(e)}")
-                print(f"📤 Request URL: {url}")
-                print("="*80 + "\n")
-                # Return OpenAI-compatible error response
-                return {
-                    "error": {
-                        "message": f"Unexpected error: {str(e)}",
-                        "type": "internal_error",
-                        "code": type(e).__name__.lower()
-                    }
+            # Return OpenAI-compatible error response
+            return {
+                "error": {
+                    "message": error_detail,
+                    "type": error_type,
+                    "code": f"http_{e.response.status_code}"
                 }
+            }
+        
+        except httpx.TimeoutException as e:
+            print(f"\n⏱️  TIMEOUT ERROR")
+            print(f"📛 Request timed out after 120 seconds")
+            print(f"📤 Request URL: {url}")
+            print("="*80 + "\n")
+            # Return OpenAI-compatible error response
+            return {
+                "error": {
+                    "message": "Request to LMArena API timed out after 120 seconds",
+                    "type": "timeout_error",
+                    "code": "request_timeout"
+                }
+            }
+        
+        except Exception as e:
+            print(f"\n❌ UNEXPECTED ERROR IN HTTP CLIENT")
+            print(f"📛 Error type: {type(e).__name__}")
+            print(f"📛 Error message: {str(e)}")
+            print(f"📤 Request URL: {url}")
+            print("="*80 + "\n")
+            # Return OpenAI-compatible error response
+            return {
+                "error": {
+                    "message": f"Unexpected error: {str(e)}",
+                    "type": "internal_error",
+                    "code": type(e).__name__.lower()
+                }
+            }
                 
     except HTTPException:
         raise

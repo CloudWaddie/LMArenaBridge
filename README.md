@@ -36,7 +36,7 @@ To use the LM Arena Bridge, you need to get your authentication token from the L
 3.  After the model responds, open the developer tools in your browser (usually by pressing F12).
 4.  Go to the "Application" or "Storage" tab (the name may vary depending on your browser).
 5.  In the "Cookies" section, find the cookies for the LM Arena site.
-6.  Look for a cookie named `arena-auth-prod-v1` and copy its value. This is your authentication token.
+6.  Look for a cookie named `arena-auth-prod-v1` and copy its value. This is your authentication token. THIS IS THE TOKEN STARTING WITH base64-
 
 ### 2. Configure the Application
 

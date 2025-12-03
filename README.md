@@ -2,7 +2,7 @@
 
 ## Description
 
-A bridge to interact with LM Arena. This project provides an OpenAI compatible API endpoint that interacts with models on LM Arena, including experimental support for stealth models.
+A bridge to interact with LM Arena. This project provides an OpenAI compatible API endpoint that interacts with models on LM Arena.
 
 ## Getting Started
 

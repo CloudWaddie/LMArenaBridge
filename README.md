@@ -47,16 +47,9 @@ To use the LM Arena Bridge, you need to get your authentication token from the L
 
 ### 2. Configure the Application
 
-1.  In the root of the project, create a file named `config.json`.
-2.  Add the following content to the `config.json` file:
-
-    ```json
-    {
-      "auth_token": "YOUR_AUTH_TOKEN"
-    }
-    ```
-
-3.  Replace `"YOUR_AUTH_TOKEN"` with the `arena-auth-prod-v1` token you copied from your browser.
+1.  Go to the admin portal.
+2.  Login.
+3.  Add the token to the list.
 
 ### 3. Run the Application
 

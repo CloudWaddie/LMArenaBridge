@@ -4,6 +4,13 @@
 
 A bridge to interact with LM Arena. This project provides an OpenAI compatible API endpoint that interacts with models on LM Arena.
 
+## Pictures
+<img width="1647" height="1023" alt="image" src="https://github.com/user-attachments/assets/52ffa0d0-e259-41a6-9845-7ff1edf95c62" />
+<img width="1238" height="734" alt="image" src="https://github.com/user-attachments/assets/d7e6c08a-6a57-40f8-a561-f3bc43bb1a57" />
+<img width="1240" height="1033" alt="image" src="https://github.com/user-attachments/assets/9fa1b61c-c957-41a6-a1a5-e916ae64cf95" />
+
+
+
 ## Getting Started
 
 ### Prerequisites

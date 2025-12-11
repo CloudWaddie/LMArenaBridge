@@ -1,4 +1,4 @@
-# LM Arena Bridge
+# LM Arena Bridge - CURRENTLY BROKEN DUE TO ANTI-BOT MEASURES BY LMARENA (https://github.com/CloudWaddie/LMArenaBridge/issues/27)
 
 ## Description
 

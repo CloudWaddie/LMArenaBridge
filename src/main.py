@@ -194,6 +194,122 @@ def debug_print(*args, **kwargs):
     if DEBUG:
         print(*args, **kwargs)
 
+# --- New reCAPTCHA Functions ---
+
+# Updated constants from gpt4free/g4f/Provider/needs_auth/LMArena.py
+RECAPTCHA_SITEKEY = "6Led_uYrAAAAAKjxDIF58fgFtX3t8loNAK85bW9I"
+RECAPTCHA_ACTION = "chat_submit"
+
+async def get_recaptcha_v3_token() -> Optional[str]:
+    """
+    Mirrors get_grecaptcha from gpt4free/LMArena.py.
+    Waits for the site to load the reCAPTCHA library naturally using saved cookies.
+    """
+    debug_print("🔐 Starting reCAPTCHA v3 token retrieval...")
+    
+    # Load saved cookies (specifically cf_clearance) to look trusted
+    config = get_config()
+    cf_clearance = config.get("cf_clearance", "")
+    
+    try:
+        async with AsyncCamoufox(headless=True) as browser:
+            # Set context with cookies if available
+            context = await browser.new_context()
+            if cf_clearance:
+                await context.add_cookies([{
+                    "name": "cf_clearance",
+                    "value": cf_clearance,
+                    "domain": ".lmarena.ai",
+                    "path": "/"
+                }])
+                debug_print("  🍪 Loaded cf_clearance cookie")
+
+            page = await context.new_page()
+            
+            # Go to main page
+            debug_print("  🌐 Navigating to lmarena.ai...")
+            await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
+
+            # 1. Wait for Cloudflare
+            try:
+                await page.wait_for_function(
+                    "() => document.title.indexOf('Just a moment...') === -1", 
+                    timeout=15000
+                )
+            except Exception:
+                debug_print("❌ Cloudflare challenge failed.")
+                return None
+
+            # 2. Wait for reCAPTCHA Enterprise (Mirroring gpt4free logic)
+            # gpt4free waits for: window.grecaptcha && window.grecaptcha.enterprise
+            debug_print("  ⏳ Waiting for window.grecaptcha.enterprise...")
+            try:
+                await page.wait_for_function(
+                    "() => window.grecaptcha && window.grecaptcha.enterprise", 
+                    timeout=30000 
+                )
+                debug_print("  ✅ reCAPTCHA script detected.")
+            except Exception as e:
+                debug_print(f"❌ Failed to detect reCAPTCHA script (timeout): {e}")
+                return None
+
+            # 3. Execute reCAPTCHA (Mirroring gpt4free execution logic)
+            debug_print("  👀 Executing reCAPTCHA...")
+            token = await page.evaluate(f"""
+                new Promise((resolve) => {{
+                    window.grecaptcha.enterprise.ready(async () => {{
+                        try {{
+                            const token = await window.grecaptcha.enterprise.execute(
+                                '{RECAPTCHA_SITEKEY}',
+                                {{ action: '{RECAPTCHA_ACTION}' }}
+                            );
+                            resolve(token);
+                        }} catch (e) {{
+                            console.error("[LMArena Bridge] reCAPTCHA execute failed:", e);
+                            resolve(null);
+                        }}
+                    }});
+                    // Safety timeout
+                    setTimeout(() => resolve(null), 10000); 
+                }});
+            """)
+
+            if token:
+                debug_print(f"✅ reCAPTCHA v3 token retrieved: {token[:20]}...")
+                return token
+            else:
+                debug_print("❌ Failed to retrieve reCAPTCHA token (returned null).")
+                return None
+
+    except Exception as e:
+        debug_print(f"❌ Unexpected error during reCAPTCHA retrieval: {type(e).__name__}: {e}")
+        return None
+
+async def refresh_recaptcha_token():
+    """Checks if the global reCAPTCHA token is expired and refreshes it if necessary."""
+    global RECAPTCHA_TOKEN, RECAPTCHA_EXPIRY
+    
+    current_time = datetime.now(timezone.utc)
+    # Check if token is expired (set a refresh margin of 10 seconds)
+    if RECAPTCHA_TOKEN is None or current_time > RECAPTCHA_EXPIRY - timedelta(seconds=10):
+        debug_print("🔄 Recaptcha token expired or missing. Refreshing...")
+        new_token = await get_recaptcha_v3_token()
+        if new_token:
+            RECAPTCHA_TOKEN = new_token
+            # reCAPTCHA v3 tokens typically last 120 seconds (2 minutes)
+            RECAPTCHA_EXPIRY = current_time + timedelta(seconds=120)
+            debug_print(f"✅ Recaptcha token refreshed, expires at {RECAPTCHA_EXPIRY.isoformat()}")
+            return new_token
+        else:
+            debug_print("❌ Failed to refresh recaptcha token.")
+            # Set a short retry delay if refresh fails
+            RECAPTCHA_EXPIRY = current_time + timedelta(seconds=10)
+            return None
+    
+    return RECAPTCHA_TOKEN
+
+# --- End New reCAPTCHA Functions ---
+
 # Custom UUIDv7 implementation (using correct Unix epoch)
 def uuid7():
     """
@@ -484,6 +600,12 @@ current_token_index = 0
 conversation_tokens: Dict[str, str] = {}
 # Track failed tokens per request to avoid retrying with same token
 request_failed_tokens: Dict[str, set] = {}
+
+# --- New Global State for reCAPTCHA ---
+RECAPTCHA_TOKEN: Optional[str] = None
+# Initialize expiry far in the past to force a refresh on startup
+RECAPTCHA_EXPIRY: datetime = datetime.now(timezone.utc) - timedelta(days=365)
+# --------------------------------------
 
 # --- Helper Functions ---
 
@@ -842,10 +964,17 @@ async def startup_event():
         save_models(get_models())
         # Load usage stats from config
         load_usage_stats()
-        # Start initial data fetch
-        asyncio.create_task(get_initial_data())
-        # Start periodic refresh task (every 30 minutes)
+        
+        # 1. First, get initial data (cookies, models, etc.)
+        # We await this so we have the cookie BEFORE trying reCAPTCHA
+        await get_initial_data() 
+        
+        # 2. Now start the initial reCAPTCHA fetch (using the cookie we just got)
+        asyncio.create_task(refresh_recaptcha_token())
+        
+        # 3. Start background tasks
         asyncio.create_task(periodic_refresh_task())
+        
     except Exception as e:
         debug_print(f"❌ Error during startup: {e}")
         # Continue anyway - server should still start
@@ -1896,6 +2025,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         
         # Use API key + conversation tracking
         api_key_str = api_key["key"]
+
+        # --- NEW: Get reCAPTCHA v3 Token for Payload ---
+        recaptcha_token = await refresh_recaptcha_token()
+        if not recaptcha_token:
+            debug_print("❌ Cannot proceed, failed to get reCAPTCHA token.")
+            raise HTTPException(
+                status_code=503,
+                detail="Service Unavailable: Failed to acquire reCAPTCHA token. The bridge server may be blocked."
+            )
+        debug_print(f"🔑 Using reCAPTCHA v3 token: {recaptcha_token[:20]}...")
+        # -----------------------------------------------
         
         # Generate conversation ID from context (API key + model + first user message)
         import hashlib
@@ -1964,7 +2104,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     "experimental_attachments": experimental_attachments,
                     "metadata": {}
                 },
-                "modality": modality
+                "modality": modality,
+                "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
             url = "https://lmarena.ai/nextjs-api/stream/create-evaluation"
             debug_print(f"📤 Target URL: {url}")
@@ -1989,7 +2130,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     "experimental_attachments": experimental_attachments,
                     "metadata": {}
                 },
-                "modality": modality
+                "modality": modality,
+                "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
             url = f"https://lmarena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
             debug_print(f"📤 Target URL: {url}")

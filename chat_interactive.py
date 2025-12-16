@@ -8,7 +8,7 @@ import sys
 
 # Configuration
 BASE_URL = "http://localhost:8000/api/v1"
-API_KEY = "sk-lmab-4d4c13f6-7846-4f94-a261-f59911838196"  # Replace with your API key
+API_KEY = "sk-lmab-50664b6f-87c7-4115-b630-eb38a9b55021"  # Replace with your API key
 
 def list_available_models(client):
     """List all available models"""

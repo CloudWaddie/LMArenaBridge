@@ -200,20 +200,50 @@ def debug_print(*args, **kwargs):
 RECAPTCHA_SITEKEY = "6Led_uYrAAAAAKjxDIF58fgFtX3t8loNAK85bW9I"
 RECAPTCHA_ACTION = "chat_submit"
 
+async def click_turnstile(page):
+    """
+    Attempts to locate and click the Cloudflare Turnstile widget.
+    Based on gpt4free logic.
+    """
+    debug_print("  🖱️  Attempting to click Cloudflare Turnstile...")
+    try:
+        # Common selectors used by LMArena's Turnstile implementation
+        selectors = [
+            '#cf-turnstile', 
+            'iframe[src*="challenges.cloudflare.com"]',
+            '[style*="display: grid"] iframe' # The grid style often wraps the checkbox
+        ]
+        
+        for selector in selectors:
+            element = await page.query_selector(selector)
+            if element:
+                # Get bounding box to click specific coordinates if needed
+                box = await element.bounding_box()
+                if box:
+                    x = box['x'] + (box['width'] / 2)
+                    y = box['y'] + (box['height'] / 2)
+                    debug_print(f"  🎯 Found widget at {x},{y}. Clicking...")
+                    await page.mouse.click(x, y)
+                    await asyncio.sleep(2)
+                    return True
+        return False
+    except Exception as e:
+        debug_print(f"  ⚠️ Error clicking turnstile: {e}")
+        return False
+
 async def get_recaptcha_v3_token() -> Optional[str]:
     """
-    Mirrors get_grecaptcha from gpt4free/LMArena.py.
-    Waits for the site to load the reCAPTCHA library naturally using saved cookies.
+    Retrieves reCAPTCHA v3 token using a 'Side-Channel' approach.
+    We write the token to a global window variable and poll for it, 
+    bypassing Promise serialization issues in the Main World bridge.
     """
-    debug_print("🔐 Starting reCAPTCHA v3 token retrieval...")
+    debug_print("🔐 Starting reCAPTCHA v3 token retrieval (Side-Channel Mode)...")
     
-    # Load saved cookies (specifically cf_clearance) to look trusted
     config = get_config()
     cf_clearance = config.get("cf_clearance", "")
     
     try:
-        async with AsyncCamoufox(headless=True) as browser:
-            # Set context with cookies if available
+        async with AsyncCamoufox(headless=True, main_world_eval=True) as browser:
             context = await browser.new_context()
             if cf_clearance:
                 await context.add_cookies([{
@@ -222,67 +252,114 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                     "domain": ".lmarena.ai",
                     "path": "/"
                 }])
-                debug_print("  🍪 Loaded cf_clearance cookie")
 
             page = await context.new_page()
             
-            # Go to main page
             debug_print("  🌐 Navigating to lmarena.ai...")
             await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
 
-            # 1. Wait for Cloudflare
+            # --- NEW: Cloudflare/Turnstile Pass-Through ---
+            debug_print("  🛡️  Checking for Cloudflare Turnstile...")
+            
+            # Allow time for the widget to render if it's going to
             try:
-                await page.wait_for_function(
-                    "() => document.title.indexOf('Just a moment...') === -1", 
-                    timeout=15000
-                )
-            except Exception:
-                debug_print("❌ Cloudflare challenge failed.")
-                return None
-
-            # 2. Wait for reCAPTCHA Enterprise (Mirroring gpt4free logic)
-            # gpt4free waits for: window.grecaptcha && window.grecaptcha.enterprise
-            debug_print("  ⏳ Waiting for window.grecaptcha.enterprise...")
-            try:
-                await page.wait_for_function(
-                    "() => window.grecaptcha && window.grecaptcha.enterprise", 
-                    timeout=30000 
-                )
-                debug_print("  ✅ reCAPTCHA script detected.")
+                # Check for challenge title or widget presence
+                for _ in range(5):
+                    title = await page.title()
+                    if "Just a moment" in title:
+                        debug_print("  🔒 Cloudflare challenge active. Attempting to click...")
+                        clicked = await click_turnstile(page)
+                        if clicked:
+                            debug_print("  ✅ Clicked Turnstile.")
+                            # Give it time to verify
+                            await asyncio.sleep(3)
+                    else:
+                        # If title is normal, we might still have a widget on the page
+                        await click_turnstile(page)
+                        break
+                    await asyncio.sleep(1)
+                
+                # Wait for the page to actually settle into the main app
+                await page.wait_for_load_state("domcontentloaded")
             except Exception as e:
-                debug_print(f"❌ Failed to detect reCAPTCHA script (timeout): {e}")
-                return None
+                debug_print(f"  ⚠️ Error handling Turnstile: {e}")
+            # ----------------------------------------------
 
-            # 3. Execute reCAPTCHA (Mirroring gpt4free execution logic)
-            debug_print("  👀 Executing reCAPTCHA...")
-            token = await page.evaluate(f"""
-                new Promise((resolve) => {{
-                    window.grecaptcha.enterprise.ready(async () => {{
-                        try {{
-                            const token = await window.grecaptcha.enterprise.execute(
-                                '{RECAPTCHA_SITEKEY}',
-                                {{ action: '{RECAPTCHA_ACTION}' }}
-                            );
-                            resolve(token);
-                        }} catch (e) {{
-                            console.error("[LMArena Bridge] reCAPTCHA execute failed:", e);
-                            resolve(null);
-                        }}
+            # 1. Wake up the page (Humanize)
+            debug_print("  🖱️  Waking up page...")
+            await page.mouse.move(100, 100)
+            await page.mouse.wheel(0, 200)
+            await asyncio.sleep(2) # Vital "Human" pause
+
+            # 2. Check for Library
+            debug_print("  ⏳ Checking for library...")
+            lib_ready = await page.evaluate("mw:() => !!(window.grecaptcha && window.grecaptcha.enterprise)")
+            if not lib_ready:
+                debug_print("  ⚠️ Library not found immediately. Waiting...")
+                await asyncio.sleep(3)
+                lib_ready = await page.evaluate("mw:() => !!(window.grecaptcha && window.grecaptcha.enterprise)")
+                if not lib_ready:
+                    debug_print("❌ reCAPTCHA library never loaded.")
+                    return None
+
+            # 3. SETUP: Initialize our global result variable
+            # We use a unique name to avoid conflicts
+            await page.evaluate("mw:window.__token_result = 'PENDING'")
+
+            # 4. TRIGGER: Execute reCAPTCHA and write to the variable
+            # We do NOT await the result here. We just fire the process.
+            debug_print("  🚀 Triggering reCAPTCHA execution...")
+            trigger_script = f"""mw:() => {{
+                try {{
+                    window.grecaptcha.enterprise.execute('{RECAPTCHA_SITEKEY}', {{ action: '{RECAPTCHA_ACTION}' }})
+                    .then(token => {{
+                        window.__token_result = token;
+                    }})
+                    .catch(err => {{
+                        window.__token_result = 'ERROR: ' + err.toString();
                     }});
-                    // Safety timeout
-                    setTimeout(() => resolve(null), 10000); 
-                }});
-            """)
+                }} catch (e) {{
+                    window.__token_result = 'SYNC_ERROR: ' + e.toString();
+                }}
+            }}"""
+            
+            await page.evaluate(trigger_script)
+
+            # 5. POLL: Watch the variable for changes
+            debug_print("  👀 Polling for result...")
+            token = None
+            
+            for i in range(20): # Wait up to 20 seconds
+                # Read the global variable
+                result = await page.evaluate("mw:window.__token_result")
+                
+                if result != 'PENDING':
+                    if result and result.startswith('ERROR'):
+                        debug_print(f"❌ JS Execution Error: {result}")
+                        return None
+                    elif result and result.startswith('SYNC_ERROR'):
+                        debug_print(f"❌ JS Sync Error: {result}")
+                        return None
+                    else:
+                        token = result
+                        debug_print(f"✅ Token captured! ({len(token)} chars)")
+                        break
+                
+                if i % 2 == 0:
+                    debug_print(f"    ... waiting ({i}s)")
+                await asyncio.sleep(1)
 
             if token:
-                debug_print(f"✅ reCAPTCHA v3 token retrieved: {token[:20]}...")
+                global RECAPTCHA_TOKEN, RECAPTCHA_EXPIRY
+                RECAPTCHA_TOKEN = token
+                RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
                 return token
             else:
-                debug_print("❌ Failed to retrieve reCAPTCHA token (returned null).")
+                debug_print("❌ Timed out waiting for token variable to update.")
                 return None
 
     except Exception as e:
-        debug_print(f"❌ Unexpected error during reCAPTCHA retrieval: {type(e).__name__}: {e}")
+        debug_print(f"❌ Unexpected error: {e}")
         return None
 
 async def refresh_recaptcha_token():
@@ -784,7 +861,7 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
 async def get_initial_data():
     debug_print("Starting initial data retrieval...")
     try:
-        async with AsyncCamoufox(headless=True) as browser:
+        async with AsyncCamoufox(headless=True, main_world_eval=True) as browser:
             page = await browser.new_page()
             
             # Set up route interceptor BEFORE navigating
@@ -970,7 +1047,8 @@ async def startup_event():
         await get_initial_data() 
         
         # 2. Now start the initial reCAPTCHA fetch (using the cookie we just got)
-        asyncio.create_task(refresh_recaptcha_token())
+        # Block startup until we have a token or fail, so we don't serve 403s
+        await refresh_recaptcha_token()
         
         # 3. Start background tasks
         asyncio.create_task(periodic_refresh_task())

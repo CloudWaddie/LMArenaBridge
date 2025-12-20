@@ -362,13 +362,23 @@ async def get_recaptcha_v3_token() -> Optional[str]:
         debug_print(f"❌ Unexpected error: {e}")
         return None
 
-async def refresh_recaptcha_token():
-    """Checks if the global reCAPTCHA token is expired and refreshes it if necessary."""
+def _is_recaptcha_validation_failed(body_text: str) -> bool:
+    """Best-effort detection of LMArena's reCAPTCHA failure response."""
+    lowered = (body_text or "").lower()
+    return "recaptcha" in lowered and "validation failed" in lowered
+
+
+async def refresh_recaptcha_token(force: bool = False):
+    """Checks if the global reCAPTCHA token is expired and refreshes it if necessary.
+
+    Args:
+        force: If True, always fetch a fresh token (useful when upstream rejects a token).
+    """
     global RECAPTCHA_TOKEN, RECAPTCHA_EXPIRY
     
     current_time = datetime.now(timezone.utc)
     # Check if token is expired (set a refresh margin of 10 seconds)
-    if RECAPTCHA_TOKEN is None or current_time > RECAPTCHA_EXPIRY - timedelta(seconds=10):
+    if force or RECAPTCHA_TOKEN is None or current_time > RECAPTCHA_EXPIRY - timedelta(seconds=10):
         debug_print("🔄 Recaptcha token expired or missing. Refreshing...")
         new_token = await get_recaptcha_v3_token()
         if new_token:
@@ -2284,6 +2294,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     debug_print(f"❌ No more tokens available: {e.detail}")
                                     break
                         
+                        elif response.status_code in [HTTPStatus.BAD_REQUEST, HTTPStatus.FORBIDDEN]:
+                            # LMArena sometimes returns: {"error":"recaptcha validation failed"}
+                            if _is_recaptcha_validation_failed(response.text):
+                                debug_print("🔄 Upstream rejected reCAPTCHA token. Refreshing and retrying...")
+                                new_token = await refresh_recaptcha_token(force=True)
+                                if not new_token:
+                                    response.raise_for_status()
+                                payload["recaptchaV3Token"] = new_token
+                                await asyncio.sleep(1)  # Brief delay
+                                continue
+
                         # If we get here, return the response (success or non-retryable error)
                         response.raise_for_status()
                         return response
@@ -2349,6 +2370,18 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                             debug_print(f"❌ No more tokens available")
                                             break
                                 
+                                elif response.status_code in [HTTPStatus.BAD_REQUEST, HTTPStatus.FORBIDDEN]:
+                                    # For non-200 responses, LMArena may return JSON instead of a stream.
+                                    body_bytes = await response.aread()
+                                    body_text = body_bytes.decode("utf-8", errors="replace")
+                                    if _is_recaptcha_validation_failed(body_text) and attempt < max_retries - 1:
+                                        debug_print("🔄 Upstream rejected reCAPTCHA token (stream). Refreshing and retrying...")
+                                        new_token = await refresh_recaptcha_token(force=True)
+                                        if new_token:
+                                            payload["recaptchaV3Token"] = new_token
+                                            await asyncio.sleep(1)
+                                            continue
+
                                 log_http_status(response.status_code, "Stream Connection")
                                 response.raise_for_status()
                                 

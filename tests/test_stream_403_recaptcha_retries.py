@@ -143,7 +143,9 @@ class TestStream403RecaptchaRetries(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(len(payload_tokens), 2)
         self.assertEqual(payload_tokens[0], "recaptcha-1")
         self.assertEqual(payload_tokens[1], "recaptcha-2")
-        refresh_mock.assert_any_await()
+        self.assertGreaterEqual(refresh_mock.await_count, 2)
+        first_call = refresh_mock.await_args_list[0]
+        self.assertTrue(first_call.kwargs.get("force_new"), first_call)
         sleep_mock.assert_awaited()
 
 

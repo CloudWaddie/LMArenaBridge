@@ -2108,7 +2108,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         api_key_str = api_key["key"]
 
         # --- NEW: Get reCAPTCHA v3 Token for Payload ---
-        recaptcha_token = await refresh_recaptcha_token()
+        # reCAPTCHA v3 tokens can behave like single-use tokens; force a fresh token for streaming requests.
+        recaptcha_token = await refresh_recaptcha_token(force_new=bool(stream))
         if not recaptcha_token:
             debug_print("❌ Cannot proceed, failed to get reCAPTCHA token.")
             raise HTTPException(

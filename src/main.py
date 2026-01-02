@@ -1,12 +1,15 @@
 import asyncio
 import json
+import os
 import re
+import shutil
 import uuid
 import time
 import secrets
 import base64
 import mimetypes
 from collections import defaultdict
+from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime, timezone, timedelta
 
@@ -231,18 +234,159 @@ async def click_turnstile(page):
         debug_print(f"  ⚠️ Error clicking turnstile: {e}")
         return False
 
+
+def find_chrome_executable() -> Optional[str]:
+    configured = str(os.environ.get("CHROME_PATH") or "").strip()
+    if configured and Path(configured).exists():
+        return configured
+
+    candidates = [
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
+        / "Google"
+        / "Chrome"
+        / "Application"
+        / "chrome.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+        / "Google"
+        / "Chrome"
+        / "Application"
+        / "chrome.exe",
+        Path(os.environ.get("LOCALAPPDATA", ""))
+        / "Google"
+        / "Chrome"
+        / "Application"
+        / "chrome.exe",
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files"))
+        / "Microsoft"
+        / "Edge"
+        / "Application"
+        / "msedge.exe",
+        Path(os.environ.get("PROGRAMFILES(X86)", r"C:\Program Files (x86)"))
+        / "Microsoft"
+        / "Edge"
+        / "Application"
+        / "msedge.exe",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    for name in ("google-chrome", "chrome", "chromium", "chromium-browser", "msedge"):
+        resolved = shutil.which(name)
+        if resolved:
+            return resolved
+
+    return None
+
+
+async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
+    try:
+        from playwright.async_api import async_playwright  # type: ignore
+    except Exception:
+        return None
+
+    chrome_path = find_chrome_executable()
+    if not chrome_path:
+        return None
+
+    profile_dir = Path(CONFIG_FILE).with_name("chrome_grecaptcha")
+
+    cf_clearance = str(config.get("cf_clearance") or "").strip()
+    cf_bm = str(config.get("cf_bm") or "").strip()
+    cfuvid = str(config.get("cfuvid") or "").strip()
+    provisional_user_id = str(config.get("provisional_user_id") or "").strip()
+
+    cookies = []
+    if cf_clearance:
+        cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai", "path": "/"})
+    if cf_bm:
+        cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai", "path": "/"})
+    if cfuvid:
+        cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai", "path": "/"})
+    if provisional_user_id:
+        cookies.append(
+            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai", "path": "/"}
+        )
+
+    async with async_playwright() as p:
+        context = await p.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir),
+            executable_path=chrome_path,
+            headless=True,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-first-run",
+                "--no-default-browser-check",
+            ],
+        )
+        try:
+            if cookies:
+                await context.add_cookies(cookies)
+
+            page = await context.new_page()
+            await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+
+            # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile.
+            try:
+                for _ in range(5):
+                    title = await page.title()
+                    if "Just a moment" not in title:
+                        break
+                    await click_turnstile(page)
+                    await asyncio.sleep(2)
+            except Exception:
+                pass
+
+            await page.wait_for_function(
+                "window.grecaptcha && ("
+                "(window.grecaptcha.enterprise && typeof window.grecaptcha.enterprise.execute === 'function') || "
+                "typeof window.grecaptcha.execute === 'function'"
+                ")",
+                timeout=60000,
+            )
+
+            token = await page.evaluate(
+                """({sitekey, action}) => new Promise((resolve, reject) => {
+                  const g = (window.grecaptcha?.enterprise && typeof window.grecaptcha.enterprise.execute === 'function')
+                    ? window.grecaptcha.enterprise
+                    : window.grecaptcha;
+                  if (!g || typeof g.execute !== 'function') return reject('NO_GRECAPTCHA');
+                  try {
+                    g.ready(() => {
+                      g.execute(sitekey, { action }).then(resolve).catch((err) => reject(String(err)));
+                    });
+                  } catch (e) { reject(String(e)); }
+                })""",
+                {"sitekey": RECAPTCHA_SITEKEY, "action": RECAPTCHA_ACTION},
+            )
+            if isinstance(token, str) and token:
+                return token
+            return None
+        except Exception as e:
+            debug_print(f"⚠️ Chrome reCAPTCHA retrieval failed: {e}")
+            return None
+        finally:
+            await context.close()
+
 async def get_recaptcha_v3_token() -> Optional[str]:
     """
     Retrieves reCAPTCHA v3 token using a 'Side-Channel' approach.
     We write the token to a global window variable and poll for it, 
     bypassing Promise serialization issues in the Main World bridge.
     """
+    global RECAPTCHA_TOKEN, RECAPTCHA_EXPIRY
     debug_print("🔐 Starting reCAPTCHA v3 token retrieval (Side-Channel Mode)...")
     
     config = get_config()
     cf_clearance = config.get("cf_clearance", "")
     
     try:
+        chrome_token = await get_recaptcha_v3_token_with_chrome(config)
+        if chrome_token:
+            RECAPTCHA_TOKEN = chrome_token
+            RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
+            return chrome_token
+
         async with AsyncCamoufox(headless=True, main_world_eval=True) as browser:
             context = await browser.new_context()
             if cf_clearance:
@@ -350,7 +494,6 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 await asyncio.sleep(1)
 
             if token:
-                global RECAPTCHA_TOKEN, RECAPTCHA_EXPIRY
                 RECAPTCHA_TOKEN = token
                 RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
                 return token

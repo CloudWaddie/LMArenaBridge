@@ -79,15 +79,14 @@ jobs:
           CONFIG_PATH=~/.config/opencode/opencode.json
           PLUGIN_PATH="file://$(pwd)/node_modules/opencode-antigravity-auth"
           
-          # Use jq to safely add the plugin string to the array, creating it if missing
-          # We use 'file://' prefix which OpenCode often expects for local plugins
+          # Use jq to safely add the plugin string to the array
           jq --arg plugin "$PLUGIN_PATH" '
             if .plugin == null then .plugin = [$plugin] 
             elif (.plugin | type) == "array" then .plugin += [$plugin] 
             else .plugin = [$plugin] 
             end | .plugin |= unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 5. Set Provider & Model
+          # 5. Set Provider & Model (This replaces the CLI flag)
           jq '.provider = "google" | .model = "antigravity-gemini-3-pro-high"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
           # 6. Inject Session
@@ -96,7 +95,6 @@ jobs:
       - name: Collect Context
         id: context
         env:
-          # CRITICAL: This fixes the 'gh: set GH_TOKEN' error
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           ISSUE_NUM="${{ github.event.issue.number }}"
@@ -149,8 +147,8 @@ jobs:
           EOF
           )
 
-          # Execute using the local OMO build
-          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" --model google/antigravity-gemini-3-pro-high
+          # Execute using the local OMO build (Removed --model flag)
+          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT"
 
       - name: Feedback (Done)
         if: always()

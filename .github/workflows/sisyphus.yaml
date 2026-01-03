@@ -51,58 +51,43 @@ jobs:
           cd .tmp-omo
           bun install
           bun run build
-          
           mv dist ../dist
           mv node_modules ../node_modules
           mv package.json ../package.json
           cd ..
           rm -rf .tmp-omo
 
-      - name: Setup OpenCode & Config
+      - name: Setup OpenCode & Copilot
         env:
-          ANTIGRAVITY_AUTH: ${{ secrets.ANTIGRAVITY_AUTH_JSON }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           export PATH="$HOME/.bun/bin:$HOME/.opencode/bin:$PATH"
           
-          # 1. Install Dependencies & CLI
-          bun add opencode-antigravity-auth@1.2.7
+          # 1. Install OpenCode CLI
           curl -fsSL https://opencode.ai/install | bash
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
           
-          # 2. Initialize Default Config
+          # 2. Authenticate with GitHub Copilot Provider
+          # Uses your GH_PAT to authorize the copilot provider
+          echo "$GH_TOKEN" | gh auth login --with-token
+          opencode auth login --provider github-copilot --token "$GH_TOKEN"
+          
+          # 3. Initialize Default Config
           bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
           
-          # 3. Patch opencode.json (Core Plugin Loading)
+          # 4. Patch Config for Copilot & Free Models
           CONFIG_PATH=~/.config/opencode/opencode.json
-          PLUGIN_DIR=$(pwd)/node_modules/opencode-antigravity-auth
-          
-          jq --arg plugin "file://$PLUGIN_DIR" '
-            if .plugin == null then .plugin = [$plugin] 
-            elif (.plugin | type) == "array" then .plugin += [$plugin] 
-            else .plugin = [$plugin] 
-            end | .plugin |= unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
-          
-          # Inject Antigravity-specific model definition
-          jq '.provider.google = {
-            "name": "Google",
-            "models": {
-              "gemini-3-pro-high": {
-                "name": "Gemini 3 Pro High",
-                "thinking": true,
-                "limit": { "context": 1048576, "output": 65535 }
-              }
-            }
-          }' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
-          
-          # 4. Patch oh-my-opencode.json (Agent Preferences)
           OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
-          jq '.agents.Sisyphus.model = "google/gemini-3-pro-high" | 
-              .agents.Oracle.model = "google/gemini-3-pro-high" | 
-              .agents.Librarian.model = "google/gemini-3-pro-high"' \
-              "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
 
-          # 5. Inject Session
-          echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
+          # Set Copilot as the active provider and point to Claude 3.5 Sonnet
+          # Fallback models like big-pickle and grok-code are used for sub-tasks
+          jq '.provider = "github-copilot" | .model = "github-copilot/claude-3.5-sonnet"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+          
+          # Set agent preferences
+          jq '.agents.Sisyphus.model = "github-copilot/claude-3.5-sonnet" | 
+              .agents.Oracle.model = "opencode/grok-code" | 
+              .agents.Librarian.model = "opencode/big-pickle"' \
+              "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
 
       - name: Collect Context
         id: context
@@ -118,7 +103,6 @@ jobs:
           echo "title=$(echo "$ISSUE_DATA" | jq -r '.title')" >> $GITHUB_OUTPUT
           echo "author=${{ github.event.comment.user.login }}" >> $GITHUB_OUTPUT
           echo "comment_id=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
-          
           echo "comment<<EOF" >> $GITHUB_OUTPUT
           echo "${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -142,9 +126,14 @@ jobs:
           <ultrawork-mode>
           [CODE RED] You are @cloudwaddie-ai.
           
+          ## MODEL CONFIG
+          - Main: github-copilot/claude-3.5-sonnet
+          - Research: opencode/big-pickle
+          - Logic: opencode/grok-code
+          
           ## RULES
-          - You are running on Antigravity Bridge (Gemini 3 Pro High).
-          - Deliver 100% working code. No demos.
+          - Deliver 100% working code.
+          - Orchestrate sub-agents (Librarian/Oracle) in parallel using free models.
           </ultrawork-mode>
 
           ---
@@ -154,7 +143,6 @@ jobs:
           EOF
           )
 
-          # Execute using clean bun run (Flags removed for compatibility)
           stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT"
 
       - name: Feedback (Done)

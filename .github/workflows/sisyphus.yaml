@@ -1,4 +1,4 @@
-name: CloudWaddie Agent (Debug)
+name: CloudWaddie Agent
 
 on:
   workflow_dispatch:
@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: sisyphus-env
     
+    # Trigger on @cloudwaddie-ai
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
@@ -47,11 +48,13 @@ jobs:
       - name: Clone and Build oh-my-opencode
         run: |
           export PATH="$HOME/.bun/bin:$PATH"
+          # Clone the specific version/repo you provided
           git clone https://github.com/code-yeongyu/oh-my-opencode.git .tmp-omo
           cd .tmp-omo
           bun install
           bun run build
           
+          # Move artifacts to workspace root
           mv dist ../dist
           mv node_modules ../node_modules
           mv package.json ../package.json
@@ -64,12 +67,16 @@ jobs:
         run: |
           export PATH="$HOME/.bun/bin:$HOME/.opencode/bin:$PATH"
           
+          # 1. Install Dependencies
           bun add opencode-antigravity-auth@1.2.7
           curl -fsSL https://opencode.ai/install | bash
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
           
+          # 2. Initialize Default Config
           bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
           
+          # 3. Patch opencode.json (The Core Config)
+          # FIX: We ensure 'provider' is an OBJECT, not a string, to prevent the previous crash
           CONFIG_PATH=~/.config/opencode/opencode.json
           PLUGIN_PATH="file://$(pwd)/node_modules/opencode-antigravity-auth"
           
@@ -80,7 +87,7 @@ jobs:
             else .plugin = [$plugin] 
             end | .plugin |= unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # Inject Provider Definition
+          # Register Google Provider (Correct Object Structure)
           jq '.provider.google = {
             "name": "Google",
             "models": {
@@ -92,24 +99,15 @@ jobs:
             }
           }' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # Patch Agent Config
+          # 4. Patch oh-my-opencode.json (The Agent Config) - Set Primary Model
           OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
           jq '.agents.Sisyphus.model = "google/gemini-3-pro-high" | 
               .agents.Oracle.model = "google/gemini-3-pro-high" | 
               .agents.Librarian.model = "google/gemini-3-pro-high"' \
               "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
 
-          # Inject Session
+          # 5. Inject Session
           echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
-
-      - name: Verify Authentication
-        run: |
-          export PATH="$HOME/.opencode/bin:$HOME/.bun/bin:$PATH"
-          echo "Checking available providers..."
-          opencode models
-          echo "Checking auth status..."
-          # This command might fail if auth is invalid, which gives us a clue
-          bun run dist/cli/index.js auth list || echo "Auth check failed!"
 
       - name: Collect Context
         id: context
@@ -138,7 +136,7 @@ jobs:
           gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
             -X POST -f content="eyes" || true
 
-      - name: Run CloudWaddie Agent (Debug Mode)
+      - name: Run CloudWaddie Agent (With Fallback)
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
@@ -150,8 +148,8 @@ jobs:
           [CODE RED] You are @cloudwaddie-ai.
           
           ## RULES
-          - You are running on Antigravity Bridge (Gemini 3 Pro High).
           - Deliver 100% working code. No demos.
+          - Orchestrate sub-agents for exploration.
           </ultrawork-mode>
 
           ---
@@ -161,8 +159,39 @@ jobs:
           EOF
           )
 
-          # Run with DEBUG log level to see why it crashes
-          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" --log-level DEBUG
+          # --- EXECUTION BLOCK WITH FALLBACK ---
+          
+          echo "🚀 Attempting Primary Run (Antigravity Bridge)..."
+          
+          # Turn off immediate exit so we can catch the failure
+          set +e 
+          
+          # Stream output using stdbuf
+          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT"
+          EXIT_CODE=$?
+          
+          set -e # Turn error checking back on
+          
+          # Check if it failed
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "⚠️ Primary Agent Failed (Exit Code: $EXIT_CODE). Initiating Fallback Protocol..."
+            
+            # Reconfigure Agent to use the Built-in Big Pickle Model
+            OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
+            echo "🔄 Switching configuration to 'opencode/big-pickle'..."
+            
+            jq '.agents.Sisyphus.model = "opencode/big-pickle" | 
+                .agents.Oracle.model = "opencode/big-pickle" | 
+                .agents.Librarian.model = "opencode/big-pickle"' \
+                "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
+            
+            echo "🥒 Restarting Agent with Fallback Model..."
+            
+            # Retry the run command
+            stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT"
+          else
+            echo "✅ Primary Agent finished successfully."
+          fi
 
       - name: Feedback (Done)
         if: always()

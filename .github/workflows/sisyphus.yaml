@@ -12,7 +12,9 @@ on:
 jobs:
   agent:
     runs-on: ubuntu-latest
-    # Trigger on mention of @sisyphus-dev-ai by authorized users
+    # CRITICAL: This connects the job to your environment secrets
+    environment: sisyphus-env
+    
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
@@ -29,6 +31,7 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v5
         with:
+          # Uses the PAT from your sisyphus-env
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
@@ -37,17 +40,13 @@ jobs:
           git config user.name "sisyphus-dev-ai"
           git config user.email "sisyphus-dev-ai@users.noreply.github.com"
 
-      - name: Authenticate GitHub CLI
-        run: |
-          echo "${{ secrets.GH_PAT }}" | gh auth login --with-token
-
-      - name: Setup Runtime (Bun & tmux)
+      - name: Setup Bun & tmux
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
           curl -fsSL https://bun.sh/install | bash
           echo "$HOME/.bun/bin" >> $GITHUB_PATH
 
-      - name: Build Local Plugin (oh-my-opencode)
+      - name: Build Local oh-my-opencode
         run: |
           export PATH="$HOME/.bun/bin:$PATH"
           bun install
@@ -55,25 +54,21 @@ jobs:
 
       - name: Setup OpenCode & Antigravity Bridge
         env:
+          # Pulls the bridge session from your environment secrets
           ANTIGRAVITY_AUTH: ${{ secrets.ANTIGRAVITY_AUTH_JSON }}
-          OPENCODE_AUTH: ${{ secrets.OPENCODE_AUTH_JSON }}
         run: |
+          curl -fsSL https://opencode.ai/install | bash
           export PATH="$HOME/.opencode/bin:$PATH"
-          
-          # Install OpenCode CLI
-          if ! command -v opencode &>/dev/null; then
-            curl -fsSL https://opencode.ai/install | bash
-          fi
-          
-          # Install Antigravity Bridge Plugin (NoeFabris version)
+          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+
+          # Install bridge plugin
           opencode plugin add opencode-antigravity-auth@1.2.7
 
-          # Configure account sessions for the bridge
+          # Inject session
           mkdir -p ~/.config/opencode
           echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
           
-          # Inject OMO config and set models to use Antigravity IDs
-          # We use Gemini 3 Pro High as the primary engine through the bridge
+          # Set provider to bridge
           opencode config set provider google
           opencode config set model antigravity-gemini-3-pro-high
 
@@ -84,12 +79,7 @@ jobs:
           REPO="${{ github.repository }}"
           ISSUE_DATA=$(gh api "repos/$REPO/issues/${ISSUE_NUM}")
           
-          if echo "$ISSUE_DATA" | jq -e '.pull_request' > /dev/null; then
-            echo "type=pr" >> $GITHUB_OUTPUT
-          else
-            echo "type=issue" >> $GITHUB_OUTPUT
-          fi
-          
+          echo "type=$(echo "$ISSUE_DATA" | jq -e '.pull_request' > /dev/null && echo 'pr' || echo 'issue')" >> $GITHUB_OUTPUT
           echo "number=$ISSUE_NUM" >> $GITHUB_OUTPUT
           echo "title=$(echo "$ISSUE_DATA" | jq -r '.title')" >> $GITHUB_OUTPUT
           echo "author=${{ github.event.comment.user.login }}" >> $GITHUB_OUTPUT
@@ -99,52 +89,34 @@ jobs:
           echo "${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Feedback (Eyes Reaction)
-        if: steps.context.outputs.comment_id != ''
-        run: |
-          gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
-            -X POST -f content="eyes" || true
-
       - name: Run Sisyphus Agent
         env:
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.bun/bin:$PATH"
           
-          # Construct the final prompt with UltraWork Mode instructions
           PROMPT=$(cat <<'EOF'
           <ultrawork-mode>
-          [CODE RED] You are @sisyphus-dev-ai, an autonomous agent using the Antigravity Bridge.
+          [CODE RED] You are @sisyphus-dev-ai. 
+          Provider: Antigravity Bridge.
+          Models: 
+          - Reasoning: google/antigravity-gemini-3-pro-high
+          - Thinking: google/antigravity-claude-sonnet-4-5-thinking-high
           
-          ## CAPABILITIES (Parallel Agent Spawning)
-          - Exploration: background_task for project structure.
-          - Reasoning: Use Antigravity-Gemini-3-Pro-High for complex logic.
-          - Planning: Spawn a plan agent before every task.
-
-          ## ZERO TOLERANCE
-          - No mock data. No "starting points". Deliver 100% working code.
-          - Never stop at 80%. Complete all TODOs before reporting.
-
-          ## GITHUB OPS
-          - Always use heredoc `cat <<'EOF'` for comments.
-          - All code changes must be in a PR.
+          Deliver 100% working code. Orchestrate sub-agents in parallel.
           </ultrawork-mode>
 
           ---
           Context: ${{ steps.context.outputs.title }} (#${{ steps.context.outputs.number }})
-          Author: @${{ steps.context.outputs.author }}
           Request: ${{ steps.context.outputs.comment }}
           EOF
           )
 
-          # Execute using the local build of oh-my-opencode
-          # Use stdbuf to ensure logs are streamed to GitHub Actions console
           stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" --model google/antigravity-gemini-3-pro-high
 
-      - name: Cleanup & Close
+      - name: Feedback
         if: always()
         run: |
-          # Remove working label and add +1
           if [[ -n "${{ steps.context.outputs.comment_id }}" ]]; then
             gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
               -X POST -f content="+1" || true

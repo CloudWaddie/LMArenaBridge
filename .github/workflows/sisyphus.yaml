@@ -47,13 +47,12 @@ jobs:
       - name: Clone and Build oh-my-opencode
         run: |
           export PATH="$HOME/.bun/bin:$PATH"
-          # Clone OMO to a temporary folder to build it
           git clone https://github.com/code-yeongyu/oh-my-opencode.git .tmp-omo
           cd .tmp-omo
           bun install
           bun run build
           
-          # Move artifacts to root so we can run them later
+          # Move artifacts to root
           mv dist ../dist
           mv node_modules ../node_modules
           mv package.json ../package.json
@@ -66,33 +65,39 @@ jobs:
         run: |
           export PATH="$HOME/.bun/bin:$HOME/.opencode/bin:$PATH"
           
-          # 1. Install the Antigravity Auth Package (Global or Local)
-          # We install it locally so we can easily find the path
+          # 1. Install Auth Plugin
           bun add opencode-antigravity-auth@1.2.7
           
           # 2. Install OpenCode CLI
           curl -fsSL https://opencode.ai/install | bash
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
           
-          # 3. Initialize Configuration using the built OMO CLI
-          # This creates the ~/.config/opencode/opencode.json file
+          # 3. Initialize Config
           bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
           
-          # 4. Inject Antigravity Auth Plugin manually (since 'opencode plugin' cmd failed)
+          # 4. Inject Plugin (Robust Method)
           CONFIG_PATH=~/.config/opencode/opencode.json
-          PLUGIN_PATH="$(pwd)/node_modules/opencode-antigravity-auth"
+          PLUGIN_PATH="file://$(pwd)/node_modules/opencode-antigravity-auth"
           
-          # Add the plugin path to the config
-          jq --arg plugin "$PLUGIN_PATH" '.plugin = (.plugin // []) + [$plugin] | unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+          # Use jq to safely add the plugin string to the array, creating it if missing
+          # We use 'file://' prefix which OpenCode often expects for local plugins
+          jq --arg plugin "$PLUGIN_PATH" '
+            if .plugin == null then .plugin = [$plugin] 
+            elif (.plugin | type) == "array" then .plugin += [$plugin] 
+            else .plugin = [$plugin] 
+            end | .plugin |= unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 5. Configure Provider & Model
+          # 5. Set Provider & Model
           jq '.provider = "google" | .model = "antigravity-gemini-3-pro-high"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 6. Inject the Auth Session JSON
+          # 6. Inject Session
           echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
 
       - name: Collect Context
         id: context
+        env:
+          # CRITICAL: This fixes the 'gh: set GH_TOKEN' error
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           ISSUE_NUM="${{ github.event.issue.number }}"
           REPO="${{ github.repository }}"
@@ -108,15 +113,20 @@ jobs:
           echo "${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      - name: Feedback (Eyes)
+        if: steps.context.outputs.comment_id != ''
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
+            -X POST -f content="eyes" || true
+
       - name: Run Sisyphus Agent
         env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.bun/bin:$PATH"
-          
-          # Verify config before running
-          echo "Configuration State:"
-          cat ~/.config/opencode/opencode.json
           
           PROMPT=$(cat <<'EOF'
           <ultrawork-mode>
@@ -142,8 +152,10 @@ jobs:
           # Execute using the local OMO build
           stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" --model google/antigravity-gemini-3-pro-high
 
-      - name: Feedback
+      - name: Feedback (Done)
         if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
           if [[ -n "${{ steps.context.outputs.comment_id }}" ]]; then
             gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \

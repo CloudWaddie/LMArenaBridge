@@ -1,4 +1,4 @@
-name: CloudWaddie Agent (Deep Debug)
+name: CloudWaddie Agent
 
 on:
   workflow_dispatch:
@@ -64,26 +64,25 @@ jobs:
         run: |
           export PATH="$HOME/.bun/bin:$HOME/.opencode/bin:$PATH"
           
+          # 1. Install Dependencies & CLI
           bun add opencode-antigravity-auth@1.2.7
           curl -fsSL https://opencode.ai/install | bash
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
           
-          # Initialize Config
+          # 2. Initialize Default Config
           bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
           
-          # Paths
+          # 3. Patch opencode.json (Core Plugin Loading)
           CONFIG_PATH=~/.config/opencode/opencode.json
-          # CRITICAL: Use the absolute path to the node_modules where we installed the plugin
           PLUGIN_DIR=$(pwd)/node_modules/opencode-antigravity-auth
           
-          # 1. Register Plugin
           jq --arg plugin "file://$PLUGIN_DIR" '
             if .plugin == null then .plugin = [$plugin] 
             elif (.plugin | type) == "array" then .plugin += [$plugin] 
             else .plugin = [$plugin] 
             end | .plugin |= unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 2. Inject Provider Definition
+          # Inject Antigravity-specific model definition
           jq '.provider.google = {
             "name": "Google",
             "models": {
@@ -95,32 +94,15 @@ jobs:
             }
           }' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 3. Patch Agent Config
+          # 4. Patch oh-my-opencode.json (Agent Preferences)
           OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
           jq '.agents.Sisyphus.model = "google/gemini-3-pro-high" | 
               .agents.Oracle.model = "google/gemini-3-pro-high" | 
               .agents.Librarian.model = "google/gemini-3-pro-high"' \
               "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
 
-          # 4. Inject Session (Ensuring formatting)
+          # 5. Inject Session
           echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
-
-      - name: Test Core Connectivity (Critical Debug)
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          export PATH="$HOME/.opencode/bin:$HOME/.bun/bin:$PATH"
-          
-          echo "--- OpenCode Config ---"
-          cat ~/.config/opencode/opencode.json
-          
-          echo "--- Available Models ---"
-          opencode models
-          
-          echo "--- DIRECT RUN TEST (Bypassing OMO Agent) ---"
-          # This runs a simple "hello" against the bridge using the core CLI
-          # If this fails, the issue is Auth/Network, not the Agent logic.
-          opencode run "Hello, are you working?" --model google/gemini-3-pro-high --no-tui --log-level DEBUG || echo "Direct run failed"
 
       - name: Collect Context
         id: context
@@ -172,8 +154,8 @@ jobs:
           EOF
           )
 
-          # Running with DEBUG level to catch the specific bridge error
-          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" --log-level DEBUG
+          # Execute using clean bun run (Flags removed for compatibility)
+          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT"
 
       - name: Feedback (Done)
         if: always()

@@ -73,7 +73,7 @@ jobs:
           CONFIG_PATH=~/.config/opencode/opencode.json
           OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
 
-          # 1. Setup Copilot Provider with the Token directly in config
+          # Setup Copilot Provider with the Token directly in config
           jq --arg token "$GH_TOKEN" '.provider = {
             "github-copilot": {
               "name": "GitHub Copilot",
@@ -82,7 +82,7 @@ jobs:
             }
           } | .model = "github-copilot/gemini-3-flash-preview"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 2. Point Agents to the correct models (Gemini 3 Flash, Grok, and Pickle)
+          # Assign agents to requested models
           jq '.agents.Sisyphus.model = "github-copilot/gemini-3-flash-preview" | 
               .agents.Oracle.model = "opencode/grok-code" | 
               .agents.Librarian.model = "opencode/big-pickle"' \
@@ -115,7 +115,7 @@ jobs:
           gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
             -X POST -f content="eyes" || true
 
-      - name: Run CloudWaddie Agent
+      - name: Run CloudWaddie Agent & Post Reply
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
@@ -128,22 +128,27 @@ jobs:
           
           ## MODEL CONFIG
           - Main engine: github-copilot/gemini-3-flash-preview
-          - Logic sub-agent: opencode/grok-code
-          - Search sub-agent: opencode/big-pickle
+          - Sub-agents: Grok Code / Big Pickle
           
-          ## EXECUTION
-          - Deliver COMPLETE working code. 
-          - Create PRs for all changes.
+          ## RULES
+          - You are running in a GitHub Action.
+          - Your response will be posted as a GitHub comment.
+          - Deliver FULL implementations. 
           </ultrawork-mode>
 
           ---
           Context: ${{ steps.context.outputs.title }} (#${{ steps.context.outputs.number }})
-          Request from @${{ steps.context.outputs.author }}:
-          ${{ steps.context.outputs.comment }}
+          User Request: ${{ steps.context.outputs.comment }}
           EOF
           )
 
-          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT"
+          # 1. Capture agent output to a file
+          # stdbuf ensures we don't miss output due to buffering
+          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" > agent_reply.md 2>&1
+
+          # 2. Post that file as a comment on the Issue/PR
+          # We use a heredoc pattern to safely handle multiline markdown
+          gh issue comment ${{ steps.context.outputs.number }} --body-file agent_reply.md
 
       - name: Feedback (Done)
         if: always()

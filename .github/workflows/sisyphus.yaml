@@ -12,10 +12,8 @@ on:
 jobs:
   agent:
     runs-on: ubuntu-latest
-    # Connects the job to your environment secrets for GH_PAT and ANTIGRAVITY_AUTH_JSON
     environment: sisyphus-env
     
-    # Only run if @sisyphus-dev-ai is mentioned by an authorized user
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
@@ -42,48 +40,56 @@ jobs:
 
       - name: Setup Runtime (Bun & tmux)
         run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux jq
           curl -fsSL https://bun.sh/install | bash
           echo "$HOME/.bun/bin" >> $GITHUB_PATH
 
       - name: Clone and Build oh-my-opencode
         run: |
           export PATH="$HOME/.bun/bin:$PATH"
-          
-          # Clone the plugin source code into a temporary directory
+          # Clone OMO to a temporary folder to build it
           git clone https://github.com/code-yeongyu/oh-my-opencode.git .tmp-omo
-          
-          # Build the plugin using Bun
           cd .tmp-omo
           bun install
           bun run build
           
-          # Move build artifacts to the workspace root for the agent to use
+          # Move artifacts to root so we can run them later
           mv dist ../dist
           mv node_modules ../node_modules
           mv package.json ../package.json
           cd ..
           rm -rf .tmp-omo
 
-      - name: Setup OpenCode & Antigravity Bridge
+      - name: Setup OpenCode & Plugins
         env:
           ANTIGRAVITY_AUTH: ${{ secrets.ANTIGRAVITY_AUTH_JSON }}
         run: |
-          # Install OpenCode CLI
-          curl -fsSL https://opencode.ai/install | bash
-          export PATH="$HOME/.opencode/bin:$PATH"
-          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
-
-          # Install Antigravity Bridge Plugin
-          opencode plugin add opencode-antigravity-auth@1.2.7
-
-          # Inject session data into the runner's configuration
-          mkdir -p ~/.config/opencode
-          echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
+          export PATH="$HOME/.bun/bin:$HOME/.opencode/bin:$PATH"
           
-          # Configure OpenCode to use the Antigravity bridge
-          opencode config set provider google
-          opencode config set model antigravity-gemini-3-pro-high
+          # 1. Install the Antigravity Auth Package (Global or Local)
+          # We install it locally so we can easily find the path
+          bun add opencode-antigravity-auth@1.2.7
+          
+          # 2. Install OpenCode CLI
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> $GITHUB_PATH
+          
+          # 3. Initialize Configuration using the built OMO CLI
+          # This creates the ~/.config/opencode/opencode.json file
+          bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
+          
+          # 4. Inject Antigravity Auth Plugin manually (since 'opencode plugin' cmd failed)
+          CONFIG_PATH=~/.config/opencode/opencode.json
+          PLUGIN_PATH="$(pwd)/node_modules/opencode-antigravity-auth"
+          
+          # Add the plugin path to the config
+          jq --arg plugin "$PLUGIN_PATH" '.plugin = (.plugin // []) + [$plugin] | unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+          
+          # 5. Configure Provider & Model
+          jq '.provider = "google" | .model = "antigravity-gemini-3-pro-high"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+          
+          # 6. Inject the Auth Session JSON
+          echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
 
       - name: Collect Context
         id: context
@@ -108,14 +114,22 @@ jobs:
         run: |
           export PATH="$HOME/.opencode/bin:$HOME/.bun/bin:$PATH"
           
+          # Verify config before running
+          echo "Configuration State:"
+          cat ~/.config/opencode/opencode.json
+          
           PROMPT=$(cat <<'EOF'
           <ultrawork-mode>
-          [CODE RED] You are @sisyphus-dev-ai. 
+          [CODE RED] You are @sisyphus-dev-ai.
           Use Antigravity Bridge for all model reasoning.
-          - Primary: google/antigravity-gemini-3-pro-high
+          
+          ## MODEL CONFIG
+          - Reasoning: google/antigravity-gemini-3-pro-high
           - Thinking: google/antigravity-claude-sonnet-4-5-thinking-high
           
-          Rules: Deliver 100% working code. Orchestrate sub-agents for exploration and planning.
+          ## RULES
+          - Deliver 100% working code. No demos.
+          - Orchestrate sub-agents for exploration.
           </ultrawork-mode>
 
           ---
@@ -125,13 +139,12 @@ jobs:
           EOF
           )
 
-          # Execute the agent using the built oh-my-opencode CLI
+          # Execute using the local OMO build
           stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" --model google/antigravity-gemini-3-pro-high
 
       - name: Feedback
         if: always()
         run: |
-          # Add a completion reaction (+1) to the user's comment
           if [[ -n "${{ steps.context.outputs.comment_id }}" ]]; then
             gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
               -X POST -f content="+1" || true

@@ -1,4 +1,4 @@
-name: Sisyphus Agent
+name: CloudWaddie Agent
 
 on:
   workflow_dispatch:
@@ -17,8 +17,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
-        contains(github.event.comment.body || '', '@sisyphus-dev-ai') &&
-        (github.event.comment.user.login || '') != 'sisyphus-dev-ai' &&
+        contains(github.event.comment.body || '', '@cloudwaddie-ai') &&
+        (github.event.comment.user.login || '') != 'cloudwaddie-ai' &&
         contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association || ''))
 
     permissions:
@@ -35,10 +35,10 @@ jobs:
 
       - name: Configure Git
         run: |
-          git config user.name "sisyphus-dev-ai"
-          git config user.email "sisyphus-dev-ai@users.noreply.github.com"
+          git config user.name "cloudwaddie-ai"
+          git config user.email "cloudwaddie-ai@users.noreply.github.com"
 
-      - name: Setup Runtime (Bun & tmux)
+      - name: Setup Runtime
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux jq
           curl -fsSL https://bun.sh/install | bash
@@ -52,44 +52,61 @@ jobs:
           bun install
           bun run build
           
-          # Move artifacts to root
+          # Move artifacts to workspace root
           mv dist ../dist
           mv node_modules ../node_modules
           mv package.json ../package.json
           cd ..
           rm -rf .tmp-omo
 
-      - name: Setup OpenCode & Plugins
+      - name: Setup OpenCode & Config
         env:
           ANTIGRAVITY_AUTH: ${{ secrets.ANTIGRAVITY_AUTH_JSON }}
         run: |
           export PATH="$HOME/.bun/bin:$HOME/.opencode/bin:$PATH"
           
-          # 1. Install Auth Plugin
+          # 1. Install Dependencies
           bun add opencode-antigravity-auth@1.2.7
-          
-          # 2. Install OpenCode CLI
           curl -fsSL https://opencode.ai/install | bash
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
           
-          # 3. Initialize Config
+          # 2. Initialize Default Config
           bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
           
-          # 4. Inject Plugin (Robust Method)
+          # 3. Patch opencode.json (The Core Config)
           CONFIG_PATH=~/.config/opencode/opencode.json
           PLUGIN_PATH="file://$(pwd)/node_modules/opencode-antigravity-auth"
           
-          # Use jq to safely add the plugin string to the array
+          # Register Plugin (Safely append to array)
           jq --arg plugin "$PLUGIN_PATH" '
             if .plugin == null then .plugin = [$plugin] 
             elif (.plugin | type) == "array" then .plugin += [$plugin] 
             else .plugin = [$plugin] 
             end | .plugin |= unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 5. Set Provider & Model (This replaces the CLI flag)
-          jq '.provider = "google" | .model = "antigravity-gemini-3-pro-high"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+          # Inject Provider Definition (Do NOT set provider to string)
+          # We inject the Google provider block so OpenCode knows what "google" means
+          jq '.provider.google = {
+            "name": "Google",
+            "models": {
+              "gemini-3-pro-high": {
+                "name": "Gemini 3 Pro High",
+                "thinking": true,
+                "limit": { "context": 1048576, "output": 65535 }
+              }
+            }
+          }' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 6. Inject Session
+          # 4. Patch oh-my-opencode.json (The Agent Config)
+          OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
+          
+          # Point Sisyphus to use the Antigravity model we just defined
+          jq '.agents.Sisyphus.model = "google/gemini-3-pro-high" | 
+              .agents.Oracle.model = "google/gemini-3-pro-high" | 
+              .agents.Librarian.model = "google/gemini-3-pro-high"' \
+              "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
+
+          # 5. Inject Session
           echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
 
       - name: Collect Context
@@ -119,7 +136,7 @@ jobs:
           gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
             -X POST -f content="eyes" || true
 
-      - name: Run Sisyphus Agent
+      - name: Run CloudWaddie Agent
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
@@ -128,14 +145,10 @@ jobs:
           
           PROMPT=$(cat <<'EOF'
           <ultrawork-mode>
-          [CODE RED] You are @sisyphus-dev-ai.
-          Use Antigravity Bridge for all model reasoning.
-          
-          ## MODEL CONFIG
-          - Reasoning: google/antigravity-gemini-3-pro-high
-          - Thinking: google/antigravity-claude-sonnet-4-5-thinking-high
+          [CODE RED] You are @cloudwaddie-ai.
           
           ## RULES
+          - You are running on Antigravity Bridge (Gemini 3 Pro High).
           - Deliver 100% working code. No demos.
           - Orchestrate sub-agents for exploration.
           </ultrawork-mode>
@@ -147,7 +160,7 @@ jobs:
           EOF
           )
 
-          # Execute using the local OMO build (Removed --model flag)
+          # Run without --model, trusting the JSON config we patched
           stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT"
 
       - name: Feedback (Done)

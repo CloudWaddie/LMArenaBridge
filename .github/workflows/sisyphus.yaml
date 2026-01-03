@@ -74,17 +74,16 @@ jobs:
           OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
 
           # 1. Setup Copilot Provider with the Token directly in config
-          # This avoids the "gh auth" warning/failure altogether
           jq --arg token "$GH_TOKEN" '.provider = {
             "github-copilot": {
               "name": "GitHub Copilot",
               "npm": "@opencode-ai/provider-github-copilot",
               "options": { "token": $token }
             }
-          } | .model = "github-copilot/gemini-3-flash"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+          } | .model = "github-copilot/gemini-3-flash-preview"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 2. Point Agents to the correct models
-          jq '.agents.Sisyphus.model = "github-copilot/gemini-3-flash" | 
+          # 2. Point Agents to the correct models (Gemini 3 Flash, Grok, and Pickle)
+          jq '.agents.Sisyphus.model = "github-copilot/gemini-3-flash-preview" | 
               .agents.Oracle.model = "opencode/grok-code" | 
               .agents.Librarian.model = "opencode/big-pickle"' \
               "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
@@ -128,18 +127,19 @@ jobs:
           [CODE RED] You are @cloudwaddie-ai.
           
           ## MODEL CONFIG
-          - Main: github-copilot/gemini-3-flash
-          - Logic: opencode/grok-code
-          - Search: opencode/big-pickle
+          - Main engine: github-copilot/gemini-3-flash-preview
+          - Logic sub-agent: opencode/grok-code
+          - Search sub-agent: opencode/big-pickle
           
-          ## RULES
-          - Deliver FULL implementations.
-          - Use background_task for parallel research.
+          ## EXECUTION
+          - Deliver COMPLETE working code. 
+          - Create PRs for all changes.
           </ultrawork-mode>
 
           ---
           Context: ${{ steps.context.outputs.title }} (#${{ steps.context.outputs.number }})
-          Request: ${{ steps.context.outputs.comment }}
+          Request from @${{ steps.context.outputs.author }}:
+          ${{ steps.context.outputs.comment }}
           EOF
           )
 

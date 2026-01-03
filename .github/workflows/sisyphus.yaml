@@ -63,27 +63,27 @@ jobs:
         run: |
           export PATH="$HOME/.bun/bin:$HOME/.opencode/bin:$PATH"
           
-          # 1. Install OpenCode CLI
+          # Install OpenCode CLI
           curl -fsSL https://opencode.ai/install | bash
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
           
-          # 2. Authenticate Copilot
-          # This links the OpenCode instance to your GitHub subscription
-          echo "$GH_TOKEN" | gh auth login --with-token
-          opencode auth login --provider github-copilot --token "$GH_TOKEN"
-          
-          # 3. Initialize Default Config
+          # Initialize Config
           bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
           
-          # 4. Patch Config for Copilot Gemini & Free Models
           CONFIG_PATH=~/.config/opencode/opencode.json
           OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
 
-          # Configure the core model to Gemini Flash via Copilot
-          # Note: If 'gemini-3-flash' isn't available yet, it falls back to 'gemini-3-flash'
-          jq '.provider = "github-copilot" | .model = "github-copilot/gemini-3-flash"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+          # 1. Setup Copilot Provider with the Token directly in config
+          # This avoids the "gh auth" warning/failure altogether
+          jq --arg token "$GH_TOKEN" '.provider = {
+            "github-copilot": {
+              "name": "GitHub Copilot",
+              "npm": "@opencode-ai/provider-github-copilot",
+              "options": { "token": $token }
+            }
+          } | .model = "github-copilot/gemini-3-flash"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # Assign agents to specific models
+          # 2. Point Agents to the correct models
           jq '.agents.Sisyphus.model = "github-copilot/gemini-3-flash" | 
               .agents.Oracle.model = "opencode/grok-code" | 
               .agents.Librarian.model = "opencode/big-pickle"' \
@@ -128,12 +128,13 @@ jobs:
           [CODE RED] You are @cloudwaddie-ai.
           
           ## MODEL CONFIG
-          - Main engine: github-copilot/gemini-3.0-flash
-          - Sub-agents: Grok Code / Big Pickle
+          - Main: github-copilot/gemini-3-flash
+          - Logic: opencode/grok-code
+          - Search: opencode/big-pickle
           
-          ## EXECUTION
-          - Complete tasks fully. 
-          - Create PRs for all changes.
+          ## RULES
+          - Deliver FULL implementations.
+          - Use background_task for parallel research.
           </ultrawork-mode>
 
           ---

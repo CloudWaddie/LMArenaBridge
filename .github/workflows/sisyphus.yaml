@@ -12,9 +12,10 @@ on:
 jobs:
   agent:
     runs-on: ubuntu-latest
-    # CRITICAL: This connects the job to your environment secrets
+    # Connects the job to your environment secrets for GH_PAT and ANTIGRAVITY_AUTH_JSON
     environment: sisyphus-env
     
+    # Only run if @sisyphus-dev-ai is mentioned by an authorized user
     if: >-
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
@@ -28,10 +29,9 @@ jobs:
       issues: write
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v5
         with:
-          # Uses the PAT from your sisyphus-env
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
 
@@ -40,35 +40,48 @@ jobs:
           git config user.name "sisyphus-dev-ai"
           git config user.email "sisyphus-dev-ai@users.noreply.github.com"
 
-      - name: Setup Bun & tmux
+      - name: Setup Runtime (Bun & tmux)
         run: |
           sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
           curl -fsSL https://bun.sh/install | bash
           echo "$HOME/.bun/bin" >> $GITHUB_PATH
 
-      - name: Build Local oh-my-opencode
+      - name: Clone and Build oh-my-opencode
         run: |
           export PATH="$HOME/.bun/bin:$PATH"
+          
+          # Clone the plugin source code into a temporary directory
+          git clone https://github.com/code-yeongyu/oh-my-opencode.git .tmp-omo
+          
+          # Build the plugin using Bun
+          cd .tmp-omo
           bun install
           bun run build
+          
+          # Move build artifacts to the workspace root for the agent to use
+          mv dist ../dist
+          mv node_modules ../node_modules
+          mv package.json ../package.json
+          cd ..
+          rm -rf .tmp-omo
 
       - name: Setup OpenCode & Antigravity Bridge
         env:
-          # Pulls the bridge session from your environment secrets
           ANTIGRAVITY_AUTH: ${{ secrets.ANTIGRAVITY_AUTH_JSON }}
         run: |
+          # Install OpenCode CLI
           curl -fsSL https://opencode.ai/install | bash
           export PATH="$HOME/.opencode/bin:$PATH"
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
 
-          # Install bridge plugin
+          # Install Antigravity Bridge Plugin
           opencode plugin add opencode-antigravity-auth@1.2.7
 
-          # Inject session
+          # Inject session data into the runner's configuration
           mkdir -p ~/.config/opencode
           echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
           
-          # Set provider to bridge
+          # Configure OpenCode to use the Antigravity bridge
           opencode config set provider google
           opencode config set model antigravity-gemini-3-pro-high
 
@@ -98,25 +111,27 @@ jobs:
           PROMPT=$(cat <<'EOF'
           <ultrawork-mode>
           [CODE RED] You are @sisyphus-dev-ai. 
-          Provider: Antigravity Bridge.
-          Models: 
-          - Reasoning: google/antigravity-gemini-3-pro-high
+          Use Antigravity Bridge for all model reasoning.
+          - Primary: google/antigravity-gemini-3-pro-high
           - Thinking: google/antigravity-claude-sonnet-4-5-thinking-high
           
-          Deliver 100% working code. Orchestrate sub-agents in parallel.
+          Rules: Deliver 100% working code. Orchestrate sub-agents for exploration and planning.
           </ultrawork-mode>
 
           ---
           Context: ${{ steps.context.outputs.title }} (#${{ steps.context.outputs.number }})
-          Request: ${{ steps.context.outputs.comment }}
+          Request from @${{ steps.context.outputs.author }}:
+          ${{ steps.context.outputs.comment }}
           EOF
           )
 
+          # Execute the agent using the built oh-my-opencode CLI
           stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" --model google/antigravity-gemini-3-pro-high
 
       - name: Feedback
         if: always()
         run: |
+          # Add a completion reaction (+1) to the user's comment
           if [[ -n "${{ steps.context.outputs.comment_id }}" ]]; then
             gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
               -X POST -f content="+1" || true

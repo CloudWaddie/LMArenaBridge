@@ -67,24 +67,24 @@ jobs:
           curl -fsSL https://opencode.ai/install | bash
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
           
-          # 2. Authenticate with GitHub Copilot Provider
-          # Uses your GH_PAT to authorize the copilot provider
+          # 2. Authenticate Copilot
+          # This links the OpenCode instance to your GitHub subscription
           echo "$GH_TOKEN" | gh auth login --with-token
           opencode auth login --provider github-copilot --token "$GH_TOKEN"
           
           # 3. Initialize Default Config
           bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
           
-          # 4. Patch Config for Copilot & Free Models
+          # 4. Patch Config for Copilot Gemini & Free Models
           CONFIG_PATH=~/.config/opencode/opencode.json
           OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
 
-          # Set Copilot as the active provider and point to Claude 3.5 Sonnet
-          # Fallback models like big-pickle and grok-code are used for sub-tasks
-          jq '.provider = "github-copilot" | .model = "github-copilot/claude-3.5-sonnet"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
+          # Configure the core model to Gemini Flash via Copilot
+          # Note: If 'gemini-3-flash' isn't available yet, it falls back to 'gemini-3-flash'
+          jq '.provider = "github-copilot" | .model = "github-copilot/gemini-3-flash"' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # Set agent preferences
-          jq '.agents.Sisyphus.model = "github-copilot/claude-3.5-sonnet" | 
+          # Assign agents to specific models
+          jq '.agents.Sisyphus.model = "github-copilot/gemini-3-flash" | 
               .agents.Oracle.model = "opencode/grok-code" | 
               .agents.Librarian.model = "opencode/big-pickle"' \
               "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
@@ -103,6 +103,7 @@ jobs:
           echo "title=$(echo "$ISSUE_DATA" | jq -r '.title')" >> $GITHUB_OUTPUT
           echo "author=${{ github.event.comment.user.login }}" >> $GITHUB_OUTPUT
           echo "comment_id=${{ github.event.comment.id }}" >> $GITHUB_OUTPUT
+          
           echo "comment<<EOF" >> $GITHUB_OUTPUT
           echo "${{ github.event.comment.body }}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -127,19 +128,17 @@ jobs:
           [CODE RED] You are @cloudwaddie-ai.
           
           ## MODEL CONFIG
-          - Main: github-copilot/claude-3.5-sonnet
-          - Research: opencode/big-pickle
-          - Logic: opencode/grok-code
+          - Main engine: github-copilot/gemini-3.0-flash
+          - Sub-agents: Grok Code / Big Pickle
           
-          ## RULES
-          - Deliver 100% working code.
-          - Orchestrate sub-agents (Librarian/Oracle) in parallel using free models.
+          ## EXECUTION
+          - Complete tasks fully. 
+          - Create PRs for all changes.
           </ultrawork-mode>
 
           ---
           Context: ${{ steps.context.outputs.title }} (#${{ steps.context.outputs.number }})
-          Request from @${{ steps.context.outputs.author }}:
-          ${{ steps.context.outputs.comment }}
+          Request: ${{ steps.context.outputs.comment }}
           EOF
           )
 

@@ -1,4 +1,4 @@
-name: CloudWaddie Agent
+name: CloudWaddie Agent (Debug)
 
 on:
   workflow_dispatch:
@@ -52,7 +52,6 @@ jobs:
           bun install
           bun run build
           
-          # Move artifacts to workspace root
           mv dist ../dist
           mv node_modules ../node_modules
           mv package.json ../package.json
@@ -65,27 +64,23 @@ jobs:
         run: |
           export PATH="$HOME/.bun/bin:$HOME/.opencode/bin:$PATH"
           
-          # 1. Install Dependencies
           bun add opencode-antigravity-auth@1.2.7
           curl -fsSL https://opencode.ai/install | bash
           echo "$HOME/.opencode/bin" >> $GITHUB_PATH
           
-          # 2. Initialize Default Config
           bun run dist/cli/index.js install --no-tui --gemini=no --chatgpt=no --claude=no
           
-          # 3. Patch opencode.json (The Core Config)
           CONFIG_PATH=~/.config/opencode/opencode.json
           PLUGIN_PATH="file://$(pwd)/node_modules/opencode-antigravity-auth"
           
-          # Register Plugin (Safely append to array)
+          # Register Plugin
           jq --arg plugin "$PLUGIN_PATH" '
             if .plugin == null then .plugin = [$plugin] 
             elif (.plugin | type) == "array" then .plugin += [$plugin] 
             else .plugin = [$plugin] 
             end | .plugin |= unique' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # Inject Provider Definition (Do NOT set provider to string)
-          # We inject the Google provider block so OpenCode knows what "google" means
+          # Inject Provider Definition
           jq '.provider.google = {
             "name": "Google",
             "models": {
@@ -97,17 +92,24 @@ jobs:
             }
           }' "$CONFIG_PATH" > "$CONFIG_PATH.tmp" && mv "$CONFIG_PATH.tmp" "$CONFIG_PATH"
           
-          # 4. Patch oh-my-opencode.json (The Agent Config)
+          # Patch Agent Config
           OMO_CONFIG=~/.config/opencode/oh-my-opencode.json
-          
-          # Point Sisyphus to use the Antigravity model we just defined
           jq '.agents.Sisyphus.model = "google/gemini-3-pro-high" | 
               .agents.Oracle.model = "google/gemini-3-pro-high" | 
               .agents.Librarian.model = "google/gemini-3-pro-high"' \
               "$OMO_CONFIG" > "$OMO_CONFIG.tmp" && mv "$OMO_CONFIG.tmp" "$OMO_CONFIG"
 
-          # 5. Inject Session
+          # Inject Session
           echo "$ANTIGRAVITY_AUTH" > ~/.config/opencode/antigravity-accounts.json
+
+      - name: Verify Authentication
+        run: |
+          export PATH="$HOME/.opencode/bin:$HOME/.bun/bin:$PATH"
+          echo "Checking available providers..."
+          opencode models
+          echo "Checking auth status..."
+          # This command might fail if auth is invalid, which gives us a clue
+          bun run dist/cli/index.js auth list || echo "Auth check failed!"
 
       - name: Collect Context
         id: context
@@ -136,7 +138,7 @@ jobs:
           gh api "/repos/${{ github.repository }}/issues/comments/${{ steps.context.outputs.comment_id }}/reactions" \
             -X POST -f content="eyes" || true
 
-      - name: Run CloudWaddie Agent
+      - name: Run CloudWaddie Agent (Debug Mode)
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           GITHUB_TOKEN: ${{ secrets.GH_PAT }}
@@ -150,7 +152,6 @@ jobs:
           ## RULES
           - You are running on Antigravity Bridge (Gemini 3 Pro High).
           - Deliver 100% working code. No demos.
-          - Orchestrate sub-agents for exploration.
           </ultrawork-mode>
 
           ---
@@ -160,8 +161,8 @@ jobs:
           EOF
           )
 
-          # Run without --model, trusting the JSON config we patched
-          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT"
+          # Run with DEBUG log level to see why it crashes
+          stdbuf -oL -eL bun run dist/cli/index.js run "$PROMPT" --log-level DEBUG
 
       - name: Feedback (Done)
         if: always()

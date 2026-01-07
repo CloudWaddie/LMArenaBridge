@@ -5427,14 +5427,16 @@ async def camoufox_proxy_worker():
                     (w.document.body || w.document.documentElement).appendChild(el);
                     const params = new w.Object();
                     params.sitekey = key;
-                    // Use invisible + execute to avoid requiring manual clicks.
-                    params.size = 'invisible';
+                    // Match LMArena's own anonymous sign-up widget settings.
+                    // `size: normal` + `appearance: interaction-only` tends to be accepted more reliably than
+                    // forcing an invisible execute flow.
+                    params.size = 'normal';
+                    params.appearance = 'interaction-only';
                     params.callback = (tok) => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = String(tok || ''); } catch (e) {} };
                     params['error-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
                     params['expired-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
                     const widgetId = w.turnstile.render(el, params);
                     w.__LM_BRIDGE_TURNSTILE_WIDGET_ID = widgetId;
-                    try { if (typeof w.turnstile.execute === 'function') w.turnstile.execute(widgetId); } catch (e) {}
                     out.ok = true;
                     out.widgetId = widgetId;
                     return out;

@@ -1,44 +1,15 @@
-import json
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx
 
+from tests._stream_test_utils import BaseBridgeTest
 
-class TestStrictModelsForceChromeFetch(unittest.IsolatedAsyncioTestCase):
+
+class TestStrictModelsForceChromeFetch(BaseBridgeTest):
     async def asyncSetUp(self) -> None:
-        from src import main
-
-        self.main = main
-        self._orig_debug = self.main.DEBUG
-        self.main.DEBUG = False
-        self.main.chat_sessions.clear()
-        self.main.api_key_usage.clear()
-
-        self._temp_dir = tempfile.TemporaryDirectory()
-        self._config_path = Path(self._temp_dir.name) / "config.json"
-        self._config_path.write_text(
-            json.dumps(
-                {
-                    "password": "admin",
-                    "cf_clearance": "",
-                    "auth_tokens": ["auth-token-1"],
-                    "chrome_fetch_recaptcha_max_attempts": 6,
-                    "api_keys": [{"name": "Test Key", "key": "test-key", "rpm": 999}],
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        self._orig_config_file = self.main.CONFIG_FILE
-        self.main.CONFIG_FILE = str(self._config_path)
-
-    async def asyncTearDown(self) -> None:
-        self.main.DEBUG = self._orig_debug
-        self.main.CONFIG_FILE = self._orig_config_file
-        self._temp_dir.cleanup()
+        await super().asyncSetUp()
+        self.setup_config({"chrome_fetch_recaptcha_max_attempts": 6})
 
     async def test_gemini_grounding_stream_uses_chrome_fetch_first_try(self) -> None:
         refresh_mock = AsyncMock(return_value="recaptcha-1")

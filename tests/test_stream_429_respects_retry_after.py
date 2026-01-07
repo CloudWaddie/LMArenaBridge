@@ -1,87 +1,27 @@
-import json
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import httpx
 
-
-class _FakeStreamResponse:
-    def __init__(self, status_code: int, headers: dict | None = None, text: str = "") -> None:
-        self.status_code = int(status_code)
-        self.headers = headers or {}
-        self._text = text
-
-    async def aiter_lines(self):
-        for line in (self._text or "").splitlines():
-            yield line
-
-    def raise_for_status(self) -> None:
-        if self.status_code >= 400:
-            request = httpx.Request("POST", "https://lmarena.ai/nextjs-api/stream/create-evaluation")
-            response = httpx.Response(self.status_code, request=request)
-            raise httpx.HTTPStatusError("HTTP error", request=request, response=response)
+from tests._stream_test_utils import BaseBridgeTest, FakeStreamContext, FakeStreamResponse
 
 
-class _FakeStreamContext:
-    def __init__(self, response: _FakeStreamResponse) -> None:
-        self._response = response
-
-    async def __aenter__(self) -> _FakeStreamResponse:
-        return self._response
-
-    async def __aexit__(self, exc_type, exc, tb) -> bool:
-        return False
-
-
-class TestStream429RespectsRetryAfter(unittest.IsolatedAsyncioTestCase):
-    async def asyncSetUp(self) -> None:
-        from src import main
-
-        self.main = main
-        self._orig_debug = self.main.DEBUG
-        self.main.DEBUG = False
-        self.main.chat_sessions.clear()
-        self.main.api_key_usage.clear()
-
-        self._temp_dir = tempfile.TemporaryDirectory()
-        self._config_path = Path(self._temp_dir.name) / "config.json"
-        self._config_path.write_text(
-            json.dumps(
-                {
-                    "password": "admin",
-                    "cf_clearance": "",
-                    "auth_tokens": ["auth-token-1"],
-                    "api_keys": [{"name": "Test Key", "key": "test-key", "rpm": 999}],
-                }
-            ),
-            encoding="utf-8",
-        )
-
-        self._orig_config_file = self.main.CONFIG_FILE
-        self.main.CONFIG_FILE = str(self._config_path)
-
-    async def asyncTearDown(self) -> None:
-        self.main.DEBUG = self._orig_debug
-        self.main.CONFIG_FILE = self._orig_config_file
-        self._temp_dir.cleanup()
-
+class TestStream429RespectsRetryAfter(BaseBridgeTest):
     async def test_stream_429_waits_retry_after_seconds(self) -> None:
         stream_calls: dict[str, int] = {"count": 0}
 
         def fake_stream(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
             stream_calls["count"] += 1
             if stream_calls["count"] == 1:
-                return _FakeStreamContext(
-                    _FakeStreamResponse(
+                return FakeStreamContext(
+                    FakeStreamResponse(
                         status_code=429,
                         headers={"Retry-After": "7"},
                         text='{"error":"Too Many Requests","message":"Too Many Requests"}',
                     )
                 )
-            return _FakeStreamContext(
-                _FakeStreamResponse(
+            return FakeStreamContext(
+                FakeStreamResponse(
                     status_code=200,
                     headers={},
                     text='a0:"Hello"\nad:{"finishReason":"stop"}\n',

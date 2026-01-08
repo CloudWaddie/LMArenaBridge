@@ -424,7 +424,6 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
     ]
     SetWindowPos.restype = wintypes.BOOL
 
-    SW_HIDE = 0
     SW_MINIMIZE = 6
     SWP_NOSIZE = 0x0001
     SWP_NOZORDER = 0x0004
@@ -450,7 +449,9 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
             matched["any"] = True
 
             if normalized_mode == "hide":
-                ShowWindow(hwnd, SW_HIDE)
+                # Avoid SW_HIDE: it can trigger occlusion/throttling behavior that breaks anti-bot challenges.
+                # "Hide" behaves like "offscreen" on Windows for better reliability.
+                SetWindowPos(hwnd, 0, -32000, -32000, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
             elif normalized_mode == "minimize":
                 ShowWindow(hwnd, SW_MINIMIZE)
             elif normalized_mode == "offscreen":
@@ -552,6 +553,18 @@ async def click_turnstile(page):
                                 return True
                         except Exception:
                             continue
+
+                # If the OS window is hidden/occluded, Playwright may return no bounding box even when the element is
+                # present. Try a direct element click first (force) before relying on geometry.
+                try:
+                    try:
+                        await element.click(force=True)
+                    except TypeError:
+                        await element.click()
+                    await asyncio.sleep(2)
+                    return True
+                except Exception:
+                    pass
 
                 # Get bounding box to click specific coordinates if needed
                 try:

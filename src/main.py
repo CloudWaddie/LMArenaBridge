@@ -349,6 +349,152 @@ STRICT_CHROME_FETCH_MODELS = {
     "gemini-exp-1206",
 }
 
+
+def _is_windows() -> bool:
+    return os.name == "nt" or sys.platform == "win32"
+
+
+def _normalize_camoufox_window_mode(value: object) -> str:
+    mode = str(value or "").strip().lower()
+    if mode in ("hide", "hidden"):
+        return "hide"
+    if mode in ("minimize", "minimized"):
+        return "minimize"
+    if mode in ("offscreen", "off-screen", "moveoffscreen", "move-offscreen"):
+        return "offscreen"
+    return "visible"
+
+
+def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: str) -> bool:
+    """
+    Best-effort: hide/minimize/move-offscreen top-level windows whose title contains `title_substring`.
+
+    Intended for Windows only. Avoids new dependencies (pywin32/psutil) by using ctypes.
+    """
+    if not _is_windows():
+        return False
+    if not isinstance(title_substring, str) or not title_substring.strip():
+        return False
+    normalized_mode = _normalize_camoufox_window_mode(mode)
+    if normalized_mode == "visible":
+        return False
+
+    try:
+        import ctypes
+        from ctypes import wintypes
+    except Exception:
+        return False
+
+    try:
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+    except Exception:
+        return False
+
+    WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    EnumWindows = user32.EnumWindows
+    EnumWindows.argtypes = [WNDENUMPROC, wintypes.LPARAM]
+    EnumWindows.restype = wintypes.BOOL
+
+    IsWindowVisible = user32.IsWindowVisible
+    IsWindowVisible.argtypes = [wintypes.HWND]
+    IsWindowVisible.restype = wintypes.BOOL
+
+    GetWindowTextLengthW = user32.GetWindowTextLengthW
+    GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    GetWindowTextLengthW.restype = ctypes.c_int
+
+    GetWindowTextW = user32.GetWindowTextW
+    GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    GetWindowTextW.restype = ctypes.c_int
+
+    ShowWindow = user32.ShowWindow
+    ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    ShowWindow.restype = wintypes.BOOL
+
+    SetWindowPos = user32.SetWindowPos
+    SetWindowPos.argtypes = [
+        wintypes.HWND,
+        wintypes.HWND,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint,
+    ]
+    SetWindowPos.restype = wintypes.BOOL
+
+    SW_HIDE = 0
+    SW_MINIMIZE = 6
+    SWP_NOSIZE = 0x0001
+    SWP_NOZORDER = 0x0004
+    SWP_NOACTIVATE = 0x0010
+
+    needle = title_substring.casefold()
+    matched = {"any": False}
+
+    @WNDENUMPROC
+    def _cb(hwnd, lparam):  # noqa: ANN001
+        try:
+            if not IsWindowVisible(hwnd):
+                return True
+            length = int(GetWindowTextLengthW(hwnd) or 0)
+            if length <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            if GetWindowTextW(hwnd, buf, length + 1) <= 0:
+                return True
+            title = str(buf.value or "")
+            if needle not in title.casefold():
+                return True
+            matched["any"] = True
+
+            if normalized_mode == "hide":
+                ShowWindow(hwnd, SW_HIDE)
+            elif normalized_mode == "minimize":
+                ShowWindow(hwnd, SW_MINIMIZE)
+            elif normalized_mode == "offscreen":
+                SetWindowPos(hwnd, 0, -32000, -32000, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+        except Exception:
+            return True
+        return True
+
+    try:
+        EnumWindows(_cb, 0)
+    except Exception:
+        return False
+    return bool(matched["any"])
+
+
+async def _maybe_apply_camoufox_window_mode(
+    page,
+    config: dict,
+    *,
+    mode_key: str,
+    marker: str,
+    headless: bool,
+) -> None:
+    """
+    Best-effort: keep Camoufox headed (for bot-score reliability) while hiding the actual OS window on Windows.
+    """
+    if headless:
+        return
+    if not _is_windows():
+        return
+    cfg = config or {}
+    mode = _normalize_camoufox_window_mode(cfg.get(mode_key))
+    if mode == "visible":
+        return
+    try:
+        await page.evaluate("t => { document.title = t; }", str(marker))
+    except Exception:
+        pass
+    for _ in range(20):  # ~2s worst-case
+        if _windows_apply_window_mode_by_title_substring(str(marker), mode):
+            return
+        await asyncio.sleep(0.1)
+
+
 async def click_turnstile(page):
     """
     Attempts to locate and click the Cloudflare Turnstile widget.
@@ -1574,7 +1720,14 @@ async def fetch_lmarena_stream_via_camoufox(
                     pass
 
             page = await context.new_page()
-             
+            await _maybe_apply_camoufox_window_mode(
+                page,
+                config,
+                mode_key="camoufox_fetch_window_mode",
+                marker="LMArenaBridge Camoufox Fetch",
+                headless=headless,
+            )
+              
             debug_print(f"  🦊 Navigating to lmarena.ai...")
             try:
                 await asyncio.wait_for(
@@ -5203,6 +5356,13 @@ async def camoufox_proxy_worker():
                     pass
 
                 page = await context.new_page()
+                await _maybe_apply_camoufox_window_mode(
+                    page,
+                    cfg,
+                    mode_key="camoufox_proxy_window_mode",
+                    marker="LMArenaBridge Camoufox Proxy",
+                    headless=headless,
+                )
 
                 try:
                     debug_print("🦊 Camoufox proxy: navigating to https://lmarena.ai/?mode=direct ...")

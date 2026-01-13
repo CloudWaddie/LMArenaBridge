@@ -584,7 +584,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 # Check for challenge title or widget presence
                 for _ in range(5):
                     title = await page.title()
-                    if "Just a moment" in title:
+                    if "Just a moment" in title or "Cloudflare" in title:
                         debug_print("  🔒 Cloudflare challenge active. Attempting to click...")
                         clicked = await click_turnstile(page)
                         if clicked:
@@ -592,10 +592,11 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                             # Give it time to verify
                             await asyncio.sleep(3)
                     else:
-                        # If title is normal, we might still have a widget on the page
+                        # If title is normal, we might still have a widget on the page but it's less likely.
+                        # We'll do one quick attempt and break if not found.
                         await click_turnstile(page)
                         break
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(2)
                 
                 # Wait for the page to actually settle into the main app
                 await page.wait_for_load_state("domcontentloaded")
@@ -2994,18 +2995,47 @@ async def camoufox_proxy_worker():
                     return
                 last_signup_attempt_at = now
 
+                # Turnstile clicking is expensive/noisy; keep it throttled and budgeted per signup attempt.
+                turnstile_clicks = 0
+                last_turnstile_click_at = 0.0
+                max_turnstile_clicks = 12
+                turnstile_click_cooldown_seconds = 5.0
+
+                async def _maybe_click_turnstile(*, allow_without_challenge: bool = False) -> None:
+                    nonlocal turnstile_clicks, last_turnstile_click_at, page
+                    if page is None:
+                        return
+                    if int(turnstile_clicks) >= int(max_turnstile_clicks):
+                        return
+                    now_mono = time.monotonic()
+                    if (now_mono - float(last_turnstile_click_at or 0.0)) < float(turnstile_click_cooldown_seconds):
+                        return
+
+                    if not allow_without_challenge:
+                        title = ""
+                        try:
+                            title = await asyncio.wait_for(page.title(), timeout=2.0)
+                        except Exception:
+                            title = ""
+                        if ("Just a moment" not in title) and ("Cloudflare" not in title):
+                            return
+
+                    last_turnstile_click_at = now_mono
+                    turnstile_clicks += 1
+                    try:
+                        await click_turnstile(page)
+                    except Exception:
+                        pass
+
                 # First, give LMArena a chance to create an anonymous user itself (it already ships a
                 # Turnstile-backed sign-up flow in the app). We just wait/poll for the auth cookie.
                 try:
-                    for _ in range(20):
+                    for _ in range(8):
                         cur = await _get_auth_cookie_value()
                         if cur and not is_arena_auth_token_expired(cur, skew_seconds=0):
                             return
-                        try:
-                            await click_turnstile(page)
-                        except Exception:
-                            pass
-                        await asyncio.sleep(0.5)
+                        await _maybe_click_turnstile()
+                        await asyncio.sleep(1.5)
                 except Exception:
                     pass
 
@@ -3050,15 +3080,12 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
                 try:
-                    for _ in range(30):
+                    for _ in range(12):
                         cur = await _get_auth_cookie_value()
                         if cur and not is_arena_auth_token_expired(cur, skew_seconds=0):
                             return
-                        try:
-                            await click_turnstile(page)
-                        except Exception:
-                            pass
-                        await asyncio.sleep(0.5)
+                        await _maybe_click_turnstile()
+                        await asyncio.sleep(1.5)
                 except Exception:
                     pass
 
@@ -3209,11 +3236,8 @@ async def camoufox_proxy_worker():
                         token_value = str(cur or "").strip()
                         if token_value:
                             break
-                        try:
-                            await click_turnstile(page)
-                        except Exception:
-                            pass
-                        await asyncio.sleep(1.0)
+                        await _maybe_click_turnstile(allow_without_challenge=True)
+                        await asyncio.sleep(2.0)
                 finally:
                     try:
                         await page.evaluate(cleanup_turnstile_js, {"widgetId": widget_id})

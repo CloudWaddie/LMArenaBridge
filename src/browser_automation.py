@@ -356,7 +356,6 @@ async def apply_camoufox_window_mode(
         await asyncio.sleep(0.1)
 
 async def click_turnstile(page):
-    debug_print("  🖱️  Attempting to click Cloudflare Turnstile...")
     try:
         selectors = [
             '#lm-bridge-turnstile',
@@ -380,6 +379,10 @@ async def click_turnstile(page):
                     elements = [one] if one else []
                 except Exception:
                     elements = []
+
+            if elements:
+                debug_print(f"  🖱️  Attempting to click Cloudflare Turnstile (found {selector})...")
+
             for element in elements or []:
                 try:
                     frame = await element.content_frame()

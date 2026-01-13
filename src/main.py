@@ -3324,6 +3324,16 @@ async def camoufox_proxy_worker():
             except Exception:
                 pass
              
+            # Mark the job as active immediately so server-side routing doesn't time out while we perform slow
+            # pre-flight steps (anonymous signup / Turnstile) before the in-page fetch emits the real HTTP status.
+            try:
+                status_event = job.get("status_event")
+                if isinstance(status_event, asyncio.Event) and not status_event.is_set():
+                    job["status_code"] = int(job.get("status_code") or 200)
+                    status_event.set()
+            except Exception:
+                pass
+
             # In-page fetch script (streams newline-delimited chunks back through console.log).
             # Mints reCAPTCHA v3 tokens on demand when the request body includes `recaptchaV3Token`.
             fetch_script = """async ({ jid, payload, sitekey, action, sitekeyV2, grecaptchaTimeoutMs, grecaptchaPollMs, timeoutMs, debug }) => {
@@ -4067,6 +4077,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             if refreshed:
                 debug_print("🔄 Refreshed arena-auth-prod-v1 session.")
                 current_token = refreshed
+            # Strict models can operate purely from the browser session cookie; do not send obviously-expired
+            # tokens (they cause immediate 401s and prevent the proxy from minting a fresh anonymous session).
+            if strict_chrome_fetch_model and current_token and not is_probably_valid_arena_auth_token(current_token):
+                current_token = ""
         headers = get_request_headers_with_token(current_token, recaptcha_token)
         if current_token:
             debug_print(f"🔑 Using token (round-robin): {current_token[:20]}...")
@@ -4348,7 +4362,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     url=url,
                                     payload=payload if isinstance(payload, dict) else {},
                                     http_method=http_method,
-                                    timeout_seconds=120,
+                                    timeout_seconds=300,
                                     streaming=True,
                                     auth_token=proxy_auth_token,
                                 )
@@ -4941,9 +4955,24 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         continue
 
                                 elif response.status_code == HTTPStatus.UNAUTHORIZED:
+                                    if strict_chrome_fetch_model and use_browser_transports:
+                                        # Strict-model requests can recover from 401s by minting a fresh anonymous
+                                        # session inside the browser (Camoufox/userscript proxy). Rotating through
+                                        # expired config tokens here just produces repeated 401s and forces manual
+                                        # token paste. Prefer browser-session retry instead.
+                                        debug_print("🔒 Upstream 401 in strict browser mode. Retrying with browser session (no token)...")
+                                        current_token = ""
+                                        headers = get_request_headers_with_token(current_token, recaptcha_token)
+                                        if isinstance(payload, dict):
+                                            payload["recaptchaV3Token"] = ""
+                                        async for ka in wait_with_keepalive(2.0):
+                                            yield ka
+                                        continue
+
                                     debug_print(f"🔒 Stream token expired")
                                     # Add current token to failed set
-                                    failed_tokens.add(current_token)
+                                    if current_token:
+                                        failed_tokens.add(current_token)
 
                                     # Best-effort: refresh the current base64 session in-memory before rotating.
                                     refreshed_token: Optional[str] = None

@@ -244,6 +244,14 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
     ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
     ShowWindow.restype = wintypes.BOOL
 
+    GetWindowLongW = user32.GetWindowLongW
+    GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    GetWindowLongW.restype = ctypes.c_long
+
+    SetWindowLongW = user32.SetWindowLongW
+    SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+    SetWindowLongW.restype = ctypes.c_long
+
     SetWindowPos = user32.SetWindowPos
     SetWindowPos.argtypes = [
         wintypes.HWND,
@@ -257,9 +265,14 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
     SetWindowPos.restype = wintypes.BOOL
 
     SW_MINIMIZE = 6
+    GWL_EXSTYLE = -20
+    WS_EX_TOOLWINDOW = 0x00000080
+    WS_EX_APPWINDOW = 0x00040000
     SWP_NOSIZE = 0x0001
+    SWP_NOMOVE = 0x0002
     SWP_NOZORDER = 0x0004
     SWP_NOACTIVATE = 0x0010
+    SWP_FRAMECHANGED = 0x0020
 
     needle = title_substring.casefold()
     matched = {"any": False}
@@ -281,9 +294,24 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
             matched["any"] = True
 
             if normalized_mode == "hide":
-                # "Hide" is interpreted as "minimize" for stability: moving a window offscreen can
-                # break click-based challenge flows (Turnstile) and cause retry storms.
-                ShowWindow(hwnd, SW_MINIMIZE)
+                # Hide from the Windows taskbar while keeping the browser "headful" (not headless).
+                # Minimizing can cause Turnstile/grecaptcha interaction stalls; keep the window un-minimized.
+                try:
+                    exstyle = int(GetWindowLongW(hwnd, GWL_EXSTYLE) or 0)
+                    new_exstyle = (exstyle | WS_EX_TOOLWINDOW) & (~WS_EX_APPWINDOW)
+                    if new_exstyle != exstyle:
+                        SetWindowLongW(hwnd, GWL_EXSTYLE, ctypes.c_long(int(new_exstyle)))
+                    SetWindowPos(
+                        hwnd,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    )
+                except Exception:
+                    pass
             elif normalized_mode == "minimize":
                 ShowWindow(hwnd, SW_MINIMIZE)
             elif normalized_mode == "offscreen":

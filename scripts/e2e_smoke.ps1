@@ -41,7 +41,7 @@ function Get-ApiKeyFromConfig {
 $proc = $null
 try {
   if (-not $NoStartServer) {
-    $proc = Start-Process -FilePath python -ArgumentList @("src/main.py") -WorkingDirectory $RepoRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $proc = Start-Process -FilePath python -ArgumentList @("-u", "src/main.py") -WorkingDirectory $RepoRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog
   }
 
   # Wait for health
@@ -73,13 +73,17 @@ try {
   $env:LMABRIDGE_E2E_INCLUDE_DASHBOARD = $(if ($IncludeDashboard) { "1" } else { "0" })
   $env:LMABRIDGE_E2E_DASHBOARD_PASSWORD = $DashboardPassword
   $env:LMABRIDGE_E2E_API_KEY = $ApiKey
+  $env:LMABRIDGE_E2E_CONFIG_PATH = (Join-Path $RepoRoot "config.json")
 
   @'
 import json
 import os
 import sys
+import time
 
 import httpx
+import ctypes
+from ctypes import wintypes
 
 base = os.environ["LMABRIDGE_E2E_BASEURL"]
 model = os.environ.get("LMABRIDGE_E2E_MODEL", "gemini-3-pro-grounding")
@@ -88,6 +92,7 @@ timeout_seconds = int(os.environ.get("LMABRIDGE_E2E_STREAM_TIMEOUT", "300") or "
 include_dashboard = os.environ.get("LMABRIDGE_E2E_INCLUDE_DASHBOARD", "0") == "1"
 dashboard_password = os.environ.get("LMABRIDGE_E2E_DASHBOARD_PASSWORD", "admin")
 api_key = (os.environ.get("LMABRIDGE_E2E_API_KEY") or "").strip()
+config_path = os.environ.get("LMABRIDGE_E2E_CONFIG_PATH", "")
 
 headers = {}
 if api_key:
@@ -95,6 +100,94 @@ if api_key:
 
 def fail(msg: str) -> None:
     raise SystemExit(msg)
+
+def _enum_windows_titles() -> list[tuple[int, str]]:
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    EnumWindows = user32.EnumWindows
+    EnumWindows.argtypes = [ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM), wintypes.LPARAM]
+    EnumWindows.restype = wintypes.BOOL
+
+    GetWindowTextLengthW = user32.GetWindowTextLengthW
+    GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    GetWindowTextLengthW.restype = ctypes.c_int
+
+    GetWindowTextW = user32.GetWindowTextW
+    GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    GetWindowTextW.restype = ctypes.c_int
+
+    out: list[tuple[int, str]] = []
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def _cb(hwnd, lparam):  # noqa: ANN001
+        try:
+            length = int(GetWindowTextLengthW(hwnd) or 0)
+            if length <= 0:
+                return True
+            buf = ctypes.create_unicode_buffer(length + 1)
+            if GetWindowTextW(hwnd, buf, length + 1) <= 0:
+                return True
+            title = str(buf.value or "")
+            if title:
+                out.append((int(hwnd), title))
+        except Exception:
+            return True
+        return True
+
+    EnumWindows(_cb, 0)
+    return out
+
+def _find_hwnd_by_title_substring(needle: str, timeout_s: float = 20.0) -> int:
+    needle_cf = (needle or "").casefold()
+    deadline = time.time() + float(timeout_s)
+    while time.time() < deadline:
+        for hwnd, title in _enum_windows_titles():
+            if needle_cf and needle_cf in (title or "").casefold():
+                return int(hwnd)
+        time.sleep(0.25)
+    return 0
+
+def _assert_proxy_hidden_from_taskbar_if_default() -> None:
+    if os.name != "nt":
+        return
+    if not config_path:
+        return
+    try:
+        cfg = json.loads(open(config_path, "r", encoding="utf-8").read() or "{}")
+    except Exception:
+        cfg = {}
+
+    headless_value = cfg.get("camoufox_proxy_headless", None)
+    headless = bool(headless_value) if headless_value is not None else False
+    if headless:
+        return
+
+    window_mode = str(cfg.get("camoufox_proxy_window_mode") or "").strip().lower()
+    should_assert = (not window_mode) or (window_mode in ("hide", "hidden"))
+    if not should_assert:
+        return
+    marker = "LMArenaBridge Camoufox Proxy"
+    hwnd = _find_hwnd_by_title_substring(marker, timeout_s=90.0)
+    if not hwnd:
+        fail(f"Could not find proxy window title containing: {marker}")
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    GWL_EXSTYLE = -20
+    WS_EX_TOOLWINDOW = 0x00000080
+    WS_EX_APPWINDOW = 0x00040000
+
+    GetWindowLongW = user32.GetWindowLongW
+    GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    GetWindowLongW.restype = ctypes.c_long
+
+    deadline = time.time() + 20.0
+    while time.time() < deadline:
+        exstyle = int(GetWindowLongW(wintypes.HWND(hwnd), GWL_EXSTYLE) or 0)
+        ok_tool = (exstyle & WS_EX_TOOLWINDOW) == WS_EX_TOOLWINDOW
+        ok_app = (exstyle & WS_EX_APPWINDOW) != WS_EX_APPWINDOW
+        if ok_tool and ok_app:
+            return
+        time.sleep(0.25)
+    fail("Proxy window is still on taskbar (missing WS_EX_TOOLWINDOW and/or has WS_EX_APPWINDOW)")
 
 with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=True) as client:
     if include_dashboard:
@@ -106,6 +199,8 @@ with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=Tr
             fail(f"/login->/dashboard HTTP {r.status_code}: {r.text[:400]}")
         if "LMArena Bridge Dashboard" not in r.text:
             fail("Dashboard HTML missing expected marker")
+
+    _assert_proxy_hidden_from_taskbar_if_default()
 
     r = client.get(base + "/api/v1/models", headers=headers)
     if r.status_code != 200:
@@ -128,6 +223,7 @@ with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=Tr
     saw_done = False
     got_content = False
     content_accum: list[str] = []
+    captured_data: list[str] = []
 
     stream_headers = dict(headers)
     stream_headers["Accept"] = "text/event-stream"
@@ -148,6 +244,8 @@ with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=Tr
             if data == "[DONE]":
                 saw_done = True
                 break
+            if len(captured_data) < 50:
+                captured_data.append(data)
             obj = json.loads(data)
             choices = obj.get("choices") or []
             if not choices:
@@ -159,6 +257,10 @@ with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=Tr
                 content_accum.append(chunk)
 
     if not got_content:
+        if captured_data:
+            sys.stderr.write("Captured SSE data payloads (first 50):\\n")
+            for item in captured_data:
+                sys.stderr.write(item[:400] + "\\n")
         fail("Did not receive any delta.content chunks")
     if not saw_done:
         fail("Did not receive [DONE] sentinel")

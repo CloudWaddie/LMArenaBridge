@@ -64,6 +64,52 @@ STRICT_CHROME_FETCH_MODELS = {
 # HELPERS
 # ============================================================ 
 
+class TurnstileClickLimiter:
+    """
+    Simple click budget + cooldown limiter used to prevent aggressive Turnstile click loops.
+
+    Uses monotonic time (caller provides `now_mono`).
+    """
+
+    def __init__(self, *, max_clicks: int = 12, cooldown_seconds: float = 5.0) -> None:
+        try:
+            self.max_clicks = max(0, int(max_clicks))
+        except Exception:
+            self.max_clicks = 0
+        try:
+            self.cooldown_seconds = max(0.0, float(cooldown_seconds))
+        except Exception:
+            self.cooldown_seconds = 0.0
+
+        self.clicks_used = 0
+        self._last_click_mono: float | None = None
+
+    def try_acquire(self, now_mono: float) -> bool:
+        """
+        Returns True iff a click is allowed at `now_mono` and consumes one budget unit.
+
+        Blocked attempts do not consume budget.
+        """
+        if int(self.max_clicks) <= 0:
+            return False
+        if int(self.clicks_used) >= int(self.max_clicks):
+            return False
+        try:
+            ts = float(now_mono)
+        except Exception:
+            return False
+
+        last = self._last_click_mono
+        if last is not None:
+            if ts < float(last):
+                return False
+            if (ts - float(last)) < float(self.cooldown_seconds):
+                return False
+
+        self._last_click_mono = ts
+        self.clicks_used += 1
+        return True
+
 def normalize_user_agent_value(user_agent: object) -> str:
     ua = str(user_agent or "").strip()
     if not ua:

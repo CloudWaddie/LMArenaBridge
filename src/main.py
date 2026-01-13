@@ -35,6 +35,7 @@ try:
         RECAPTCHA_ACTION,
         RECAPTCHA_V2_SITEKEY,
         TURNSTILE_SITEKEY,
+        TurnstileClickLimiter,
         STRICT_CHROME_FETCH_MODELS,
         extract_recaptcha_params_from_text,
         get_recaptcha_settings,
@@ -56,6 +57,7 @@ except ImportError:
         RECAPTCHA_ACTION,
         RECAPTCHA_V2_SITEKEY,
         TURNSTILE_SITEKEY,
+        TurnstileClickLimiter,
         STRICT_CHROME_FETCH_MODELS,
         extract_recaptcha_params_from_text,
         get_recaptcha_settings,
@@ -2996,19 +2998,11 @@ async def camoufox_proxy_worker():
                 last_signup_attempt_at = now
 
                 # Turnstile clicking is expensive/noisy; keep it throttled and budgeted per signup attempt.
-                turnstile_clicks = 0
-                last_turnstile_click_at = 0.0
-                max_turnstile_clicks = 12
-                turnstile_click_cooldown_seconds = 5.0
+                turnstile_limiter = TurnstileClickLimiter(max_clicks=12, cooldown_seconds=5.0)
 
                 async def _maybe_click_turnstile(*, allow_without_challenge: bool = False) -> None:
-                    nonlocal turnstile_clicks, last_turnstile_click_at, page
+                    nonlocal page, turnstile_limiter
                     if page is None:
-                        return
-                    if int(turnstile_clicks) >= int(max_turnstile_clicks):
-                        return
-                    now_mono = time.monotonic()
-                    if (now_mono - float(last_turnstile_click_at or 0.0)) < float(turnstile_click_cooldown_seconds):
                         return
 
                     if not allow_without_challenge:
@@ -3020,8 +3014,12 @@ async def camoufox_proxy_worker():
                         if ("Just a moment" not in title) and ("Cloudflare" not in title):
                             return
 
-                    last_turnstile_click_at = now_mono
-                    turnstile_clicks += 1
+                    try:
+                        now_mono = time.monotonic()
+                    except Exception:
+                        now_mono = 0.0
+                    if not turnstile_limiter.try_acquire(float(now_mono)):
+                        return
                     try:
                         await click_turnstile(page)
                     except Exception:

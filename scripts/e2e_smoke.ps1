@@ -9,6 +9,8 @@ param(
   [switch]$NoStartServer,
   [int]$StartupTimeoutSec = 180,
   [int]$StreamTimeoutSec = 300,
+  [switch]$EnforceTurnstileClickGuard,
+  [int]$MaxTurnstileClicks = 15,
   [switch]$KeepArtifacts
 )
 
@@ -272,28 +274,28 @@ with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=Tr
     throw "e2e_smoke python check failed (exit code $LASTEXITCODE)"
   }
 
-  # Regression guard: first strict-model request should not spam Turnstile clicks.
-  # Only enforce when the request actually routed through the Userscript Proxy.
-  $maxTurnstileClicks = 15
-  try {
-    if (Test-Path $outLog) {
-      $stdoutLines = Get-Content $outLog -ErrorAction SilentlyContinue
-      $usedProxy = ($stdoutLines | Select-String -SimpleMatch -Pattern "Delegating request to Userscript Proxy").Count -gt 0
-      if ($usedProxy) {
-        $jobStartMatch = $stdoutLines | Select-String -SimpleMatch -Pattern "Camoufox proxy: running job" | Select-Object -First 1
-        if ($null -ne $jobStartMatch -and $jobStartMatch.LineNumber -gt 0) {
-          $segment = $stdoutLines[($jobStartMatch.LineNumber - 1)..($stdoutLines.Count - 1)]
-        } else {
-          $segment = $stdoutLines
-        }
-        $turnstileClicks = ($segment | Select-String -SimpleMatch -Pattern "Attempting to click Cloudflare Turnstile").Count
-        if ($turnstileClicks -gt $maxTurnstileClicks) {
-          throw "Too many Turnstile click attempts during first proxy job: $turnstileClicks (max $maxTurnstileClicks)."
+  # Optional regression guard: Turnstile click spam is covered by unit tests.
+  if ($EnforceTurnstileClickGuard) {
+    try {
+      if (Test-Path $outLog) {
+        $stdoutLines = Get-Content $outLog -ErrorAction SilentlyContinue
+        $usedProxy = ($stdoutLines | Select-String -SimpleMatch -Pattern "Delegating request to Userscript Proxy").Count -gt 0
+        if ($usedProxy) {
+          $jobStartMatch = $stdoutLines | Select-String -SimpleMatch -Pattern "Camoufox proxy: running job" | Select-Object -First 1
+          if ($null -ne $jobStartMatch -and $jobStartMatch.LineNumber -gt 0) {
+            $segment = $stdoutLines[($jobStartMatch.LineNumber - 1)..($stdoutLines.Count - 1)]
+          } else {
+            $segment = $stdoutLines
+          }
+          $turnstileClicks = ($segment | Select-String -SimpleMatch -Pattern "Attempting to click Cloudflare Turnstile").Count
+          if ($turnstileClicks -gt $MaxTurnstileClicks) {
+            throw "Too many Turnstile click attempts during first proxy job: $turnstileClicks (max $MaxTurnstileClicks)."
+          }
         }
       }
+    } catch {
+      throw
     }
-  } catch {
-    throw
   }
 
   Write-Host "[PASS] e2e_smoke.ps1"

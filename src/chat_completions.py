@@ -4,7 +4,6 @@ async def api_chat_completions(core, request, api_key):
 
     # Bind globals from the owning module (src.main) so test patch points remain stable.
     AsyncExitStack = core.AsyncExitStack
-    BrowserFetchStreamResponse = core.BrowserFetchStreamResponse
     HTTPException = core.HTTPException
     HTTPStatus = core.HTTPStatus
     Optional = core.Optional
@@ -18,8 +17,6 @@ async def api_chat_completions(core, request, api_key):
     asyncio = core.asyncio
     chat_sessions = core.chat_sessions
     debug_print = core.debug_print
-    fetch_lmarena_stream_via_camoufox = core.fetch_lmarena_stream_via_camoufox
-    fetch_lmarena_stream_via_chrome = core.fetch_lmarena_stream_via_chrome
     fetch_via_proxy_queue = core.fetch_via_proxy_queue
     get_cached_recaptcha_token = core.get_cached_recaptcha_token
     get_config = core.get_config
@@ -44,10 +41,8 @@ async def api_chat_completions(core, request, api_key):
     parse_lmarena_line_to_openai_chunks = core.parse_lmarena_line_to_openai_chunks
     refresh_arena_auth_token_via_lmarena_http = core.refresh_arena_auth_token_via_lmarena_http
     refresh_arena_auth_token_via_supabase = core.refresh_arena_auth_token_via_supabase
-    refresh_recaptcha_token = core.refresh_recaptcha_token
     save_config = core.save_config
     sse_sleep_with_keepalive = core.sse_sleep_with_keepalive
-    sse_wait_for_task_with_keepalive = core.sse_wait_for_task_with_keepalive
     time = core.time
     uuid = core.uuid
     uuid7 = core.uuid7

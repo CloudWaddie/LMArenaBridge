@@ -167,27 +167,7 @@ def build_router(core) -> APIRouter:  # noqa: ANN001
             core.debug_print(f"❌ Error refreshing tokens: {e}")
         return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
-    # --- Userscript Proxy Support (legacy + current) ---
-
-    @router.get("/proxy/tasks")
-    async def get_proxy_tasks(api_key: dict = Depends(core.rate_limit_api_key)):  # noqa: ARG001
-        core.last_userscript_poll = time.time()
-        current_tasks = list(core.proxy_task_queue)
-        core.proxy_task_queue.clear()
-        return current_tasks
-
-    @router.post("/proxy/result/{task_id}")
-    async def post_proxy_result(task_id: str, request: Request, api_key: dict = Depends(core.rate_limit_api_key)):  # noqa: ARG001
-        try:
-            data = await request.json()
-            if task_id in core.proxy_pending_tasks:
-                future = core.proxy_pending_tasks[task_id]
-                if not future.done():
-                    future.set_result(data)
-            return {"status": "ok"}
-        except Exception as e:
-            core.debug_print(f"❌ Error processing proxy result for {task_id}: {e}")
-            return {"status": "error", "message": str(e)}
+    # --- Userscript Proxy Support ---
 
     @router.post("/api/v1/userscript/poll")
     async def userscript_poll(request: Request):

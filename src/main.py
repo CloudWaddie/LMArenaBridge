@@ -187,7 +187,6 @@ async def fetch_lmarena_stream_via_camoufox(*args, **kwargs):
     return await _fetch_via_camoufox(sys.modules[__name__], *args, **kwargs)
 
 
-USERSCRIPT_PROXY_LAST_POLL_AT: float = 0.0
 _PROXY_SERVICE = ProxyService()
 _USERSCRIPT_PROXY_JOBS: dict[str, dict] = _PROXY_SERVICE.jobs
 
@@ -198,34 +197,15 @@ def _touch_userscript_poll(now: Optional[float] = None) -> None:
     The bridge supports both an external userscript poller and an internal Camoufox-backed poller.
     Keep both timestamps in sync so strict-model routing can reliably detect proxy availability.
     """
-    global USERSCRIPT_PROXY_LAST_POLL_AT, last_userscript_poll
+    global last_userscript_poll
     _PROXY_SERVICE.touch_poll(now)
-    USERSCRIPT_PROXY_LAST_POLL_AT = float(_PROXY_SERVICE.last_poll_at or 0.0)
-    # Legacy timestamp used by older code paths/tests.
-    last_userscript_poll = USERSCRIPT_PROXY_LAST_POLL_AT
+    # Legacy timestamp used by status messages/back-compat.
+    last_userscript_poll = float(_PROXY_SERVICE.last_poll_at or 0.0)
 
 
 def _userscript_proxy_is_active(config: Optional[dict] = None) -> bool:
     cfg = config or get_config()
-    poll_timeout = 25
-    try:
-        poll_timeout = int(cfg.get("userscript_proxy_poll_timeout_seconds", 25))
-    except Exception:
-        poll_timeout = 25
-    active_window = max(10, min(poll_timeout + 10, 90))
-    # Back-compat: some callers/tests still update the legacy `last_userscript_poll` timestamp.
-    try:
-        last = max(float(_PROXY_SERVICE.last_poll_at or 0.0), float(last_userscript_poll or 0.0))
-    except Exception:
-        last = float(_PROXY_SERVICE.last_poll_at or 0.0)
-    try:
-        delta = float(time.time()) - float(last)
-    except Exception:
-        delta = 999999.0
-    # Guard against clock skew / patched clocks in tests: a "last poll" timestamp in the future is not active.
-    if delta < 0:
-        return False
-    return delta <= float(active_window)
+    return _PROXY_SERVICE.is_active(cfg, now=time.time())
 
 
 def _userscript_proxy_check_secret(request: Request) -> None:
@@ -2192,13 +2172,7 @@ async def startup_event():
 
 # --- Userscript Proxy Support ---
 
-# In-memory queue for Userscript Proxy
-# { task_id: asyncio.Future }
-proxy_pending_tasks: Dict[str, asyncio.Future] = {}
-# List of tasks waiting to be picked up by the userscript
-# [ { id, url, method, body } ]
-proxy_task_queue: List[dict] = []
-# Timestamp of last userscript poll
+# Timestamp of last userscript poll (legacy; kept for status messages/back-compat)
 last_userscript_poll: float = 0
 
 async def push_proxy_chunk(jid, d) -> None:

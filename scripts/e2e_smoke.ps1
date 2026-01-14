@@ -301,13 +301,24 @@ with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=Tr
   Write-Host "[PASS] e2e_smoke.ps1"
 } catch {
   Write-Host "[FAIL] e2e_smoke.ps1"
+
+  function Redact-SecretLine {
+    param([string]$Line)
+    $out = [string]$Line
+    $out = $out -replace 'base64-[A-Za-z0-9_-]{20,}', 'base64-<REDACTED>'
+    $out = $out -replace '\bsk-[A-Za-z0-9_-]{10,}', 'sk-<REDACTED>'
+    $out = $out -replace '(Saved cf_clearance token:\s*)[A-Za-z0-9_-]+', '$1<REDACTED>'
+    $out = $out -replace '(cf_clearance token:\s*)[A-Za-z0-9_-]+', '$1<REDACTED>'
+    return $out
+  }
+
   if (Test-Path $errLog) {
     Write-Host "--- server stderr (tail) ---"
-    Get-Content $errLog -Tail 80 -ErrorAction SilentlyContinue
+    Get-Content $errLog -Tail 80 -ErrorAction SilentlyContinue | ForEach-Object { Redact-SecretLine $_ }
   }
   if (Test-Path $outLog) {
     Write-Host "--- server stdout (tail) ---"
-    Get-Content $outLog -Tail 80 -ErrorAction SilentlyContinue
+    Get-Content $outLog -Tail 80 -ErrorAction SilentlyContinue | ForEach-Object { Redact-SecretLine $_ }
   }
   throw
 } finally {

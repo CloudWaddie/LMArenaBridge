@@ -4,11 +4,12 @@ Allows you to have a conversation with any model available through the bridge
 """
 
 from openai import OpenAI
+import os
 import sys
 
 # Configuration
 BASE_URL = "http://localhost:8000/api/v1"
-API_KEY = "sk-lmab-50664b6f-87c7-4115-b630-eb38a9b55021"  # Replace with your API key
+API_KEY_ENV_VAR = "LMABRIDGE_API_KEY"
 
 def list_available_models(client):
     """List all available models"""
@@ -178,11 +179,18 @@ def main():
     print("=" * 60)
     print("🚀 LMArena Bridge - Interactive Chat")
     print("=" * 60)
+
+    api_key = os.getenv(API_KEY_ENV_VAR, "").strip()
+    if not api_key:
+        api_key = input(f"API Key (set {API_KEY_ENV_VAR} to skip prompt): ").strip()
+    if not api_key:
+        print(f"❌ Missing API key. Set {API_KEY_ENV_VAR} or paste it when prompted.")
+        return
     
     # Initialize OpenAI client
     try:
         client = OpenAI(
-            api_key=API_KEY,
+            api_key=api_key,
             base_url=BASE_URL
         )
         print("✅ Connected to LMArena Bridge")

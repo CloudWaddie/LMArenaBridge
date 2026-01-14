@@ -15,7 +15,7 @@ class TestStatelessHistoryFallback(BaseBridgeTest):
         consistently.
         """
 
-        token = "vault-7Qm3p9-KD82-XT5b"
+        token = "test-token-123"
         captured_payloads: list[dict] = []
 
         jobs = self.main._USERSCRIPT_PROXY_JOBS

@@ -195,16 +195,30 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
 try:
     from .streaming import (
         BrowserFetchStreamResponse,
+        SSE_DONE,
+        SSE_KEEPALIVE,
+        aiter_with_keepalive,
         fetch_lmarena_stream_via_chrome as _fetch_via_chrome,
         fetch_lmarena_stream_via_camoufox as _fetch_via_camoufox,
+        openai_error_payload,
         parse_lmarena_line_to_openai_chunks,
+        sse_openai_error_and_done,
+        sse_sleep_with_keepalive,
+        sse_wait_for_task_with_keepalive,
     )
 except ImportError:
     from streaming import (
         BrowserFetchStreamResponse,
+        SSE_DONE,
+        SSE_KEEPALIVE,
+        aiter_with_keepalive,
         fetch_lmarena_stream_via_chrome as _fetch_via_chrome,
         fetch_lmarena_stream_via_camoufox as _fetch_via_camoufox,
+        openai_error_payload,
         parse_lmarena_line_to_openai_chunks,
+        sse_openai_error_and_done,
+        sse_sleep_with_keepalive,
+        sse_wait_for_task_with_keepalive,
     )
 
 async def fetch_lmarena_stream_via_chrome(*args, **kwargs):
@@ -842,8 +856,8 @@ def _normalize_api_keys_value(raw_value: object) -> list[dict]:
     Normalize config `api_keys` into the canonical list-of-dicts form.
 
     Accepts legacy shapes:
-    - "api_keys": "sk-..."
-    - "api_keys": ["sk-...", ...]
+    - "api_keys": "<key>"
+    - "api_keys": ["<key>", ...]
     """
     entries: list[object]
     if isinstance(raw_value, list):

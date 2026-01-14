@@ -10,6 +10,9 @@ from camoufox.async_api import AsyncCamoufox
 
 # Shared constants and helpers for browser-based fetch transports
 
+SSE_KEEPALIVE = ": keep-alive\n\n"
+SSE_DONE = "data: [DONE]\n\n"
+
 FETCH_SCRIPT = """async ({url, method, body, extraHeaders, timeoutMs}) => {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort('timeout'), timeoutMs);
@@ -73,6 +76,71 @@ def is_recaptcha_validation_failed(status: int, text: object) -> bool:
         return isinstance(body, dict) and body.get("error") == "recaptcha validation failed"
     except Exception:
         return False
+
+
+def openai_error_payload(message: str, type: str, code: object) -> dict:  # noqa: A002
+    return {"error": {"message": str(message), "type": str(type), "code": code}}
+
+
+def sse_data(obj: dict) -> str:
+    return f"data: {json.dumps(obj)}\n\n"
+
+
+def sse_openai_error_and_done(message: str, type: str, code: object) -> tuple[str, str]:  # noqa: A002
+    return sse_data(openai_error_payload(message, type, code)), SSE_DONE
+
+
+async def sse_wait_for_task_with_keepalive(core, task, *, interval_seconds: float = 1.0) -> AsyncIterator[str]:  # noqa: ANN001
+    interval = float(max(0.05, interval_seconds))
+    while True:
+        done, _ = await core.asyncio.wait({task}, timeout=interval)
+        if task in done:
+            break
+        yield SSE_KEEPALIVE
+
+
+async def sse_sleep_with_keepalive(core, seconds: float, *, interval_seconds: float = 1.0) -> AsyncIterator[str]:  # noqa: ANN001
+    try:
+        total = float(seconds)
+    except Exception:
+        total = 0.0
+    if total <= 0:
+        return
+
+    interval = float(max(0.05, interval_seconds))
+    end_time = core.time.time() + total
+    while core.time.time() < end_time:
+        remaining = end_time - core.time.time()
+        if remaining <= 0:
+            break
+        yield SSE_KEEPALIVE
+        await core.asyncio.sleep(min(interval, remaining))
+
+
+async def aiter_with_keepalive(core, it, *, timeout_seconds: float = 1.0) -> AsyncIterator[Optional[Any]]:  # noqa: ANN001
+    """
+    Yield items from an async iterator, yielding `None` periodically while waiting.
+
+    This avoids asyncio.wait_for() because cancelling __anext__ can break some iterators.
+    Callers can translate `None` into SSE keep-alives.
+    """
+    timeout = float(max(0.05, timeout_seconds))
+    pending: Optional[asyncio.Task] = core.asyncio.create_task(it.__anext__())
+    try:
+        while True:
+            done, _ = await core.asyncio.wait({pending}, timeout=timeout)
+            if pending not in done:
+                yield None
+                continue
+            try:
+                item = pending.result()
+            except StopAsyncIteration:
+                break
+            pending = core.asyncio.create_task(it.__anext__())
+            yield item
+    finally:
+        if pending is not None and not pending.done():
+            pending.cancel()
 
 
 def prepare_browser_fetch_params(core, config, url, auth_token):

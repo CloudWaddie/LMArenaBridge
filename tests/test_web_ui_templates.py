@@ -47,7 +47,7 @@ class TestWebUiTemplates(unittest.TestCase):
 
         config = {
             "api_keys": [
-                {"name": malicious_key_name, "key": "sk-test'\"<>", "rpm": 60, "created": 0},
+                {"name": malicious_key_name, "key": "test-key'\"<>", "rpm": 60, "created": 0},
             ],
             "auth_token": "",
             "auth_tokens": [malicious_token],

@@ -8,10 +8,13 @@ async def api_chat_completions(core, request, api_key):
     HTTPException = core.HTTPException
     HTTPStatus = core.HTTPStatus
     Optional = core.Optional
+    SSE_DONE = core.SSE_DONE
+    SSE_KEEPALIVE = core.SSE_KEEPALIVE
     STRICT_CHROME_FETCH_MODELS = core.STRICT_CHROME_FETCH_MODELS
     StreamingResponse = core.StreamingResponse
     _USERSCRIPT_PROXY_JOBS = core._USERSCRIPT_PROXY_JOBS
     _userscript_proxy_is_active = core._userscript_proxy_is_active
+    aiter_with_keepalive = core.aiter_with_keepalive
     asyncio = core.asyncio
     chat_sessions = core.chat_sessions
     debug_print = core.debug_print
@@ -33,6 +36,7 @@ async def api_chat_completions(core, request, api_key):
     log_http_status = core.log_http_status
     maybe_refresh_expired_auth_tokens = core.maybe_refresh_expired_auth_tokens
     model_usage_stats = core.model_usage_stats
+    openai_error_payload = core.openai_error_payload
     os = core.os
     print = core.print
     process_message_content = core.process_message_content
@@ -42,9 +46,29 @@ async def api_chat_completions(core, request, api_key):
     refresh_arena_auth_token_via_supabase = core.refresh_arena_auth_token_via_supabase
     refresh_recaptcha_token = core.refresh_recaptcha_token
     save_config = core.save_config
+    sse_openai_error_and_done = core.sse_openai_error_and_done
+    sse_sleep_with_keepalive = core.sse_sleep_with_keepalive
+    sse_wait_for_task_with_keepalive = core.sse_wait_for_task_with_keepalive
     time = core.time
     uuid = core.uuid
     uuid7 = core.uuid7
+
+    def format_citations(citations: list) -> tuple[list, str]:
+        if not citations:
+            return [], ""
+        unique = []
+        seen = set()
+        for c in citations:
+            u = c.get('url')
+            if u and u not in seen:
+                seen.add(u)
+                unique.append(c)
+        if not unique:
+            return [], ""
+        footnotes = "\n\n---\n\n**Sources:**\n\n"
+        for i, c in enumerate(unique, 1):
+            footnotes += f"{i}. [{c.get('title', 'Untitled')}]({c.get('url', '')})\n"
+        return unique, footnotes
 
     debug_print("\n" + "="*80)
     debug_print("🔵 NEW API REQUEST RECEIVED")
@@ -572,24 +596,10 @@ async def api_chat_completions(core, request, api_key):
                 stream_started_at = time.monotonic()
 
                 # Flush an immediate comment to keep the client connection alive while we do heavy lifting upstream
-                yield ": keep-alive\n\n"
+                yield SSE_KEEPALIVE
                 await asyncio.sleep(0)
-                
-                async def wait_for_task(task):
-                    while True:
-                        done, _ = await asyncio.wait({task}, timeout=1.0)
-                        if task in done:
-                            break
-                        yield ": keep-alive\n\n"
 
                 chunk_id = f"chatcmpl-{uuid.uuid4()}"
-                
-                # Helper to keep connection alive during backoff
-                async def wait_with_keepalive(seconds: float):
-                    end_time = time.time() + float(seconds)
-                    while time.time() < end_time:
-                        yield ": keep-alive\n\n"
-                        await asyncio.sleep(min(1.0, end_time - time.time()))
 
                 # Proxy-only transport: always mint reCAPTCHA tokens in-page via the Userscript Proxy.
                 # (Side-channel tokens + direct httpx have proven unreliable and are intentionally disabled.)
@@ -629,15 +639,8 @@ async def api_chat_completions(core, request, api_key):
 
                     # Stop retrying after a configurable deadline or too many attempts to avoid infinite hangs.
                     if (time.monotonic() - stream_started_at) > stream_total_timeout_seconds or attempt > 20:
-                        error_chunk = {
-                            "error": {
-                                "message": "Upstream retry timeout or max attempts exceeded while streaming from LMArena.",
-                                "type": "upstream_timeout",
-                                "code": HTTPStatus.GATEWAY_TIMEOUT,
-                            }
-                        }
-                        yield f"data: {json.dumps(error_chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
+                        yield f"data: {json.dumps(openai_error_payload('Upstream retry timeout or max attempts exceeded while streaming from LMArena.', 'upstream_timeout', HTTPStatus.GATEWAY_TIMEOUT))}\n\n"
+                        yield SSE_DONE
                         return
                     # Reset response data for each attempt
                     response_text = ""
@@ -680,21 +683,14 @@ async def api_chat_completions(core, request, api_key):
                                                     break
                                             except Exception:
                                                 pass
-                                            yield ": keep-alive\n\n"
+                                            yield SSE_KEEPALIVE
                                             await asyncio.sleep(0.05)
 
                                 use_userscript = bool(proxy_active)
 
                             if not use_userscript:
-                                error_chunk = {
-                                    "error": {
-                                        "message": "Userscript proxy is required for streaming. Start the Camoufox proxy worker/userscript bridge and retry.",
-                                        "type": "proxy_unavailable",
-                                        "code": HTTPStatus.SERVICE_UNAVAILABLE,
-                                    }
-                                }
-                                yield f"data: {json.dumps(error_chunk)}\n\n"
-                                yield "data: [DONE]\n\n"
+                                yield f"data: {json.dumps(openai_error_payload('Userscript proxy is required for streaming. Start the Camoufox proxy worker/userscript bridge and retry.', 'proxy_unavailable', HTTPStatus.SERVICE_UNAVAILABLE))}\n\n"
+                                yield SSE_DONE
                                 return
 
                             debug_print("🌐 Userscript Proxy is ACTIVE. Using Userscript Proxy for streaming.")
@@ -722,15 +718,8 @@ async def api_chat_completions(core, request, api_key):
                                 auth_token=proxy_auth_token,
                             )
                             if stream_context is None:
-                                error_chunk = {
-                                    "error": {
-                                        "message": "Userscript proxy request timed out or returned no response.",
-                                        "type": "proxy_timeout",
-                                        "code": HTTPStatus.GATEWAY_TIMEOUT,
-                                    }
-                                }
-                                yield f"data: {json.dumps(error_chunk)}\n\n"
-                                yield "data: [DONE]\n\n"
+                                yield f"data: {json.dumps(openai_error_payload('Userscript proxy request timed out or returned no response.', 'proxy_timeout', HTTPStatus.GATEWAY_TIMEOUT))}\n\n"
+                                yield SSE_DONE
                                 return
 
                             transport_used = "userscript"
@@ -755,7 +744,7 @@ async def api_chat_completions(core, request, api_key):
                                         done, _ = await asyncio.wait({refresh_task}, timeout=1.0)
                                         if refresh_task in done:
                                             break
-                                        yield ": keep-alive\n\n"
+                                        yield SSE_KEEPALIVE
                                     try:
                                         new_token = refresh_task.result()
                                     except Exception:
@@ -887,7 +876,7 @@ async def api_chat_completions(core, request, api_key):
                                             except Exception:
                                                 stream_context = None
                                             break
-                                        yield ": keep-alive\n\n"
+                                        yield SSE_KEEPALIVE
                                     if stream_context is not None:
                                         transport_used = "chrome"
                                     if stream_context is None:
@@ -900,7 +889,7 @@ async def api_chat_completions(core, request, api_key):
                                                 except Exception:
                                                     stream_context = None
                                                 break
-                                            yield ": keep-alive\n\n"
+                                            yield SSE_KEEPALIVE
                                         if stream_context is not None:
                                             transport_used = "camoufox"
                                 else:
@@ -913,7 +902,7 @@ async def api_chat_completions(core, request, api_key):
                                             except Exception:
                                                 stream_context = None
                                             break
-                                        yield ": keep-alive\n\n"
+                                        yield SSE_KEEPALIVE
                                     if stream_context is not None:
                                         transport_used = "camoufox"
                                     if stream_context is None:
@@ -926,7 +915,7 @@ async def api_chat_completions(core, request, api_key):
                                                 except Exception:
                                                     stream_context = None
                                                 break
-                                            yield ": keep-alive\n\n"
+                                            yield SSE_KEEPALIVE
                                         if stream_context is not None:
                                             transport_used = "chrome"
 
@@ -1023,11 +1012,11 @@ async def api_chat_completions(core, request, api_key):
                                             proxy_status_timed_out = True
                                             break
  
-                                        yield ": keep-alive\n\n"
+                                        yield SSE_KEEPALIVE
                                         await asyncio.sleep(1.0)
 
                                     if proxy_status_timed_out:
-                                        async for ka in wait_with_keepalive(0.5):
+                                        async for ka in sse_sleep_with_keepalive(core, 0.5):
                                             yield ka
                                         continue
                             
@@ -1039,15 +1028,8 @@ async def api_chat_completions(core, request, api_key):
                                 if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
                                     retry_429_count += 1
                                     if retry_429_count > 3:
-                                        error_chunk = {
-                                            "error": {
-                                                "message": "Too Many Requests (429) from upstream. Retries exhausted.",
-                                                "type": "rate_limit_error",
-                                                "code": HTTPStatus.TOO_MANY_REQUESTS,
-                                            }
-                                        }
-                                        yield f"data: {json.dumps(error_chunk)}\n\n"
-                                        yield "data: [DONE]\n\n"
+                                        yield f"data: {json.dumps(openai_error_payload('Too Many Requests (429) from upstream. Retries exhausted.', 'rate_limit_error', HTTPStatus.TOO_MANY_REQUESTS))}\n\n"
+                                        yield SSE_DONE
                                         return
 
                                     retry_after = None
@@ -1104,7 +1086,7 @@ async def api_chat_completions(core, request, api_key):
                                         if float(sleep_seconds) > max(0.0, remaining_budget):
                                             sleep_seconds = min(float(sleep_seconds), 1.0)
                                     
-                                    async for ka in wait_with_keepalive(sleep_seconds):
+                                    async for ka in sse_sleep_with_keepalive(core, sleep_seconds):
                                         yield ka
                                     continue
                                 
@@ -1175,7 +1157,7 @@ async def api_chat_completions(core, request, api_key):
                                                     debug_print(
                                                         "⏳ Still 403 after grace window; waiting for proxy job completion..."
                                                     )
-                                                yield ": keep-alive\n\n"
+                                                yield SSE_KEEPALIVE
                                                 await asyncio.sleep(0.5)
 
                                     # If the userscript proxy recovered (status changed after in-page retries),
@@ -1185,15 +1167,8 @@ async def api_chat_completions(core, request, api_key):
                                     else:
                                         retry_403_count += 1
                                         if retry_403_count > 5:
-                                            error_chunk = {
-                                                "error": {
-                                                    "message": "Forbidden (403) from upstream. Retries exhausted.",
-                                                    "type": "forbidden_error",
-                                                    "code": HTTPStatus.FORBIDDEN,
-                                                }
-                                            }
-                                            yield f"data: {json.dumps(error_chunk)}\n\n"
-                                            yield "data: [DONE]\n\n"
+                                            yield f"data: {json.dumps(openai_error_payload('Forbidden (403) from upstream. Retries exhausted.', 'forbidden_error', HTTPStatus.FORBIDDEN))}\n\n"
+                                            yield SSE_DONE
                                             return
 
                                         body_text = ""
@@ -1229,24 +1204,15 @@ async def api_chat_completions(core, request, api_key):
                                                     debug_print(
                                                         "? Too many reCAPTCHA failures in userscript proxy. Failing fast."
                                                     )
-                                                    error_chunk = {
-                                                        "error": {
-                                                            "message": (
-                                                                "Forbidden: reCAPTCHA validation failed repeatedly in userscript proxy."
-                                                            ),
-                                                            "type": "recaptcha_error",
-                                                            "code": HTTPStatus.FORBIDDEN,
-                                                        }
-                                                    }
-                                                    yield f"data: {json.dumps(error_chunk)}\n\n"
-                                                    yield "data: [DONE]\n\n"
+                                                    yield f"data: {json.dumps(openai_error_payload('Forbidden: reCAPTCHA validation failed repeatedly in userscript proxy.', 'recaptcha_error', HTTPStatus.FORBIDDEN))}\n\n"
+                                                    yield SSE_DONE
                                                     return
 
                                             if isinstance(payload, dict):
                                                 payload["recaptchaV3Token"] = ""
                                                 payload.pop("recaptchaV2Token", None)
 
-                                            async for ka in wait_with_keepalive(1.5):
+                                            async for ka in sse_sleep_with_keepalive(core, 1.5):
                                                 yield ka
                                             continue
 
@@ -1268,7 +1234,7 @@ async def api_chat_completions(core, request, api_key):
                                                     refresh_task = asyncio.create_task(
                                                         refresh_recaptcha_token(force_new=True)
                                                     )
-                                                    async for ka in wait_for_task(refresh_task):
+                                                    async for ka in sse_wait_for_task_with_keepalive(core, refresh_task):
                                                         yield ka
                                                     new_token = refresh_task.result()
                                                 except Exception:
@@ -1283,7 +1249,7 @@ async def api_chat_completions(core, request, api_key):
                                                     refresh_task = asyncio.create_task(
                                                         refresh_recaptcha_token(force_new=True)
                                                     )
-                                                    async for ka in wait_for_task(refresh_task):
+                                                    async for ka in sse_wait_for_task_with_keepalive(core, refresh_task):
                                                         yield ka
                                                     new_token = refresh_task.result()
                                                 except Exception:
@@ -1308,12 +1274,12 @@ async def api_chat_completions(core, request, api_key):
                                                 recaptcha_403_consecutive = 0
                                                 recaptcha_403_last_transport = None
 
-                                            async for ka in wait_with_keepalive(1.5):
+                                            async for ka in sse_sleep_with_keepalive(core, 1.5):
                                                 yield ka
                                             continue
 
                                         # If 403 but not recaptcha, might be other auth issue, but let's retry anyway
-                                        async for ka in wait_with_keepalive(2.0):
+                                        async for ka in sse_sleep_with_keepalive(core, 2.0):
                                             yield ka
                                         continue
 
@@ -1328,7 +1294,7 @@ async def api_chat_completions(core, request, api_key):
                                         headers = get_request_headers_with_token(current_token, recaptcha_token)
                                         if isinstance(payload, dict):
                                             payload["recaptchaV3Token"] = ""
-                                        async for ka in wait_with_keepalive(2.0):
+                                        async for ka in sse_sleep_with_keepalive(core, 2.0):
                                             yield ka
                                         continue
 
@@ -1366,7 +1332,7 @@ async def api_chat_completions(core, request, api_key):
                                         if isinstance(payload, dict):
                                             payload["recaptchaV3Token"] = ""
                                         debug_print("🔄 Refreshed arena-auth-prod-v1 session after 401. Retrying...")
-                                        async for ka in wait_with_keepalive(1.0):
+                                        async for ka in sse_sleep_with_keepalive(core, 1.0):
                                             yield ka
                                         continue
                                     
@@ -1375,51 +1341,21 @@ async def api_chat_completions(core, request, api_key):
                                         current_token = get_next_auth_token(exclude_tokens=failed_tokens)
                                         headers = get_request_headers_with_token(current_token, recaptcha_token)
                                         debug_print(f"🔄 Retrying stream with next token: {current_token[:20]}...")
-                                        async for ka in wait_with_keepalive(1.0):
+                                        async for ka in sse_sleep_with_keepalive(core, 1.0):
                                             yield ka
                                         continue
                                     except HTTPException:
                                         debug_print("No more tokens available for streaming request.")
-                                        error_chunk = {
-                                            "error": {
-                                                "message": (
-                                                    "Unauthorized: Your LMArena auth token has expired or is invalid. "
-                                                    "Please get a new auth token from the dashboard."
-                                                ),
-                                                "type": "authentication_error",
-                                                "code": HTTPStatus.UNAUTHORIZED,
-                                            }
-                                        }
-                                        yield f"data: {json.dumps(error_chunk)}\n\n"
-                                        yield "data: [DONE]\n\n"
+                                        yield f"data: {json.dumps(openai_error_payload('Unauthorized: Your LMArena auth token has expired or is invalid. Please get a new auth token from the dashboard.', 'authentication_error', HTTPStatus.UNAUTHORIZED))}\n\n"
+                                        yield SSE_DONE
                                         return
                                 
                                 log_http_status(response.status_code, "Stream Connection")
                                 response.raise_for_status()
                                 
-                                # Wrapped iterator to yield keep-alives while waiting for upstream lines.
-                                # NOTE: Avoid asyncio.wait_for() here; cancelling __anext__ can break the iterator.
-                                async def _aiter_with_keepalive(it):
-                                    pending: Optional[asyncio.Task] = asyncio.create_task(it.__anext__())
-                                    try:
-                                        while True:
-                                            done, _ = await asyncio.wait({pending}, timeout=1.0)
-                                            if pending not in done:
-                                                yield None
-                                                continue
-                                            try:
-                                                item = pending.result()
-                                            except StopAsyncIteration:
-                                                break
-                                            pending = asyncio.create_task(it.__anext__())
-                                            yield item
-                                    finally:
-                                        if pending is not None and not pending.done():
-                                            pending.cancel()
-
-                                async for maybe_line in _aiter_with_keepalive(response.aiter_lines().__aiter__()):
+                                async for maybe_line in aiter_with_keepalive(core, response.aiter_lines().__aiter__()):
                                     if maybe_line is None:
-                                        yield ": keep-alive\n\n"
+                                        yield SSE_KEEPALIVE
                                         continue
 
                                     line = str(maybe_line).strip()
@@ -1487,15 +1423,8 @@ async def api_chat_completions(core, request, api_key):
                                         recaptcha_403_failures += 1
                                         if recaptcha_403_failures >= 5:
                                             debug_print("❌ Too many reCAPTCHA failures (detected in body). Failing fast.")
-                                            error_chunk = {
-                                                "error": {
-                                                    "message": f"Forbidden: reCAPTCHA validation failed. Upstream hint: {upstream_hint[:200]}",
-                                                    "type": "recaptcha_error",
-                                                    "code": HTTPStatus.FORBIDDEN,
-                                                }
-                                            }
-                                            yield f"data: {json.dumps(error_chunk)}\n\n"
-                                            yield "data: [DONE]\n\n"
+                                            yield f"data: {json.dumps(openai_error_payload(f'Forbidden: reCAPTCHA validation failed. Upstream hint: {upstream_hint[:200]}', 'recaptcha_error', HTTPStatus.FORBIDDEN))}\n\n"
+                                            yield SSE_DONE
                                             return
                                 elif unhandled_preview:
                                     debug_print(f"   Upstream preview: {unhandled_preview[0][:200]}")
@@ -1503,15 +1432,12 @@ async def api_chat_completions(core, request, api_key):
                                 no_delta_failures += 1
                                 if no_delta_failures >= 10:
                                     debug_print("❌ Too many attempts with no content produced. Failing fast.")
-                                    error_chunk = {
-                                        "error": {
-                                            "message": f"Upstream failure: The request produced no content after multiple retries. Last hint: {upstream_hint[:200] if upstream_hint else 'None'}",
-                                            "type": "upstream_error",
-                                            "code": HTTPStatus.BAD_GATEWAY,
-                                        }
-                                    }
-                                    yield f"data: {json.dumps(error_chunk)}\n\n"
-                                    yield "data: [DONE]\n\n"
+                                    msg = (
+                                        "Upstream failure: The request produced no content after multiple retries. "
+                                        f"Last hint: {upstream_hint[:200] if upstream_hint else 'None'}"
+                                    )
+                                    yield f"data: {json.dumps(openai_error_payload(msg, 'upstream_error', HTTPStatus.BAD_GATEWAY))}\n\n"
+                                    yield SSE_DONE
                                     return
 
                                 # If the userscript proxy actually returned an upstream HTTP error, don't spin forever
@@ -1531,33 +1457,16 @@ async def api_chat_completions(core, request, api_key):
                                             current_token = get_next_auth_token(exclude_tokens=failed_tokens)
                                             headers = get_request_headers_with_token(current_token, recaptcha_token)
                                         except HTTPException:
-                                            error_chunk = {
-                                                "error": {
-                                                    "message": (
-                                                        "Unauthorized: Your LMArena auth token has expired or is invalid. "
-                                                        "Please get a new auth token from the dashboard."
-                                                    ),
-                                                    "type": "authentication_error",
-                                                    "code": HTTPStatus.UNAUTHORIZED,
-                                                }
-                                            }
-                                            yield f"data: {json.dumps(error_chunk)}\n\n"
-                                            yield "data: [DONE]\n\n"
+                                            yield f"data: {json.dumps(openai_error_payload('Unauthorized: Your LMArena auth token has expired or is invalid. Please get a new auth token from the dashboard.', 'authentication_error', HTTPStatus.UNAUTHORIZED))}\n\n"
+                                            yield SSE_DONE
                                             return
 
                                     if proxy_status == HTTPStatus.FORBIDDEN:
                                         recaptcha_403_failures += 1
                                         if recaptcha_403_failures >= 5:
                                             debug_print("❌ Too many reCAPTCHA failures in userscript proxy. Failing fast.")
-                                            error_chunk = {
-                                                "error": {
-                                                    "message": "Forbidden: reCAPTCHA validation failed repeatedly in userscript proxy.",
-                                                    "type": "recaptcha_error",
-                                                    "code": HTTPStatus.FORBIDDEN,
-                                                }
-                                            }
-                                            yield f"data: {json.dumps(error_chunk)}\n\n"
-                                            yield "data: [DONE]\n\n"
+                                            yield f"data: {json.dumps(openai_error_payload('Forbidden: reCAPTCHA validation failed repeatedly in userscript proxy.', 'recaptcha_error', HTTPStatus.FORBIDDEN))}\n\n"
+                                            yield SSE_DONE
                                             return
 
                                         # Common case: the proxy session gets flagged (reCAPTCHA). Retry with a fresh
@@ -1568,7 +1477,7 @@ async def api_chat_completions(core, request, api_key):
                                             payload["recaptchaV3Token"] = ""
                                             payload.pop("recaptchaV2Token", None)
 
-                                    yield ": keep-alive\n\n"
+                                    yield SSE_KEEPALIVE
                                     continue
 
                                 # If the proxy upstream is rate-limited, respect Retry-After/backoff.
@@ -1622,21 +1531,14 @@ async def api_chat_completions(core, request, api_key):
                                     # If we still can't wait within the remaining deadline, fail now instead of sending
                                     # keep-alives indefinitely.
                                     if (time.monotonic() - stream_started_at + float(sleep_seconds)) > stream_total_timeout_seconds:
-                                        error_chunk = {
-                                            "error": {
-                                                "message": f"Upstream rate limit (429) would exceed stream deadline ({int(sleep_seconds)}s backoff).",
-                                                "type": "rate_limit_error",
-                                                "code": HTTPStatus.TOO_MANY_REQUESTS,
-                                            }
-                                        }
-                                        yield f"data: {json.dumps(error_chunk)}\n\n"
-                                        yield "data: [DONE]\n\n"
+                                        yield f"data: {json.dumps(openai_error_payload(f'Upstream rate limit (429) would exceed stream deadline ({int(sleep_seconds)}s backoff).', 'rate_limit_error', HTTPStatus.TOO_MANY_REQUESTS))}\n\n"
+                                        yield SSE_DONE
                                         return
 
-                                    async for ka in wait_with_keepalive(sleep_seconds):
+                                    async for ka in sse_sleep_with_keepalive(core, sleep_seconds):
                                         yield ka
                                 else:
-                                    async for ka in wait_with_keepalive(1.5):
+                                    async for ka in sse_sleep_with_keepalive(core, 1.5):
                                         yield ka
                                 continue
 
@@ -1649,14 +1551,7 @@ async def api_chat_completions(core, request, api_key):
                             if reasoning_text:
                                 assistant_message["reasoning_content"] = reasoning_text.strip()
                             if citations:
-                                # Deduplicate citations by URL
-                                unique_citations = []
-                                seen_urls = set()
-                                for citation in citations:
-                                    citation_url = citation.get('url')
-                                    if citation_url and citation_url not in seen_urls:
-                                        seen_urls.add(citation_url)
-                                        unique_citations.append(citation)
+                                unique_citations, _ = format_citations(citations)
                                 assistant_message["citations"] = unique_citations
                             
                             if not session:
@@ -1679,7 +1574,7 @@ async def api_chat_completions(core, request, api_key):
                                 )
                                 debug_print(f"💾 Updated existing session for conversation {conversation_id}")
                             
-                            yield "data: [DONE]\n\n"
+                            yield SSE_DONE
                             debug_print(f"✅ Stream completed - {len(response_text)} chars sent")
                             return  # Success, exit retry loop
                                 
@@ -1690,15 +1585,8 @@ async def api_chat_completions(core, request, api_key):
                             if current_retry_attempt > max_retries:
                                 error_msg = "LMArena API error 429: Too many requests. Max retries exceeded. Terminating stream."
                                 debug_print(f"❌ {error_msg}")
-                                error_chunk = {
-                                    "error": {
-                                        "message": error_msg,
-                                        "type": "api_error",
-                                        "code": e.response.status_code,
-                                    }
-                                }
-                                yield f"data: {json.dumps(error_chunk)}\n\n"
-                                yield "data: [DONE]\n\n"
+                                yield f"data: {json.dumps(openai_error_payload(error_msg, 'api_error', e.response.status_code))}\n\n"
+                                yield SSE_DONE
                                 return
 
                             retry_after_header = e.response.headers.get("Retry-After")
@@ -1709,7 +1597,7 @@ async def api_chat_completions(core, request, api_key):
                                 f"⏱️ LMArena API returned 429 (Too Many Requests). "
                                 f"Retrying in {sleep_seconds} seconds (attempt {current_retry_attempt}/{max_retries})."
                             )
-                            async for ka in wait_with_keepalive(sleep_seconds):
+                            async for ka in sse_sleep_with_keepalive(core, sleep_seconds):
                                 yield ka
                             continue # Continue to the next iteration of the while True loop
                         elif e.response.status_code == 403:
@@ -1717,15 +1605,8 @@ async def api_chat_completions(core, request, api_key):
                             if current_retry_attempt > max_retries:
                                 error_msg = "LMArena API error 403: Forbidden. Max retries exceeded. Terminating stream."
                                 debug_print(f"❌ {error_msg}")
-                                error_chunk = {
-                                    "error": {
-                                        "message": error_msg,
-                                        "type": "api_error",
-                                        "code": e.response.status_code,
-                                    }
-                                }
-                                yield f"data: {json.dumps(error_chunk)}\n\n"
-                                yield "data: [DONE]\n\n"
+                                yield f"data: {json.dumps(openai_error_payload(error_msg, 'api_error', e.response.status_code))}\n\n"
+                                yield SSE_DONE
                                 return
                             
                             debug_print(
@@ -1733,7 +1614,7 @@ async def api_chat_completions(core, request, api_key):
                                 f"Retrying with exponential backoff (attempt {current_retry_attempt}/{max_retries})."
                             )
                             sleep_seconds = get_general_backoff_seconds(current_retry_attempt)
-                            async for ka in wait_with_keepalive(sleep_seconds):
+                            async for ka in sse_sleep_with_keepalive(core, sleep_seconds):
                                 yield ka
                             continue # Continue to the next iteration of the while True loop
                         elif e.response.status_code == 401:
@@ -1743,19 +1624,12 @@ async def api_chat_completions(core, request, api_key):
                             if current_retry_attempt > max_retries:
                                 error_msg = "LMArena API error 401: Unauthorized. Max retries exceeded. Terminating stream."
                                 debug_print(f"❌ {error_msg}")
-                                error_chunk = {
-                                    "error": {
-                                        "message": error_msg,
-                                        "type": "api_error",
-                                        "code": e.response.status_code,
-                                    }
-                                }
-                                yield f"data: {json.dumps(error_chunk)}\n\n"
-                                yield "data: [DONE]\n\n"
+                                yield f"data: {json.dumps(openai_error_payload(error_msg, 'api_error', e.response.status_code))}\n\n"
+                                yield SSE_DONE
                                 return
-                            # The original code has `continue` here, which leads to `async for ka in wait_with_keepalive(2.0): yield ka`.
+                            # The original code has `continue` here, which leads to an additional keepalive sleep.
                             # This is fine for 401 to allow token rotation and retry.
-                            async for ka in wait_with_keepalive(2.0):
+                            async for ka in sse_sleep_with_keepalive(core, 2.0):
                                 yield ka
                             continue
                         else:
@@ -1782,15 +1656,8 @@ async def api_chat_completions(core, request, api_key):
                             error_type = "api_error"
                             
                             debug_print(f"❌ {error_msg}")
-                            error_chunk = {
-                                "error": {
-                                    "message": error_msg,
-                                    "type": error_type,
-                                    "code": e.response.status_code
-                                }
-                            }
-                            yield f"data: {json.dumps(error_chunk)}\n\n"
-                            yield "data: [DONE]\n\n"
+                            yield f"data: {json.dumps(openai_error_payload(error_msg, error_type, e.response.status_code))}\n\n"
+                            yield SSE_DONE
                             return
                     except Exception as e:
                         debug_print(f"❌ Stream error: {str(e)}")
@@ -1800,14 +1667,8 @@ async def api_chat_completions(core, request, api_key):
                         # But legitimate internal errors should probably surface.
                         # Let's retry on network-like errors if we can distinguish them.
                         # For now, yield error.
-                        error_chunk = {
-                            "error": {
-                                "message": str(e),
-                                "type": "internal_error"
-                            }
-                        }
-                        yield f"data: {json.dumps(error_chunk)}\n\n"
-                        yield "data: [DONE]\n\n"
+                        yield f"data: {json.dumps(openai_error_payload(str(e), 'internal_error', 'internal_error'))}\n\n"
+                        yield SSE_DONE
                         return
             return StreamingResponse(generate_stream(), media_type="text/event-stream")
         
@@ -1992,25 +1853,11 @@ async def api_chat_completions(core, request, api_key):
                 if error_message:
                     error_detail = f"LMArena API error: {error_message}"
                     print(f"❌ {error_detail}")
-                    # Return OpenAI-compatible error response
-                    return {
-                        "error": {
-                            "message": error_detail,
-                            "type": "upstream_error",
-                            "code": "lmarena_error"
-                        }
-                    }
+                    return openai_error_payload(error_detail, "upstream_error", "lmarena_error")
                 else:
                     error_detail = "LMArena API returned empty response. This could be due to: invalid auth token, expired cf_clearance, model unavailable, or API rate limiting."
                     debug_print(f"❌ {error_detail}")
-                    # Return OpenAI-compatible error response
-                    return {
-                        "error": {
-                            "message": error_detail,
-                            "type": "upstream_error",
-                            "code": "empty_response"
-                        }
-                    }
+                    return openai_error_payload(error_detail, "upstream_error", "empty_response")
             else:
                 debug_print(f"✅ Response text preview: {response_text[:200]}...")
             
@@ -2022,17 +1869,12 @@ async def api_chat_completions(core, request, api_key):
             }
             if reasoning_text:
                 assistant_message["reasoning_content"] = reasoning_text.strip()
+            unique_citations = []
+            citation_footnotes = ""
             if citations:
-                # Deduplicate citations by URL
-                unique_citations = []
-                seen_urls = set()
-                for citation in citations:
-                    citation_url = citation.get('url')
-                    if citation_url and citation_url not in seen_urls:
-                        seen_urls.add(citation_url)
-                        unique_citations.append(citation)
+                unique_citations, citation_footnotes = format_citations(citations)
                 assistant_message["citations"] = unique_citations
-            
+
             if not session:
                 chat_sessions[api_key_str][conversation_id] = {
                     "conversation_id": session_id,
@@ -2061,25 +1903,10 @@ async def api_chat_completions(core, request, api_key):
             if reasoning_text:
                 message_obj["reasoning_content"] = reasoning_text.strip()
             if citations:
-                # Deduplicate citations by URL
-                unique_citations = []
-                seen_urls = set()
-                for citation in citations:
-                    citation_url = citation.get('url')
-                    if citation_url and citation_url not in seen_urls:
-                        seen_urls.add(citation_url)
-                        unique_citations.append(citation)
                 message_obj["citations"] = unique_citations
-                
-                # Add citations as markdown footnotes
-                if unique_citations:
-                    footnotes = "\n\n---\n\n**Sources:**\n\n"
-                    for i, citation in enumerate(unique_citations, 1):
-                        title = citation.get('title', 'Untitled')
-                        url = citation.get('url', '')
-                        footnotes += f"{i}. [{title}]({url})\n"
-                    message_obj["content"] = response_text.strip() + footnotes
-            
+                if citation_footnotes:
+                    message_obj["content"] = response_text.strip() + citation_footnotes
+
             # Image models already have markdown formatting from parsing
             # No additional conversion needed
             
@@ -2165,28 +1992,14 @@ async def api_chat_completions(core, request, api_key):
             debug_print(f"📥 Response text: {e.response.text[:500]}")
             print("="*80 + "\n")
             
-            # Return OpenAI-compatible error response
-            return {
-                "error": {
-                    "message": error_detail,
-                    "type": error_type,
-                    "code": f"http_{e.response.status_code}"
-                }
-            }
+            return openai_error_payload(error_detail, error_type, f"http_{e.response.status_code}")
         
         except httpx.TimeoutException as e:
             print(f"\n⏱️  TIMEOUT ERROR")
             print(f"📛 Request timed out after 120 seconds")
             print(f"📤 Request URL: {url}")
             print("="*80 + "\n")
-            # Return OpenAI-compatible error response
-            return {
-                "error": {
-                    "message": "Request to LMArena API timed out after 120 seconds",
-                    "type": "timeout_error",
-                    "code": "request_timeout"
-                }
-            }
+            return openai_error_payload("Request to LMArena API timed out after 120 seconds", "timeout_error", "request_timeout")
         
         except Exception as e:
             print(f"\n❌ UNEXPECTED ERROR IN HTTP CLIENT")
@@ -2194,14 +2007,7 @@ async def api_chat_completions(core, request, api_key):
             print(f"📛 Error message: {str(e)}")
             print(f"📤 Request URL: {url}")
             print("="*80 + "\n")
-            # Return OpenAI-compatible error response
-            return {
-                "error": {
-                    "message": f"Unexpected error: {str(e)}",
-                    "type": "internal_error",
-                    "code": type(e).__name__.lower()
-                }
-            }
+            return openai_error_payload(f"Unexpected error: {str(e)}", "internal_error", type(e).__name__.lower())
                 
     except HTTPException:
         raise

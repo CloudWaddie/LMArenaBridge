@@ -6,6 +6,8 @@ from typing import Any, Optional
 
 import httpx
 
+from .stream_response import iter_queue_lines, raise_for_status_like_httpx
+
 
 class UserscriptProxyStreamResponse:
     """httpx-like streaming response wrapper backed by an in-memory job queue."""
@@ -92,23 +94,24 @@ class UserscriptProxyStreamResponse:
             return
 
         deadline = time.time() + float(max(5, self._timeout_seconds))
-        while True:
-            if done_event.is_set() and q.empty():
-                break
-            remaining = deadline - time.time()
-            if remaining <= 0:
-                job["error"] = job.get("error") or "userscript proxy timeout"
-                job["done"] = True
-                done_event.set()
-                break
-            try:
-                timeout = max(0.25, min(2.0, remaining))
-                line = await asyncio.wait_for(q.get(), timeout=timeout)
-            except asyncio.TimeoutError:
-                continue
-            if line is None:
-                break
-            yield str(line)
+
+        def _on_deadline() -> None:
+            if done_event.is_set() or job.get("done"):
+                return
+            job["error"] = job.get("error") or "userscript proxy timeout"
+            job["done"] = True
+            done_event.set()
+
+        async for line in iter_queue_lines(
+            q,
+            done_event=done_event,
+            deadline_at=deadline,
+            time_fn=time.time,
+            min_wait_seconds=0.25,
+            max_wait_seconds=2.0,
+            on_deadline=_on_deadline,
+        ):
+            yield line
 
     async def aread(self) -> bytes:
         job = self._service.get_job(self.job_id)
@@ -131,14 +134,21 @@ class UserscriptProxyStreamResponse:
     def raise_for_status(self) -> None:
         job = self._service.get_job(self.job_id)
         if isinstance(job, dict) and job.get("error"):
-            request = httpx.Request(self._method, self._url)
-            response = httpx.Response(503, request=request, content=str(job.get("error")).encode("utf-8"))
-            raise httpx.HTTPStatusError("Userscript proxy error", request=request, response=response)
+            raise_for_status_like_httpx(
+                status_code=503,
+                method=self._method,
+                url=self._url,
+                message="Userscript proxy error",
+                content=str(job.get("error")).encode("utf-8"),
+            )
         status = int(self.status_code or 0)
         if status == 0 or status >= 400:
-            request = httpx.Request(self._method, self._url)
-            response = httpx.Response(status or 502, request=request)
-            raise httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
+            raise_for_status_like_httpx(
+                status_code=status,
+                method=self._method,
+                url=self._url,
+                message=f"HTTP {status}",
+            )
 
 
 class ProxyService:

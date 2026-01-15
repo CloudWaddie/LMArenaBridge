@@ -9,6 +9,7 @@ import httpx
 from camoufox.async_api import AsyncCamoufox
 
 from .browser_automation import build_lmarena_context_cookies, extract_lmarena_cookie_values
+from .stream_response import iter_queue_lines, raise_for_status_like_httpx
 
 # Shared constants and helpers for browser-based fetch transports
 
@@ -187,17 +188,12 @@ class BrowserFetchStreamResponse:
     async def aiter_lines(self) -> AsyncIterator[str]:
         if self._lines_queue is not None:
             # Streaming mode
-            while True:
-                if self._done_event and self._done_event.is_set() and self._lines_queue.empty():
-                    break
-                try:
-                    # Brief timeout to check done_event occasionally
-                    line = await asyncio.wait_for(self._lines_queue.get(), timeout=1.0)
-                    if line is None: # Sentinel for EOF
-                        break
-                    yield line
-                except asyncio.TimeoutError:
-                    continue
+            async for line in iter_queue_lines(
+                self._lines_queue,
+                done_event=self._done_event,
+                poll_timeout_seconds=1.0,
+            ):
+                yield line
         else:
             # Buffered mode
             for line in self._text.splitlines():
@@ -216,9 +212,13 @@ class BrowserFetchStreamResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code == 0 or self.status_code >= HTTPStatus.BAD_REQUEST:
-            request = httpx.Request(self._method, self._url or "https://lmarena.ai/")
-            response = httpx.Response(self.status_code or HTTPStatus.BAD_GATEWAY, request=request, content=self._text.encode("utf-8"))
-            raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=request, response=response)
+            raise_for_status_like_httpx(
+                status_code=int(self.status_code or 0),
+                method=self._method,
+                url=self._url,
+                message=f"HTTP {self.status_code}",
+                content=self._text.encode("utf-8"),
+            )
 
 
 async def fetch_lmarena_stream_via_chrome(

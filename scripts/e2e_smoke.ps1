@@ -249,6 +249,8 @@ with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0), follow_redirects=Tr
             if len(captured_data) < 50:
                 captured_data.append(data)
             obj = json.loads(data)
+            if isinstance(obj, dict) and obj.get("error"):
+                fail(f"Stream returned error payload: {json.dumps(obj.get('error'), ensure_ascii=False)[:800]}")
             choices = obj.get("choices") or []
             if not choices:
                 continue

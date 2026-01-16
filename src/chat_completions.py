@@ -471,7 +471,7 @@ async def api_chat_completions(core, request, api_key):
         # Handle streaming mode
         if stream:
             async def generate_stream():
-                nonlocal current_token, failed_tokens, recaptcha_token
+                nonlocal current_token, failed_tokens, recaptcha_token, session
                 
                 # Safety: don't keep client sockets open forever on repeated upstream failures.
                 try:

@@ -1,0 +1,335 @@
+INFO:     Started server process [21468]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+============================================================
+🚀 LMArena Bridge Server Starting...
+============================================================
+📍 Dashboard: http://localhost:8000/dashboard
+🔐 Login: http://localhost:8000/login
+📚 API Base URL: http://localhost:8000/api/v1
+============================================================
+🚀 LMArena Bridge Server Starting...
+Starting initial data retrieval...
+  🎯 Setting up route interceptor for JS chunks...
+Navigating to lmarena.ai...
+Waiting for Cloudflare challenge to complete...
+✅ Cloudflare challenge passed.
+✅ Saved cf_clearance token: VYYiKvQEVHoDz8Hj1AVB...
+Extracting models from page...
+⚠️ Could not find models in page
+
+Extracting Next-Action IDs from 86 captured JS responses...
+  📦 Processing 86 JavaScript chunk files
+    📥 Found getSignedUrl action ID: 604f05b56df1ebc74fe9...
+    📤 Found generateUploadUrl action ID: 70bb3b899a42c9e2b7f3...
+  ✅ Found both action IDs, stopping search
+
+✅ Saved both Next-Action IDs to config
+   Upload: 70bb3b899a42c9e2b7f365bce1ed2ccd6f0be80895
+   Signed URL: 604f05b56df1ebc74fe921927325635872c1fe0da5
+
+Extracting reCAPTCHA params from 86 captured JS responses...
+✅ Saved reCAPTCHA params to config
+   Sitekey: 6Led_uYrAAAAAKjxDIF5...
+✅ Initial data retrieval complete
+🦊 Camoufox proxy worker started (Singleton Mode).
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-gpQ4ru -juggler-pipe -silent
+<launched> pid=21838
+[pid=21838][err] Error: cannot open display: :99
+[pid=21838] <process did exit: exitCode=1, signal=null>
+[pid=21838] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-gpQ4ru -juggler-pipe -silent
+  - <launched> pid=21838
+  - [pid=21838][err] Error: cannot open display: :99
+  - [pid=21838] <process did exit: exitCode=1, signal=null>
+  - [pid=21838] starting temporary directories cleanup
+  - [pid=21838] <gracefully close start>
+  - [pid=21838] finished temporary directories cleanup
+  - [pid=21838] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-gpQ4ru -juggler-pipe -silent
+<launched> pid=21838
+[pid=21838][err] Error: cannot open display: :99
+[pid=21838] <process did exit: exitCode=1, signal=null>
+[pid=21838] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-gpQ4ru -juggler-pipe -silent
+  - <launched> pid=21838
+  - [pid=21838][err] Error: cannot open display: :99
+  - [pid=21838] <process did exit: exitCode=1, signal=null>
+  - [pid=21838] starting temporary directories cleanup
+  - [pid=21838] <gracefully close start>
+  - [pid=21838] finished temporary directories cleanup
+  - [pid=21838] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-gkalAa -juggler-pipe -silent
+<launched> pid=21858
+[pid=21858][err] Error: cannot open display: :99
+[pid=21858] <process did exit: exitCode=1, signal=null>
+[pid=21858] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-gkalAa -juggler-pipe -silent
+  - <launched> pid=21858
+  - [pid=21858][err] Error: cannot open display: :99
+  - [pid=21858] <process did exit: exitCode=1, signal=null>
+  - [pid=21858] starting temporary directories cleanup
+  - [pid=21858] <gracefully close start>
+  - [pid=21858] finished temporary directories cleanup
+  - [pid=21858] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-gkalAa -juggler-pipe -silent
+<launched> pid=21858
+[pid=21858][err] Error: cannot open display: :99
+[pid=21858] <process did exit: exitCode=1, signal=null>
+[pid=21858] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-gkalAa -juggler-pipe -silent
+  - <launched> pid=21858
+  - [pid=21858][err] Error: cannot open display: :99
+  - [pid=21858] <process did exit: exitCode=1, signal=null>
+  - [pid=21858] starting temporary directories cleanup
+  - [pid=21858] <gracefully close start>
+  - [pid=21858] finished temporary directories cleanup
+  - [pid=21858] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-2vu0qa -juggler-pipe -silent
+<launched> pid=22012
+[pid=22012][err] Error: cannot open display: :99
+[pid=22012] <process did exit: exitCode=1, signal=null>
+[pid=22012] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-2vu0qa -juggler-pipe -silent
+  - <launched> pid=22012
+  - [pid=22012][err] Error: cannot open display: :99
+  - [pid=22012] <process did exit: exitCode=1, signal=null>
+  - [pid=22012] starting temporary directories cleanup
+  - [pid=22012] <gracefully close start>
+  - [pid=22012] finished temporary directories cleanup
+  - [pid=22012] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-2vu0qa -juggler-pipe -silent
+<launched> pid=22012
+[pid=22012][err] Error: cannot open display: :99
+[pid=22012] <process did exit: exitCode=1, signal=null>
+[pid=22012] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-2vu0qa -juggler-pipe -silent
+  - <launched> pid=22012
+  - [pid=22012][err] Error: cannot open display: :99
+  - [pid=22012] <process did exit: exitCode=1, signal=null>
+  - [pid=22012] starting temporary directories cleanup
+  - [pid=22012] <gracefully close start>
+  - [pid=22012] finished temporary directories cleanup
+  - [pid=22012] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-foFotB -juggler-pipe -silent
+<launched> pid=22107
+[pid=22107][err] Error: cannot open display: :99
+[pid=22107] <process did exit: exitCode=1, signal=null>
+[pid=22107] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-foFotB -juggler-pipe -silent
+  - <launched> pid=22107
+  - [pid=22107][err] Error: cannot open display: :99
+  - [pid=22107] <process did exit: exitCode=1, signal=null>
+  - [pid=22107] starting temporary directories cleanup
+  - [pid=22107] <gracefully close start>
+  - [pid=22107] finished temporary directories cleanup
+  - [pid=22107] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-foFotB -juggler-pipe -silent
+<launched> pid=22107
+[pid=22107][err] Error: cannot open display: :99
+[pid=22107] <process did exit: exitCode=1, signal=null>
+[pid=22107] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-foFotB -juggler-pipe -silent
+  - <launched> pid=22107
+  - [pid=22107][err] Error: cannot open display: :99
+  - [pid=22107] <process did exit: exitCode=1, signal=null>
+  - [pid=22107] starting temporary directories cleanup
+  - [pid=22107] <gracefully close start>
+  - [pid=22107] finished temporary directories cleanup
+  - [pid=22107] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-2OcRw3 -juggler-pipe -silent
+<launched> pid=22132
+[pid=22132][err] Error: cannot open display: :99
+[pid=22132] <process did exit: exitCode=1, signal=null>
+[pid=22132] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-2OcRw3 -juggler-pipe -silent
+  - <launched> pid=22132
+  - [pid=22132][err] Error: cannot open display: :99
+  - [pid=22132] <process did exit: exitCode=1, signal=null>
+  - [pid=22132] starting temporary directories cleanup
+  - [pid=22132] <gracefully close start>
+  - [pid=22132] finished temporary directories cleanup
+  - [pid=22132] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-2OcRw3 -juggler-pipe -silent
+<launched> pid=22132
+[pid=22132][err] Error: cannot open display: :99
+[pid=22132] <process did exit: exitCode=1, signal=null>
+[pid=22132] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-2OcRw3 -juggler-pipe -silent
+  - <launched> pid=22132
+  - [pid=22132][err] Error: cannot open display: :99
+  - [pid=22132] <process did exit: exitCode=1, signal=null>
+  - [pid=22132] starting temporary directories cleanup
+  - [pid=22132] <gracefully close start>
+  - [pid=22132] finished temporary directories cleanup
+  - [pid=22132] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-1ARaIF -juggler-pipe -silent
+<launched> pid=22152
+[pid=22152][err] Error: cannot open display: :99
+[pid=22152] <process did exit: exitCode=1, signal=null>
+[pid=22152] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-1ARaIF -juggler-pipe -silent
+  - <launched> pid=22152
+  - [pid=22152][err] Error: cannot open display: :99
+  - [pid=22152] <process did exit: exitCode=1, signal=null>
+  - [pid=22152] starting temporary directories cleanup
+  - [pid=22152] <gracefully close start>
+  - [pid=22152] finished temporary directories cleanup
+  - [pid=22152] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-1ARaIF -juggler-pipe -silent
+<launched> pid=22152
+[pid=22152][err] Error: cannot open display: :99
+[pid=22152] <process did exit: exitCode=1, signal=null>
+[pid=22152] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-1ARaIF -juggler-pipe -silent
+  - <launched> pid=22152
+  - [pid=22152][err] Error: cannot open display: :99
+  - [pid=22152] <process did exit: exitCode=1, signal=null>
+  - [pid=22152] starting temporary directories cleanup
+  - [pid=22152] <gracefully close start>
+  - [pid=22152] finished temporary directories cleanup
+  - [pid=22152] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-hDO4dB -juggler-pipe -silent
+<launched> pid=22172
+[pid=22172][err] Error: cannot open display: :99
+[pid=22172] <process did exit: exitCode=1, signal=null>
+[pid=22172] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-hDO4dB -juggler-pipe -silent
+  - <launched> pid=22172
+  - [pid=22172][err] Error: cannot open display: :99
+  - [pid=22172] <process did exit: exitCode=1, signal=null>
+  - [pid=22172] starting temporary directories cleanup
+  - [pid=22172] <gracefully close start>
+  - [pid=22172] finished temporary directories cleanup
+  - [pid=22172] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-hDO4dB -juggler-pipe -silent
+<launched> pid=22172
+[pid=22172][err] Error: cannot open display: :99
+[pid=22172] <process did exit: exitCode=1, signal=null>
+[pid=22172] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-hDO4dB -juggler-pipe -silent
+  - <launched> pid=22172
+  - [pid=22172][err] Error: cannot open display: :99
+  - [pid=22172] <process did exit: exitCode=1, signal=null>
+  - [pid=22172] starting temporary directories cleanup
+  - [pid=22172] <gracefully close start>
+  - [pid=22172] finished temporary directories cleanup
+  - [pid=22172] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-PnAAx4 -juggler-pipe -silent
+<launched> pid=22192
+[pid=22192][err] Error: cannot open display: :99
+[pid=22192] <process did exit: exitCode=1, signal=null>
+[pid=22192] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-PnAAx4 -juggler-pipe -silent
+  - <launched> pid=22192
+  - [pid=22192][err] Error: cannot open display: :99
+  - [pid=22192] <process did exit: exitCode=1, signal=null>
+  - [pid=22192] starting temporary directories cleanup
+  - [pid=22192] <gracefully close start>
+  - [pid=22192] finished temporary directories cleanup
+  - [pid=22192] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+<launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-PnAAx4 -juggler-pipe -silent
+<launched> pid=22192
+[pid=22192][err] Error: cannot open display: :99
+[pid=22192] <process did exit: exitCode=1, signal=null>
+[pid=22192] starting temporary directories cleanup
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-PnAAx4 -juggler-pipe -silent
+  - <launched> pid=22192
+  - [pid=22192][err] Error: cannot open display: :99
+  - [pid=22192] <process did exit: exitCode=1, signal=null>
+  - [pid=22192] starting temporary directories cleanup
+  - [pid=22192] <gracefully close start>
+  - [pid=22192] finished temporary directories cleanup
+  - [pid=22192] <gracefully close end>
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [21468]

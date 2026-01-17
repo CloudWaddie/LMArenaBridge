@@ -1,5 +1,6 @@
 import time
 import uuid
+import json
 from typing import Optional
 from fastapi import APIRouter, Request, Response, Form, Depends, status
 from starlette.responses import HTMLResponse, RedirectResponse
@@ -253,9 +254,10 @@ async def dashboard(session: str = Depends(auth.get_current_session)):
 
     # Render API Keys
     keys_html = ""
+    import html
     for key in cfg["api_keys"]:
-        key_name = key.get("name") or "Unnamed Key"
-        key_value = key.get("key") or ""
+        key_name = html.escape(str(key.get("name") or "Unnamed Key"))
+        key_value = html.escape(str(key.get("key") or ""))
         rpm_value = key.get("rpm", 60)
         created_date = time.strftime('%Y-%m-%d %H:%M', time.localtime(key.get('created', 0)))
         keys_html += f"""
@@ -277,12 +279,13 @@ async def dashboard(session: str = Depends(auth.get_current_session)):
     text_models = [m for m in all_models if m.get('capabilities', {}).get('outputCapabilities', {}).get('text')]
     models_html = ""
     for i, model in enumerate(text_models[:20]):
-        rank = model.get('rank', '?')
-        org = model.get('organization', 'Unknown')
+        rank = html.escape(str(model.get('rank', '?')))
+        org = html.escape(str(model.get('organization', 'Unknown')))
+        name = html.escape(str(model.get('publicName', 'Unnamed')))
         models_html += f"""
             <div class="model-card">
                 <div class="model-header">
-                    <span class="model-name">{model.get('publicName', 'Unnamed')}</span>
+                    <span class="model-name">{name}</span>
                     <span class="model-rank">Rank {rank}</span>
                 </div>
                 <div class="model-org">{org}</div>
@@ -296,7 +299,8 @@ async def dashboard(session: str = Depends(auth.get_current_session)):
     stats_html = ""
     if globals.model_usage_stats:
         for model, count in sorted(globals.model_usage_stats.items(), key=lambda x: x[1], reverse=True)[:10]:
-            stats_html += f"<tr><td>{model}</td><td><strong>{count}</strong></td></tr>"
+            safe_model = html.escape(str(model))
+            stats_html += f"<tr><td>{safe_model}</td><td><strong>{count}</strong></td></tr>"
     else:
         stats_html = "<tr><td colspan='2' class='no-data'>No usage data yet</td></tr>"
 
@@ -313,7 +317,7 @@ async def dashboard(session: str = Depends(auth.get_current_session)):
     # Auth tokens section
     auth_tokens_html = "".join([f'''
                     <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; padding: 10px; background: #f8f9fa; border-radius: 6px;">
-                        <code style="flex: 1; font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all;">{token[:50]}...</code>
+                        <code style="flex: 1; font-family: 'Courier New', monospace; font-size: 12px; word-break: break-all;">{html.escape(str(token)[:50])}...</code>
                         <form action="/delete-auth-token" method="post" style="margin: 0;" onsubmit="return confirm('Delete this token?');">
                             <input type="hidden" name="token_index" value="{i}">
                             <button type="submit" class="btn-delete">Delete</button>
@@ -331,8 +335,8 @@ async def dashboard(session: str = Depends(auth.get_current_session)):
         model_labels.append(model)
         model_counts.append(count)
 
-    model_labels_json = str(model_labels).replace("'", '"') # Simple JSON encoding
-    model_counts_json = str(model_counts)
+    model_labels_json = json.dumps(model_labels) # Proper JSON encoding
+    model_counts_json = json.dumps(model_counts)
 
     return f"""
         <!DOCTYPE html>

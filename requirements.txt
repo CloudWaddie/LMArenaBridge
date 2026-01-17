@@ -3,3 +3,4 @@ uvicorn
 camoufox
 playwright
 httpx
+python-multipart

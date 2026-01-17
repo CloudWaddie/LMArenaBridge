@@ -3,36 +3,28 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from tests._stream_test_utils import BaseBridgeTest, FakeStreamContext, FakeStreamResponse
+from tests._stream_test_utils import BaseBridgeTest
 
 
 class TestStream403SwitchesToChromeFetch(BaseBridgeTest):
-    async def test_stream_403_recaptcha_switches_to_chrome_fetch(self) -> None:
-        stream_calls: dict[str, int] = {"count": 0}
-
-        def fake_stream(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
-            stream_calls["count"] += 1
-            return FakeStreamContext(
-                FakeStreamResponse(
-                    status_code=403,
-                    headers={},
-                    text='{"error":"recaptcha validation failed"}',
-                )
-            )
-
-        refresh_mock = AsyncMock(side_effect=["recaptcha-1", "recaptcha-2", "recaptcha-3", "recaptcha-4"])
+    async def test_stream_requires_userscript_proxy(self) -> None:
+        proxy_mock = AsyncMock()
+        refresh_mock = AsyncMock()
+        chrome_fetch_mock = AsyncMock()
         sleep_mock = AsyncMock()
 
-        chrome_resp = self.main.BrowserFetchStreamResponse(
-            status_code=200,
-            headers={},
-            text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
-            method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
-        )
-        chrome_fetch_mock = AsyncMock(return_value=chrome_resp)
+        def fail_httpx_stream(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
+            raise AssertionError("direct httpx streaming should not be used when proxy is required")
 
         with patch.object(self.main, "get_models") as get_models_mock, patch.object(
+            self.main,
+            "_userscript_proxy_is_active",
+            return_value=False,
+        ), patch.object(
+            self.main,
+            "fetch_via_proxy_queue",
+            proxy_mock,
+        ), patch.object(
             self.main,
             "refresh_recaptcha_token",
             refresh_mock,
@@ -43,7 +35,7 @@ class TestStream403SwitchesToChromeFetch(BaseBridgeTest):
         ), patch.object(
             httpx.AsyncClient,
             "stream",
-            new=fake_stream,
+            new=fail_httpx_stream,
         ), patch(
             "src.main.print",
         ), patch(
@@ -76,10 +68,11 @@ class TestStream403SwitchesToChromeFetch(BaseBridgeTest):
                 )
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("Hello", response.text)
         self.assertIn("[DONE]", response.text)
-        self.assertGreaterEqual(stream_calls["count"], 2)
-        chrome_fetch_mock.assert_awaited()
+        self.assertIn("userscript", response.text.lower())
+        proxy_mock.assert_not_awaited()
+        chrome_fetch_mock.assert_not_awaited()
+        self.assertEqual(refresh_mock.await_count, 0)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from tests._stream_test_utils import BaseBridgeTest
+from tests._stream_test_utils import BaseBridgeTest, FakeStreamContext, FakeStreamResponse
 
 
 class TestStrictModelsForceChromeFetch(BaseBridgeTest):
@@ -11,21 +11,31 @@ class TestStrictModelsForceChromeFetch(BaseBridgeTest):
         await super().asyncSetUp()
         self.setup_config({"chrome_fetch_recaptcha_max_attempts": 6})
 
-    async def test_gemini_grounding_stream_uses_chrome_fetch_first_try(self) -> None:
-        refresh_mock = AsyncMock(return_value="recaptcha-1")
-        chrome_resp = self.main.BrowserFetchStreamResponse(
-            status_code=200,
-            headers={},
-            text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
-            method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
+    async def test_gemini_grounding_stream_uses_userscript_proxy(self) -> None:
+        proxy_resp = FakeStreamContext(
+            FakeStreamResponse(
+                status_code=200,
+                headers={},
+                text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
+            )
         )
-        chrome_fetch_mock = AsyncMock(return_value=chrome_resp)
+
+        proxy_mock = AsyncMock(return_value=proxy_resp)
+        refresh_mock = AsyncMock()
+        chrome_fetch_mock = AsyncMock()
 
         def fail_if_httpx_stream_called(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
-            raise AssertionError("httpx.AsyncClient.stream should not be called for strict models")
+            raise AssertionError("httpx.AsyncClient.stream should not be called when proxy is active")
 
         with patch.object(self.main, "get_models") as get_models_mock, patch.object(
+            self.main,
+            "_userscript_proxy_is_active",
+            return_value=True,
+        ), patch.object(
+            self.main,
+            "fetch_via_proxy_queue",
+            proxy_mock,
+        ), patch.object(
             self.main,
             "refresh_recaptcha_token",
             refresh_mock,
@@ -67,8 +77,10 @@ class TestStrictModelsForceChromeFetch(BaseBridgeTest):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Hello", response.text)
-        chrome_fetch_mock.assert_awaited()
-        self.assertEqual(chrome_fetch_mock.await_args.kwargs.get("max_recaptcha_attempts"), 6)
+        self.assertIn("[DONE]", response.text)
+        proxy_mock.assert_awaited()
+        chrome_fetch_mock.assert_not_awaited()
+        self.assertEqual(refresh_mock.await_count, 0)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,234 @@
+INFO:     Started server process [11975]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+============================================================
+🚀 LMArena Bridge Server Starting...
+============================================================
+📍 Dashboard: http://localhost:8000/dashboard
+🔐 Login: http://localhost:8000/login
+📚 API Base URL: http://localhost:8000/api/v1
+============================================================
+🚀 LMArena Bridge Server Starting...
+Starting initial data retrieval...
+  🎯 Setting up route interceptor for JS chunks...
+Navigating to lmarena.ai...
+Waiting for Cloudflare challenge to complete...
+✅ Cloudflare challenge passed.
+✅ Saved cf_clearance token: hbM8n3e4ZmMGr0rvDrYl...
+Extracting models from page...
+⚠️ Could not find models in page
+
+Extracting Next-Action IDs from 86 captured JS responses...
+  📦 Processing 86 JavaScript chunk files
+    📥 Found getSignedUrl action ID: 604f05b56df1ebc74fe9...
+    📤 Found generateUploadUrl action ID: 70bb3b899a42c9e2b7f3...
+  ✅ Found both action IDs, stopping search
+
+✅ Saved both Next-Action IDs to config
+   Upload: 70bb3b899a42c9e2b7f365bce1ed2ccd6f0be80895
+   Signed URL: 604f05b56df1ebc74fe921927325635872c1fe0da5
+
+Extracting reCAPTCHA params from 86 captured JS responses...
+✅ Saved reCAPTCHA params to config
+   Sitekey: 6Led_uYrAAAAAKjxDIF5...
+✅ Initial data retrieval complete
+🦊 Camoufox proxy worker started (Singleton Mode).
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-IQv3Ao -juggler-pipe -silent
+  - <launched> pid=12399
+  - [pid=12399][err] Error: no DISPLAY environment variable specified
+  - [pid=12399] <process did exit: exitCode=1, signal=null>
+  - [pid=12399] starting temporary directories cleanup
+  - [pid=12399] <gracefully close start>
+  - [pid=12399] finished temporary directories cleanup
+  - [pid=12399] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-IQv3Ao -juggler-pipe -silent
+  - <launched> pid=12399
+  - [pid=12399][err] Error: no DISPLAY environment variable specified
+  - [pid=12399] <process did exit: exitCode=1, signal=null>
+  - [pid=12399] starting temporary directories cleanup
+  - [pid=12399] <gracefully close start>
+  - [pid=12399] finished temporary directories cleanup
+  - [pid=12399] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-lUMiET -juggler-pipe -silent
+  - <launched> pid=12482
+  - [pid=12482][err] Error: no DISPLAY environment variable specified
+  - [pid=12482] <process did exit: exitCode=1, signal=null>
+  - [pid=12482] starting temporary directories cleanup
+  - [pid=12482] <gracefully close start>
+  - [pid=12482] finished temporary directories cleanup
+  - [pid=12482] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-lUMiET -juggler-pipe -silent
+  - <launched> pid=12482
+  - [pid=12482][err] Error: no DISPLAY environment variable specified
+  - [pid=12482] <process did exit: exitCode=1, signal=null>
+  - [pid=12482] starting temporary directories cleanup
+  - [pid=12482] <gracefully close start>
+  - [pid=12482] finished temporary directories cleanup
+  - [pid=12482] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-5MwSJs -juggler-pipe -silent
+  - <launched> pid=12497
+  - [pid=12497][err] Error: no DISPLAY environment variable specified
+  - [pid=12497] <process did exit: exitCode=1, signal=null>
+  - [pid=12497] starting temporary directories cleanup
+  - [pid=12497] <gracefully close start>
+  - [pid=12497] finished temporary directories cleanup
+  - [pid=12497] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-5MwSJs -juggler-pipe -silent
+  - <launched> pid=12497
+  - [pid=12497][err] Error: no DISPLAY environment variable specified
+  - [pid=12497] <process did exit: exitCode=1, signal=null>
+  - [pid=12497] starting temporary directories cleanup
+  - [pid=12497] <gracefully close start>
+  - [pid=12497] finished temporary directories cleanup
+  - [pid=12497] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-ks5BVb -juggler-pipe -silent
+  - <launched> pid=12588
+  - [pid=12588][err] Error: no DISPLAY environment variable specified
+  - [pid=12588] <process did exit: exitCode=1, signal=null>
+  - [pid=12588] starting temporary directories cleanup
+  - [pid=12588] <gracefully close start>
+  - [pid=12588] finished temporary directories cleanup
+  - [pid=12588] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-ks5BVb -juggler-pipe -silent
+  - <launched> pid=12588
+  - [pid=12588][err] Error: no DISPLAY environment variable specified
+  - [pid=12588] <process did exit: exitCode=1, signal=null>
+  - [pid=12588] starting temporary directories cleanup
+  - [pid=12588] <gracefully close start>
+  - [pid=12588] finished temporary directories cleanup
+  - [pid=12588] <gracefully close end>
+
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (TargetClosedError): BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-GrY9Pd -juggler-pipe -silent
+  - <launched> pid=12608
+  - [pid=12608][err] Error: no DISPLAY environment variable specified
+  - [pid=12608] <process did exit: exitCode=1, signal=null>
+  - [pid=12608] starting temporary directories cleanup
+  - [pid=12608] <gracefully close start>
+  - [pid=12608] finished temporary directories cleanup
+  - [pid=12608] <gracefully close end>
+
+⚠️ Camoufox proxy worker exception: BrowserType.launch: Target page, context or browser has been closed
+Browser logs:
+
+╔════════════════════════════════════════════════════════════════════════════════════════════════╗
+║ Looks like you launched a headed browser without having a XServer running.                     ║
+║ Set either 'headless: true' or use 'xvfb-run <your-playwright-app>' before running Playwright. ║
+║                                                                                                ║
+║ <3 Playwright Team                                                                             ║
+╚════════════════════════════════════════════════════════════════════════════════════════════════╝
+Call log:
+  - <launching> /home/jules/.cache/camoufox/camoufox-bin -no-remote -wait-for-browser -foreground -profile /tmp/playwright_firefoxdev_profile-GrY9Pd -juggler-pipe -silent
+  - <launched> pid=12608
+  - [pid=12608][err] Error: no DISPLAY environment variable specified
+  - [pid=12608] <process did exit: exitCode=1, signal=null>
+  - [pid=12608] starting temporary directories cleanup
+  - [pid=12608] <gracefully close start>
+  - [pid=12608] finished temporary directories cleanup
+  - [pid=12608] <gracefully close end>
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [11975]

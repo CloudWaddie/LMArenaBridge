@@ -1,0 +1,53 @@
+INFO:     Started server process [22792]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+============================================================
+🚀 LMArena Bridge Server Starting...
+============================================================
+📍 Dashboard: http://localhost:8000/dashboard
+🔐 Login: http://localhost:8000/login
+📚 API Base URL: http://localhost:8000/api/v1
+============================================================
+🚀 LMArena Bridge Server Starting...
+Starting initial data retrieval...
+❌ An error occurred during initial data retrieval: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy worker started (Singleton Mode).
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+🦊 Camoufox proxy: launching browser (headless=False)...
+⚠️ Camoufox launch failed (ValueError): No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+⚠️ Camoufox proxy worker exception: No headers based on this input can be generated. Please relax or change some of the requirements you specified.
+INFO:     127.0.0.1:35226 - "GET /login HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [22792]

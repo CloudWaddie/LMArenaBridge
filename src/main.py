@@ -2824,9 +2824,12 @@ def _capture_ephemeral_arena_auth_token_from_cookies(cookies: list[dict]) -> Non
                 if not is_arena_auth_token_expired(combined, skew_seconds=0):
                     EPHEMERAL_ARENA_AUTH_TOKEN = combined
                     return
+                fallback = combined  # It's expired, but a candidate for fallback.
             except Exception:
+                # If expiry check fails, treat it as a valid token and return.
                 EPHEMERAL_ARENA_AUTH_TOKEN = combined
                 return
+
 
         for cookie in cookies or []:
             if str(cookie.get("name") or "") != "arena-auth-prod-v1":

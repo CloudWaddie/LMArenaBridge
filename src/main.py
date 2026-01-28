@@ -2796,12 +2796,13 @@ def _combine_split_arena_auth_cookies(cookies: list[dict]) -> Optional[str]:
         elif name == "arena-auth-prod-v1.1":
             parts[1] = str(cookie.get("value") or "")
     if 0 in parts and 1 in parts:
-        combined = parts[0] + parts[1]
-        if combined.strip():
-            return combined.strip()
+        combined = (parts[0] + parts[1]).strip()
+        return combined if combined else None
     elif 0 in parts:
-        return parts[0].strip() if parts[0].strip() else None
+        value = parts[0].strip()
+        return value if value else None
     return None
+
 
 
 def _capture_ephemeral_arena_auth_token_from_cookies(cookies: list[dict]) -> None:

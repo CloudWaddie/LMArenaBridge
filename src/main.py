@@ -2783,6 +2783,28 @@ def save_config(config, *, preserve_auth_tokens: bool = True):
         debug_print(f"❌ Error saving config: {e}")
 
 
+def _combine_split_arena_auth_cookies(cookies: list[dict]) -> Optional[str]:
+    """
+    Combine split arena-auth-prod-v1.0 and .1 cookies into a single value.
+    Google OAuth sometimes creates split cookies due to size limits.
+    """
+    parts = {}
+    for cookie in cookies or []:
+        name = str(cookie.get("name") or "")
+        if name == "arena-auth-prod-v1.0":
+            parts[0] = str(cookie.get("value") or "")
+        elif name == "arena-auth-prod-v1.1":
+            parts[1] = str(cookie.get("value") or "")
+    if 0 in parts and 1 in parts:
+        combined = (parts[0] + parts[1]).strip()
+        return combined if combined else None
+    elif 0 in parts:
+        value = parts[0].strip()
+        return value if value else None
+    return None
+
+
+
 def _capture_ephemeral_arena_auth_token_from_cookies(cookies: list[dict]) -> None:
     """
     Capture the current `arena-auth-prod-v1` cookie value into an in-memory global.
@@ -2794,6 +2816,21 @@ def _capture_ephemeral_arena_auth_token_from_cookies(cookies: list[dict]) -> Non
     try:
         best: Optional[str] = None
         fallback: Optional[str] = None
+
+        # First try to combine split cookies (.0 and .1)
+        combined = _combine_split_arena_auth_cookies(cookies)
+        if combined:
+            try:
+                if not is_arena_auth_token_expired(combined, skew_seconds=0):
+                    EPHEMERAL_ARENA_AUTH_TOKEN = combined
+                    return
+                fallback = combined  # It's expired, but a candidate for fallback.
+            except Exception:
+                # If expiry check fails, treat it as a valid token and return.
+                EPHEMERAL_ARENA_AUTH_TOKEN = combined
+                return
+
+
         for cookie in cookies or []:
             if str(cookie.get("name") or "") != "arena-auth-prod-v1":
                 continue
@@ -2841,6 +2878,13 @@ def _upsert_browser_session_into_config(config: dict, cookies: list[dict], user_
         value = str(value)
         if cookie_store.get(name) != value:
             cookie_store[name] = value
+            changed = True
+
+    # Combine split cookies (.0 and .1) and save as arena-auth-prod-v1
+    if bool(config.get("persist_arena_auth_cookie")):
+        combined = _combine_split_arena_auth_cookies(cookies)
+        if combined and cookie_store.get("arena-auth-prod-v1") != combined:
+            cookie_store["arena-auth-prod-v1"] = combined
             changed = True
 
     # Promote frequently-used cookies to top-level config keys.
@@ -3679,22 +3723,19 @@ async def get_current_session(request: Request):
 async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
     config = get_config()
     api_keys = config.get("api_keys", [])
-    
+
     api_key_str = None
     if key and key.startswith("Bearer "):
         api_key_str = key[7:].strip()
-    
-    # Pragmatic fallback: if Authorization is missing/empty, use the first available key
+
+    # If no API keys configured, allow anonymous access (optional auth)
+    if not api_keys:
+        return {"key": "anonymous", "name": "Anonymous", "rpm": 9999}
+
+    # If keys are configured but none provided, use first available key
     if not api_key_str:
-        if api_keys:
-            api_key_str = api_keys[0]["key"]
-            # debug_print(f"ℹ️  No API key provided, using first available key: {api_key_str[:8]}...")
-        else:
-            raise HTTPException(
-                status_code=401, 
-                detail="Authentication required. No API keys configured and none provided in Authorization header."
-            )
-    
+        api_key_str = api_keys[0]["key"]
+
     key_data = next((k for k in api_keys if k["key"] == api_key_str), None)
     if not key_data:
         raise HTTPException(status_code=401, detail="Invalid API Key.")
@@ -3702,7 +3743,7 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
     # Rate Limiting
     rate_limit = key_data.get("rpm", 60)
     current_time = time.time()
-    
+
     # Clean up old timestamps (older than 60 seconds)
     api_key_usage[api_key_str] = [t for t in api_key_usage[api_key_str] if current_time - t < 60]
 
@@ -3711,15 +3752,15 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
         oldest_timestamp = min(api_key_usage[api_key_str])
         retry_after = int(60 - (current_time - oldest_timestamp))
         retry_after = max(1, retry_after)  # At least 1 second
-        
+
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded. Please try again later.",
             headers={"Retry-After": str(retry_after)}
         )
-        
+
     api_key_usage[api_key_str].append(current_time)
-    
+
     return key_data
 
 # --- Core Logic ---
@@ -5429,6 +5470,17 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
 
+                # Capture initial cookies and persist to config.json
+                try:
+                    fresh_cookies = await context.cookies("https://lmarena.ai")
+                    _capture_ephemeral_arena_auth_token_from_cookies(fresh_cookies)
+                    _cfg = get_config()
+                    if _upsert_browser_session_into_config(_cfg, fresh_cookies):
+                        save_config(_cfg)
+                        debug_print("🦊 Camoufox proxy: initial cookies saved to config.")
+                except Exception:
+                    pass
+
             async def _get_auth_cookie_value() -> str:
                 nonlocal context
                 if context is None:
@@ -5439,9 +5491,19 @@ async def camoufox_proxy_worker():
                     return ""
                 try:
                     _capture_ephemeral_arena_auth_token_from_cookies(cookies or [])
+                    # Also persist cookies to config.json when capturing
+                    _cfg = get_config()
+                    if _upsert_browser_session_into_config(_cfg, cookies):
+                        save_config(_cfg)
                 except Exception:
                     pass
                 candidates: list[str] = []
+
+                # First check for combined split cookies (.0 and .1)
+                combined = _combine_split_arena_auth_cookies(cookies)
+                if combined:
+                    candidates.append(combined)
+
                 for c in cookies or []:
                     try:
                         if str(c.get("name") or "") != "arena-auth-prod-v1":

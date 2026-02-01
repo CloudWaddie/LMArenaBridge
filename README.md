@@ -1,4 +1,7 @@
-# LM Arena Bridge - CURRENTLY EXPERIMENTALLY FIXED DUE TO ANTI-BOT MEASURES BY LMARENA (https://github.com/CloudWaddie/LMArenaBridge/issues/27)
+# LM Arena Bridge
+
+> [!WARNING]
+> This project is no longer maintained by me. I still do approve PRs and comment on issues sometimes, and it still works for the most part but do NOT expect this to stay alive forever.
 
 ## Description
 

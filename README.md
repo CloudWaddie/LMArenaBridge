@@ -1,5 +1,9 @@
 # LM Arena Bridge
 
+### Thank you to the [AI Leaks server](https://discord.gg/fqmaHkQpJZ) for being a partner!
+![AI-Leaks-Logo](https://github.com/user-attachments/assets/5fd3d456-152c-44e2-acee-f4c2a1ca2caa)
+
+
 > [!WARNING]
 > This project is going to be maintained by me again. However, at some point this project will probably stop working. If you are interested in a Yupp.AI bridge I will be selling early access to it (as long as a free open soruce release when I finish it. I'll update this section of the README at some stage.
 

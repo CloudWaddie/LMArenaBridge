@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager, AsyncExitStack
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime, timezone, timedelta
+from urllib.parse import urlsplit
 
 import uvicorn
 from camoufox.async_api import AsyncCamoufox
@@ -765,7 +766,10 @@ async def _set_provisional_user_id_in_browser(page, context, *, provisional_user
 
     try:
         if context is not None:
-            # Prefer `url` so the cookie is scoped to the exact host (matches how LMArena commonly stores session state).
+            # Keep cookie variants in sync:
+            # - Some sessions store `provisional_user_id` as a domain cookie on `.lmarena.ai`
+            # - Others store it as a host-only cookie on `lmarena.ai` (via `url`)
+            # If the two disagree, upstream can reject /nextjs-api/sign-up with confusing errors.
             await context.add_cookies(
                 [
                     {
@@ -773,7 +777,13 @@ async def _set_provisional_user_id_in_browser(page, context, *, provisional_user
                         "value": provisional_user_id,
                         "url": "https://lmarena.ai",
                         "path": "/",
-                    }
+                    },
+                    {
+                        "name": "provisional_user_id",
+                        "value": provisional_user_id,
+                        "domain": ".lmarena.ai",
+                        "path": "/",
+                    },
                 ]
             )
     except Exception:
@@ -1389,6 +1399,33 @@ class UserscriptProxyStreamResponse:
             raise httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
 
 
+def _normalize_userscript_proxy_url(url: str) -> str:
+    """
+    Convert LMArena absolute URLs into same-origin paths for in-page fetch.
+
+    The Camoufox proxy page can land on `arena.ai` while the backend constructs `https://lmarena.ai/...` URLs.
+    Absolute cross-origin URLs can cause browser fetch to reject with a generic NetworkError (CORS).
+    """
+    text = str(url or "").strip()
+    if not text:
+        return ""
+    if text.startswith("/"):
+        return text
+    try:
+        parts = urlsplit(text)
+    except Exception:
+        return text
+    if not parts.scheme or not parts.netloc:
+        return text
+    host = str(parts.netloc or "").split("@")[-1].split(":")[0].lower()
+    if host not in {"lmarena.ai", "www.lmarena.ai", "arena.ai", "www.arena.ai"}:
+        return text
+    path = parts.path or "/"
+    if parts.query:
+        path = f"{path}?{parts.query}"
+    return path
+
+
 async def fetch_lmarena_stream_via_userscript_proxy(
     http_method: str,
     url: str,
@@ -1405,6 +1442,7 @@ async def fetch_lmarena_stream_via_userscript_proxy(
     status_event: asyncio.Event = asyncio.Event()
     picked_up_event: asyncio.Event = asyncio.Event()
 
+    proxy_url = _normalize_userscript_proxy_url(str(url))
     sitekey, action = get_recaptcha_settings(config)
     job = {
         "created_at": time.time(),
@@ -1417,7 +1455,7 @@ async def fetch_lmarena_stream_via_userscript_proxy(
         "recaptcha_sitekey": sitekey,
         "recaptcha_action": action,
         "payload": {
-            "url": str(url),
+            "url": proxy_url or str(url),
             "method": str(http_method or "POST"),
             "headers": {"Content-Type": "text/plain;charset=UTF-8"},
             "body": json.dumps(payload) if payload is not None else "",

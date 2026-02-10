@@ -25,14 +25,17 @@ class TestProvisionalUserIdSync(BaseBridgeTest):
 
         self.assertIsInstance(context.added, list)
         self.assertTrue(context.added)
-        self.assertEqual(len(context.added), 2)
+        self.assertEqual(len(context.added), 4)
         values = {c.get("value") for c in context.added}
         self.assertEqual(values, {"prov-1"})
         names = {c.get("name") for c in context.added}
         self.assertEqual(names, {"provisional_user_id"})
-        targets = [str(c.get("url") or c.get("domain") or "") for c in context.added]
-        self.assertTrue(any(t.startswith("https://lmarena.ai") for t in targets))
-        self.assertTrue(any(t == ".lmarena.ai" for t in targets))
+        urls = {str(c.get("url") or "") for c in context.added if c.get("url")}
+        domains = {str(c.get("domain") or "") for c in context.added if c.get("domain")}
+        self.assertIn("https://lmarena.ai", urls)
+        self.assertIn("https://arena.ai", urls)
+        self.assertIn(".lmarena.ai", domains)
+        self.assertIn(".arena.ai", domains)
 
         page.evaluate.assert_awaited()
         script_arg, value_arg = page.evaluate.call_args.args

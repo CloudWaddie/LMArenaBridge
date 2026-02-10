@@ -770,22 +770,7 @@ async def _set_provisional_user_id_in_browser(page, context, *, provisional_user
             # - Some sessions store `provisional_user_id` as a domain cookie on `.lmarena.ai`
             # - Others store it as a host-only cookie on `lmarena.ai` (via `url`)
             # If the two disagree, upstream can reject /nextjs-api/sign-up with confusing errors.
-            await context.add_cookies(
-                [
-                    {
-                        "name": "provisional_user_id",
-                        "value": provisional_user_id,
-                        "url": "https://lmarena.ai",
-                        "path": "/",
-                    },
-                    {
-                        "name": "provisional_user_id",
-                        "value": provisional_user_id,
-                        "domain": ".lmarena.ai",
-                        "path": "/",
-                    },
-                ]
-            )
+            await context.add_cookies(_provisional_user_id_cookie_specs(provisional_user_id))
     except Exception:
         pass
 
@@ -856,16 +841,11 @@ async def _maybe_inject_arena_auth_cookie_from_localstorage(page, context) -> Op
             pass
 
         try:
-            await context.add_cookies(
-                [
-                    {
-                        "name": "arena-auth-prod-v1",
-                        "value": cookie,
-                        "url": "https://lmarena.ai",
-                        "path": "/",
-                    }
-                ]
-            )
+            try:
+                page_url = str(getattr(page, "url", "") or "")
+            except Exception:
+                page_url = ""
+            await context.add_cookies(_arena_auth_cookie_specs(cookie, page_url=page_url))
             _capture_ephemeral_arena_auth_token_from_cookies([{"name": "arena-auth-prod-v1", "value": cookie}])
             debug_print("🦊 Camoufox proxy: injected arena-auth cookie from localStorage session.")
             return cookie
@@ -975,7 +955,7 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
                 try:
                     existing_names: set[str] = set()
                     try:
-                        existing = await context.cookies("https://lmarena.ai")
+                        existing = await _get_arena_context_cookies(context)
                         for c in existing or []:
                             name = c.get("name")
                             if name:
@@ -1035,7 +1015,7 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
 
             # Persist updated cookies/UA from this real browser context (often refreshes arena-auth-prod-v1).
             try:
-                fresh_cookies = await context.cookies("https://lmarena.ai")
+                fresh_cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
                 try:
                     ua_now = await page.evaluate("() => navigator.userAgent")
                 except Exception:
@@ -1099,6 +1079,37 @@ async def safe_page_evaluate(page, script: str, retries: int = 3):
     if last_exc is not None:
         raise last_exc
     raise RuntimeError("Page.evaluate failed")
+
+
+def _consume_background_task_exception(task: "asyncio.Task") -> None:
+    try:
+        task.exception()
+    except asyncio.CancelledError:
+        pass
+    except Exception:
+        pass
+
+
+async def _cancel_background_task(task: Optional["asyncio.Task"], *, timeout_seconds: float = 1.0) -> None:
+    if task is None:
+        return
+    if task.done():
+        _consume_background_task_exception(task)
+        return
+
+    task.cancel()
+    try:
+        await asyncio.wait_for(task, timeout=float(timeout_seconds))
+    except Exception:
+        pass
+
+    if task.done():
+        _consume_background_task_exception(task)
+    else:
+        try:
+            task.add_done_callback(_consume_background_task_exception)
+        except Exception:
+            pass
 
 
 class BrowserFetchStreamResponse:
@@ -1399,6 +1410,115 @@ class UserscriptProxyStreamResponse:
             raise httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
 
 
+_LMARENA_ORIGIN = "https://lmarena.ai"
+_ARENA_ORIGIN = "https://arena.ai"
+_ARENA_HOST_TO_ORIGIN = {
+    "lmarena.ai": _LMARENA_ORIGIN,
+    "www.lmarena.ai": _LMARENA_ORIGIN,
+    "arena.ai": _ARENA_ORIGIN,
+    "www.arena.ai": _ARENA_ORIGIN,
+}
+
+
+def _detect_arena_origin(url: Optional[str] = None) -> str:
+    """
+    Return the canonical origin (https://lmarena.ai or https://arena.ai) for a URL-like string.
+
+    LMArena has historically used both domains. Browser automation can land on `arena.ai` even when the backend
+    constructs `https://lmarena.ai/...` URLs, so cookie ops must follow the actual origin.
+    """
+    text = str(url or "").strip()
+    if not text:
+        return _LMARENA_ORIGIN
+    try:
+        parts = urlsplit(text)
+    except Exception:
+        parts = None
+
+    host = ""
+    if parts and parts.scheme and parts.netloc:
+        host = str(parts.netloc or "").split("@")[-1].split(":")[0].lower()
+    if not host:
+        host = text.split("/")[0].split("@")[-1].split(":")[0].lower()
+    return _ARENA_HOST_TO_ORIGIN.get(host, _LMARENA_ORIGIN)
+
+
+def _arena_origin_candidates(url: Optional[str] = None) -> list[str]:
+    """Return `[primary, secondary]` origins, preferring the detected origin but always including both."""
+    primary = _detect_arena_origin(url)
+    secondary = _ARENA_ORIGIN if primary == _LMARENA_ORIGIN else _LMARENA_ORIGIN
+    return [primary, secondary]
+
+
+def _arena_auth_cookie_specs(token: str, *, page_url: Optional[str] = None) -> list[dict]:
+    """
+    Build host-only `arena-auth-prod-v1` cookie specs for both arena.ai and lmarena.ai.
+
+    Using `url` (instead of `domain`) more closely matches how the site stores this cookie (host-only).
+    """
+    value = str(token or "").strip()
+    if not value:
+        return []
+    specs: list[dict] = []
+    for origin in _arena_origin_candidates(page_url):
+        specs.append({"name": "arena-auth-prod-v1", "value": value, "url": origin, "path": "/"})
+    return specs
+
+
+def _provisional_user_id_cookie_specs(provisional_user_id: str, *, page_url: Optional[str] = None) -> list[dict]:
+    """
+    Build `provisional_user_id` cookie specs for both origins.
+
+    LMArena sometimes stores this cookie as host-only and sometimes as a domain cookie; keep both in sync.
+    """
+    value = str(provisional_user_id or "").strip()
+    if not value:
+        return []
+    specs: list[dict] = []
+    for origin in _arena_origin_candidates(page_url):
+        specs.append({"name": "provisional_user_id", "value": value, "url": origin, "path": "/"})
+    for domain in (".lmarena.ai", ".arena.ai"):
+        specs.append({"name": "provisional_user_id", "value": value, "domain": domain, "path": "/"})
+    return specs
+
+
+async def _get_arena_context_cookies(context, *, page_url: Optional[str] = None) -> list[dict]:
+    """
+    Fetch cookies for both arena.ai and lmarena.ai from a Playwright/Camoufox browser context.
+    """
+    urls = _arena_origin_candidates(page_url)
+    try:
+        cookies = await context.cookies(urls)
+        return cookies if isinstance(cookies, list) else []
+    except Exception:
+        pass
+
+    merged: list[dict] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for url in urls:
+        try:
+            chunk = await context.cookies(url)
+        except Exception:
+            chunk = []
+        if not isinstance(chunk, list):
+            continue
+        for c in chunk:
+            try:
+                key = (
+                    str(c.get("name") or ""),
+                    str(c.get("domain") or ""),
+                    str(c.get("path") or ""),
+                    str(c.get("value") or ""),
+                )
+            except Exception:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(c)
+    return merged
+
+
 def _normalize_userscript_proxy_url(url: str) -> str:
     """
     Convert LMArena absolute URLs into same-origin paths for in-page fetch.
@@ -1530,15 +1650,12 @@ async def fetch_lmarena_stream_via_chrome(
     if grecaptcha_cookie:
         desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai", "path": "/"})
     if auth_token:
-        # arena-auth-prod-v1 is commonly stored as a host-only cookie on `lmarena.ai` (no leading dot).
-        desired_cookies.append({"name": "arena-auth-prod-v1", "value": auth_token, "domain": "lmarena.ai", "path": "/"})
+        desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
 
     user_agent = normalize_user_agent_value(config.get("user_agent"))
 
-    fetch_url = url
-    if fetch_url.startswith("https://lmarena.ai"):
-        fetch_url = fetch_url[len("https://lmarena.ai") :]
-    if not fetch_url.startswith("/"):
+    fetch_url = _normalize_userscript_proxy_url(url)
+    if fetch_url and not fetch_url.startswith("/"):
         fetch_url = "/" + fetch_url
 
     def _is_recaptcha_validation_failed(status: int, text: object) -> bool:
@@ -1580,7 +1697,7 @@ async def fetch_lmarena_stream_via_chrome(
                 try:
                     existing_names: set[str] = set()
                     try:
-                        existing = await context.cookies("https://lmarena.ai")
+                        existing = await _get_arena_context_cookies(context)
                         for c in existing or []:
                             name = c.get("name")
                             if name:
@@ -1647,7 +1764,7 @@ async def fetch_lmarena_stream_via_chrome(
 
             # Persist updated cookies/UA from this browser context (helps keep auth + cf cookies fresh).
             try:
-                fresh_cookies = await context.cookies("https://lmarena.ai")
+                fresh_cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
                 _capture_ephemeral_arena_auth_token_from_cookies(fresh_cookies)
                 try:
                     ua_now = await page.evaluate("() => navigator.userAgent")
@@ -1882,6 +1999,7 @@ async def fetch_lmarena_stream_via_chrome(
                         str(retry_after) if retry_after is not None else None,
                         attempt,
                     )
+                    await _cancel_background_task(fetch_task)
                     await asyncio.sleep(sleep_seconds)
                     continue
 
@@ -1905,12 +2023,17 @@ async def fetch_lmarena_stream_via_chrome(
                                 url=url,
                             )
 
-                        async def _wait_for_finish():
+                        def _on_fetch_task_done(task: "asyncio.Task") -> None:
+                            _consume_background_task_exception(task)
                             try:
-                                await fetch_task
-                            finally:
                                 done_event.set()
-                        asyncio.create_task(_wait_for_finish())
+                            except Exception:
+                                pass
+
+                        try:
+                            fetch_task.add_done_callback(_on_fetch_task_done)
+                        except Exception:
+                            pass
                         
                         return BrowserFetchStreamResponse(
                             status_code=status_code,
@@ -1920,8 +2043,10 @@ async def fetch_lmarena_stream_via_chrome(
                             lines_queue=lines_queue,
                             done_event=done_event
                         )
+                    await _cancel_background_task(fetch_task)
                     break
 
+                await _cancel_background_task(fetch_task)
                 if attempt < max_recaptcha_attempts - 1:
                     # ... retry logic ...
                     if isinstance(payload, dict) and not bool(payload.get("recaptchaV2Token")):
@@ -2007,15 +2132,12 @@ async def fetch_lmarena_stream_via_camoufox(
     if grecaptcha_cookie:
         desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai", "path": "/"})
     if auth_token:
-        # arena-auth-prod-v1 is commonly stored as a host-only cookie on `lmarena.ai` (no leading dot).
-        desired_cookies.append({"name": "arena-auth-prod-v1", "value": auth_token, "domain": "lmarena.ai", "path": "/"})
+        desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
 
     user_agent = normalize_user_agent_value(config.get("user_agent"))
 
-    fetch_url = url
-    if fetch_url.startswith("https://lmarena.ai"):
-        fetch_url = fetch_url[len("https://lmarena.ai") :]
-    if not fetch_url.startswith("/"):
+    fetch_url = _normalize_userscript_proxy_url(url)
+    if fetch_url and not fetch_url.startswith("/"):
         fetch_url = "/" + fetch_url
 
     def _is_recaptcha_validation_failed(status: int, text: object) -> bool:
@@ -2083,7 +2205,7 @@ async def fetch_lmarena_stream_via_camoufox(
             
             # Persist cookies
             try:
-                fresh_cookies = await context.cookies("https://lmarena.ai")
+                fresh_cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
                 _capture_ephemeral_arena_auth_token_from_cookies(fresh_cookies)
                 try:
                     ua_now = await page.evaluate("() => navigator.userAgent")
@@ -2340,17 +2462,23 @@ async def fetch_lmarena_stream_via_camoufox(
                 status_code = int(result.get("status") or 0)
 
                 if status_code == HTTPStatus.TOO_MANY_REQUESTS and attempt < max_recaptcha_attempts - 1:
+                    await _cancel_background_task(fetch_task)
                     await asyncio.sleep(5)
                     continue
 
                 if not _is_recaptcha_validation_failed(status_code, result.get("text")):
                     if status_code < 400:
-                        async def _wait_for_finish():
+                        def _on_fetch_task_done(task: "asyncio.Task") -> None:
+                            _consume_background_task_exception(task)
                             try:
-                                await fetch_task
-                            finally:
                                 done_event.set()
-                        asyncio.create_task(_wait_for_finish())
+                            except Exception:
+                                pass
+
+                        try:
+                            fetch_task.add_done_callback(_on_fetch_task_done)
+                        except Exception:
+                            pass
                         
                         return BrowserFetchStreamResponse(
                             status_code=status_code,
@@ -2360,8 +2488,10 @@ async def fetch_lmarena_stream_via_camoufox(
                             lines_queue=lines_queue,
                             done_event=done_event
                         )
+                    await _cancel_background_task(fetch_task)
                     break
 
+                await _cancel_background_task(fetch_task)
                 if attempt < max_recaptcha_attempts - 1 and isinstance(payload, dict) and not bool(payload.get("recaptchaV2Token")):
                     try:
                         v2_token = await _mint_recaptcha_v2_token()
@@ -5672,7 +5802,7 @@ async def camoufox_proxy_worker():
                     try:
                         existing_names: set[str] = set()
                         try:
-                            existing = await context.cookies("https://lmarena.ai")
+                            existing = await _get_arena_context_cookies(context)
                             for c in existing or []:
                                 name = c.get("name")
                                 if name:
@@ -5698,7 +5828,7 @@ async def camoufox_proxy_worker():
                 try:
                     existing_auth = ""
                     try:
-                        existing = await context.cookies("https://lmarena.ai")
+                        existing = await _get_arena_context_cookies(context)
                     except Exception:
                         existing = []
                     for c in existing or []:
@@ -5751,9 +5881,7 @@ async def camoufox_proxy_worker():
                                         break
                         
                         if candidate:
-                            await context.add_cookies(
-                                [{"name": "arena-auth-prod-v1", "value": candidate, "domain": "lmarena.ai", "path": "/"}]
-                            )
+                            await context.add_cookies(_arena_auth_cookie_specs(candidate))
                 except Exception:
                     pass
 
@@ -5820,7 +5948,7 @@ async def camoufox_proxy_worker():
 
                 # Capture initial cookies and persist to config.json
                 try:
-                    fresh_cookies = await context.cookies("https://lmarena.ai")
+                    fresh_cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
                     _capture_ephemeral_arena_auth_token_from_cookies(fresh_cookies)
                     _cfg = get_config()
                     if _upsert_browser_session_into_config(_cfg, fresh_cookies):
@@ -5830,11 +5958,11 @@ async def camoufox_proxy_worker():
                     pass
 
             async def _get_auth_cookie_value() -> str:
-                nonlocal context
+                nonlocal context, page
                 if context is None:
                     return ""
                 try:
-                    cookies = await context.cookies("https://lmarena.ai")
+                    cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
                 except Exception:
                     return ""
                 try:
@@ -5928,17 +6056,23 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
                 try:
-                    await context.add_cookies(
-                        [
+                    try:
+                        page_url = str(getattr(page, "url", "") or "")
+                    except Exception:
+                        page_url = ""
+                    clear_specs: list[dict] = []
+                    for origin in _arena_origin_candidates(page_url):
+                        clear_specs.append(
                             {
                                 "name": "arena-auth-prod-v1",
                                 "value": "",
-                                "domain": "lmarena.ai",
+                                "url": origin,
                                 "path": "/",
                                 "expires": 1,
                             }
-                        ]
-                    )
+                        )
+                    if clear_specs:
+                        await context.add_cookies(clear_specs)
                 except Exception:
                     pass
                 try:
@@ -6163,14 +6297,10 @@ async def camoufox_proxy_worker():
                     try:
                         if not is_arena_auth_token_expired(derived_cookie, skew_seconds=0):
                             await context.add_cookies(
-                                [
-                                    {
-                                        "name": "arena-auth-prod-v1",
-                                        "value": derived_cookie,
-                                        "domain": "lmarena.ai",
-                                        "path": "/",
-                                    }
-                                ]
+                                _arena_auth_cookie_specs(
+                                    derived_cookie,
+                                    page_url=str(getattr(page, "url", "") or ""),
+                                )
                             )
                             _capture_ephemeral_arena_auth_token_from_cookies(
                                 [{"name": "arena-auth-prod-v1", "value": derived_cookie}]
@@ -6485,7 +6615,10 @@ async def camoufox_proxy_worker():
                 
                 if use_job_token:
                     await context.add_cookies(
-                        [{"name": "arena-auth-prod-v1", "value": auth_token, "domain": "lmarena.ai", "path": "/"}]
+                        _arena_auth_cookie_specs(
+                            auth_token,
+                            page_url=str(getattr(page, "url", "") or ""),
+                        )
                     )
                 elif browser_auth_cookie and not use_job_token:
                     debug_print("🦊 Camoufox proxy: using valid browser auth cookie (job token is empty or invalid).")

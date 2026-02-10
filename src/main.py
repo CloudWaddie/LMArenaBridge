@@ -583,6 +583,288 @@ async def click_turnstile(page):
         debug_print(f"  ⚠️ Error clicking turnstile: {e}")
         return False
 
+
+async def _mint_recaptcha_v3_token_in_page(
+    page,
+    *,
+    sitekey: str,
+    action: str,
+    grecaptcha_timeout_ms: int = 60000,
+    grecaptcha_poll_ms: int = 250,
+    outer_timeout_seconds: float = 70.0,
+) -> str:
+    """
+    Best-effort reCAPTCHA v3 token minting inside an existing page.
+
+    LMArena currently requires a `recaptchaToken` (action: "sign_up") for anonymous signup.
+    """
+    sitekey = str(sitekey or "").strip()
+    action = str(action or "").strip()
+    if not sitekey:
+        return ""
+    if not action:
+        action = "sign_up"
+
+    mint_js = """async ({ sitekey, action, timeoutMs, pollMs }) => {
+      // LM_BRIDGE_MINT_RECAPTCHA_V3
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const w = (window.wrappedJSObject || window);
+      const key = String(sitekey || '');
+      const act = String(action || 'sign_up');
+      const limit = Math.max(1000, Math.min(Number(timeoutMs || 60000), 180000));
+      const poll = Math.max(50, Math.min(Number(pollMs || 250), 2000));
+      const start = Date.now();
+
+      const pickG = () => {
+        const ent = w?.grecaptcha?.enterprise;
+        if (ent && typeof ent.execute === 'function' && typeof ent.ready === 'function') return ent;
+        const g = w?.grecaptcha;
+        if (g && typeof g.execute === 'function' && typeof g.ready === 'function') return g;
+        return null;
+      };
+
+      const inject = () => {
+        try {
+          if (w.__LM_BRIDGE_RECAPTCHA_INJECTED) return;
+          w.__LM_BRIDGE_RECAPTCHA_INJECTED = true;
+          const h = w.document?.head;
+          if (!h) return;
+          const urls = [
+            'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(key),
+            'https://www.google.com/recaptcha/api.js?render=' + encodeURIComponent(key),
+          ];
+          for (const u of urls) {
+            const s = w.document.createElement('script');
+            s.src = u;
+            s.async = true;
+            s.defer = true;
+            h.appendChild(s);
+          }
+        } catch (e) {}
+      };
+
+      let injected = false;
+      while ((Date.now() - start) < limit) {
+        const g = pickG();
+        if (g) {
+          try {
+            // g.ready can hang; guard with a short timeout.
+            await Promise.race([
+              new Promise((resolve) => { try { g.ready(resolve); } catch (e) { resolve(true); } }),
+              sleep(5000),
+            ]);
+          } catch (e) {}
+          try {
+            // Firefox Xray wrappers: build params in the page compartment.
+            const params = new w.Object();
+            params.action = act;
+            const tok = await g.execute(key, params);
+            return String(tok || '');
+          } catch (e) {
+            return '';
+          }
+        }
+        if (!injected) { injected = true; inject(); }
+        await sleep(poll);
+      }
+      return '';
+    }"""
+
+    try:
+        tok = await asyncio.wait_for(
+            page.evaluate(
+                mint_js,
+                {
+                    "sitekey": sitekey,
+                    "action": action,
+                    "timeoutMs": int(grecaptcha_timeout_ms),
+                    "pollMs": int(grecaptcha_poll_ms),
+                },
+            ),
+            timeout=float(outer_timeout_seconds),
+        )
+    except Exception:
+        tok = ""
+    return str(tok or "").strip()
+
+
+async def _camoufox_proxy_signup_anonymous_user(
+    page,
+    *,
+    turnstile_token: str,
+    provisional_user_id: str,
+    recaptcha_sitekey: str,
+    recaptcha_action: str = "sign_up",
+) -> Optional[dict]:
+    """
+    Perform LMArena anonymous signup using the same flow as the site JS:
+    POST /nextjs-api/sign-up with {turnstileToken, recaptchaToken, provisionalUserId}.
+    """
+    turnstile_token = str(turnstile_token or "").strip()
+    provisional_user_id = str(provisional_user_id or "").strip()
+    recaptcha_sitekey = str(recaptcha_sitekey or "").strip()
+    recaptcha_action = str(recaptcha_action or "").strip() or "sign_up"
+
+    if not turnstile_token or not provisional_user_id:
+        return None
+
+    recaptcha_token = await _mint_recaptcha_v3_token_in_page(
+        page,
+        sitekey=recaptcha_sitekey,
+        action=recaptcha_action,
+    )
+    if not recaptcha_token:
+        debug_print("⚠️ Camoufox proxy: reCAPTCHA mint failed for anonymous signup.")
+        return None
+
+    sign_up_js = """async ({ turnstileToken, recaptchaToken, provisionalUserId }) => {
+      // LM_BRIDGE_ANON_SIGNUP
+      const w = (window.wrappedJSObject || window);
+      const opts = new w.Object();
+      opts.method = 'POST';
+      opts.credentials = 'include';
+      // Match site behavior: let the browser set Content-Type for string bodies (text/plain;charset=UTF-8).
+      opts.body = JSON.stringify({
+        turnstileToken: String(turnstileToken || ''),
+        recaptchaToken: String(recaptchaToken || ''),
+        provisionalUserId: String(provisionalUserId || ''),
+      });
+      const res = await w.fetch('/nextjs-api/sign-up', opts);
+      let text = '';
+      try { text = await res.text(); } catch (e) { text = ''; }
+      return { status: Number(res.status || 0), ok: !!res.ok, body: String(text || '') };
+    }"""
+
+    try:
+        resp = await asyncio.wait_for(
+            page.evaluate(
+                sign_up_js,
+                {
+                    "turnstileToken": turnstile_token,
+                    "recaptchaToken": recaptcha_token,
+                    "provisionalUserId": provisional_user_id,
+                },
+            ),
+            timeout=20.0,
+        )
+    except Exception:
+        resp = None
+    return resp if isinstance(resp, dict) else None
+
+
+async def _set_provisional_user_id_in_browser(page, context, *, provisional_user_id: str) -> None:
+    """
+    Best-effort: keep the provisional user id consistent across cookies and storage.
+
+    LMArena uses `provisional_user_id` to mint/restore anonymous sessions. If multiple storages disagree (e.g. a stale
+    localStorage value vs a rotated cookie), /nextjs-api/sign-up can fail with confusing errors like "User already exists".
+    """
+    provisional_user_id = str(provisional_user_id or "").strip()
+    if not provisional_user_id:
+        return
+
+    try:
+        if context is not None:
+            # Prefer `url` so the cookie is scoped to the exact host (matches how LMArena commonly stores session state).
+            await context.add_cookies(
+                [
+                    {
+                        "name": "provisional_user_id",
+                        "value": provisional_user_id,
+                        "url": "https://lmarena.ai",
+                        "path": "/",
+                    }
+                ]
+            )
+    except Exception:
+        pass
+
+    try:
+        await page.evaluate(
+            """(pid) => {
+              const w = (window.wrappedJSObject || window);
+              try { w.localStorage.setItem('provisional_user_id', String(pid || '')); } catch (e) {}
+              return true;
+            }""",
+            provisional_user_id,
+        )
+    except Exception:
+        pass
+
+
+async def _maybe_inject_arena_auth_cookie_from_localstorage(page, context) -> Optional[str]:
+    """
+    Best-effort: recover a missing `arena-auth-prod-v1` cookie from browser storage.
+
+    Some auth flows keep the Supabase session JSON in localStorage. If the cookie is missing but the session is still
+    present, we can encode it into the `base64-<json>` cookie format and inject it.
+    """
+    if page is None or context is None:
+        return None
+
+    try:
+        store = await page.evaluate(
+            """() => {
+              const w = (window.wrappedJSObject || window);
+              try {
+                const ls = w.localStorage;
+                if (!ls) return {};
+                const out = {};
+                for (let i = 0; i < ls.length; i++) {
+                  const k = ls.key(i);
+                  if (!k) continue;
+                  const key = String(k);
+                  if (!(key.includes('auth') || key.includes('sb-') || key.includes('supabase') || key.includes('session'))) continue;
+                  out[key] = String(ls.getItem(key) || '');
+                }
+                return out;
+              } catch (e) {
+                return {};
+              }
+            }"""
+        )
+    except Exception:
+        return None
+
+    if not isinstance(store, dict):
+        return None
+
+    for _, raw in list(store.items()):
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        try:
+            cookie = maybe_build_arena_auth_cookie_from_signup_response_body(text)
+        except Exception:
+            cookie = None
+        if not cookie:
+            continue
+        try:
+            if is_arena_auth_token_expired(cookie, skew_seconds=0):
+                continue
+        except Exception:
+            pass
+
+        try:
+            await context.add_cookies(
+                [
+                    {
+                        "name": "arena-auth-prod-v1",
+                        "value": cookie,
+                        "url": "https://lmarena.ai",
+                        "path": "/",
+                    }
+                ]
+            )
+            _capture_ephemeral_arena_auth_token_from_cookies([{"name": "arena-auth-prod-v1", "value": cookie}])
+            debug_print("🦊 Camoufox proxy: injected arena-auth cookie from localStorage session.")
+            return cookie
+        except Exception:
+            continue
+
+    return None
+
+
 def find_chrome_executable() -> Optional[str]:
     configured = str(os.environ.get("CHROME_PATH") or "").strip()
     if configured and Path(configured).exists():
@@ -5575,6 +5857,14 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
 
+                # If the cookie is missing but an auth session is still present in localStorage, recover it now.
+                try:
+                    recovered = await _maybe_inject_arena_auth_cookie_from_localstorage(page, context)
+                    if recovered and not is_arena_auth_token_expired(recovered, skew_seconds=0):
+                        return
+                except Exception:
+                    pass
+
                 try:
                     cfg_now = get_config()
                 except Exception:
@@ -5591,8 +5881,10 @@ async def camoufox_proxy_worker():
                 # Try to force a fresh anonymous signup by rotating the provisional ID and clearing any stale auth.
                 try:
                     fresh_provisional = str(uuid.uuid4())
-                    await context.add_cookies(
-                        [{"name": "provisional_user_id", "value": fresh_provisional, "domain": ".lmarena.ai", "path": "/"}]
+                    await _set_provisional_user_id_in_browser(
+                        page,
+                        context,
+                        provisional_user_id=fresh_provisional,
                     )
                     provisional_user_id = fresh_provisional
                 except Exception:
@@ -5790,27 +6082,17 @@ async def camoufox_proxy_worker():
                     debug_print("⚠️ Camoufox proxy: Turnstile mint failed (timeout).")
                     return
 
-                sign_up_js = """async ({ turnstileToken, provisionalUserId }) => {
-                  const w = (window.wrappedJSObject || window);
-                  const opts = new w.Object();
-                  opts.method = 'POST';
-                  opts.credentials = 'include';
-                  opts.headers = new w.Object();
-                  opts.headers['Content-Type'] = 'application/json';
-                  opts.body = JSON.stringify({ turnstileToken: String(turnstileToken || ''), provisionalUserId: String(provisionalUserId || '') });
-                  const res = await w.fetch('/nextjs-api/sign-up', opts);
-                  let text = '';
-                  try { text = await res.text(); } catch (e) { text = ''; }
-                  return { status: Number(res.status || 0), ok: !!res.ok, body: String(text || '') };
-                }"""
-
                 try:
-                    resp = await asyncio.wait_for(
-                        page.evaluate(
-                            sign_up_js,
-                            {"turnstileToken": token_value, "provisionalUserId": provisional_user_id},
-                        ),
-                        timeout=20.0,
+                    if provisional_user_id:
+                        debug_print(
+                            f"🦊 Camoufox proxy: provisional_user_id (trunc): {provisional_user_id[:8]}...{provisional_user_id[-4:]}"
+                        )
+                    resp = await _camoufox_proxy_signup_anonymous_user(
+                        page,
+                        turnstile_token=token_value,
+                        provisional_user_id=provisional_user_id,
+                        recaptcha_sitekey=proxy_recaptcha_sitekey,
+                        recaptcha_action="sign_up",
                     )
                 except Exception:
                     resp = None
@@ -5828,6 +6110,13 @@ async def camoufox_proxy_worker():
                     body_text = str((resp or {}).get("body") or "") if isinstance(resp, dict) else ""
                 except Exception:
                     body_text = ""
+                if status >= 400 and body_text:
+                    debug_print(f"🦊 Camoufox proxy: /nextjs-api/sign-up body (trunc): {body_text[:200]}")
+                if status == 400 and "User already exists" in body_text:
+                    try:
+                        await _maybe_inject_arena_auth_cookie_from_localstorage(page, context)
+                    except Exception:
+                        pass
                 try:
                     derived_cookie = maybe_build_arena_auth_cookie_from_signup_response_body(body_text)
                 except Exception:
@@ -5854,17 +6143,27 @@ async def camoufox_proxy_worker():
 
                 # Wait for the cookie to appear
                 try:
-                    for _ in range(10):
-                        cookies = await context.cookies("https://lmarena.ai")
-                        _capture_ephemeral_arena_auth_token_from_cookies(cookies or [])
-                        found = False
-                        for c in cookies or []:
-                            if c.get("name") == "arena-auth-prod-v1":
-                                val = str(c.get("value") or "").strip()
-                                if val and not is_arena_auth_token_expired(val, skew_seconds=0):
-                                    found = True
-                                    break
-                        if found:
+                    wait_loops = 10
+                    try:
+                        if status == 400 and "User already exists" in str(body_text or ""):
+                            # Existing provisional user IDs can lead to 400s from sign-up without immediately
+                            # surfacing the auth cookie. Reload and poll longer to give the app time to restore
+                            # the session cookie.
+                            wait_loops = 40
+                            try:
+                                await page.goto(
+                                    "https://lmarena.ai/?mode=direct",
+                                    wait_until="domcontentloaded",
+                                    timeout=120000,
+                                )
+                            except Exception:
+                                pass
+                    except Exception:
+                        pass
+
+                    for _ in range(int(wait_loops)):
+                        cur = await _get_auth_cookie_value()
+                        if cur and not is_arena_auth_token_expired(cur, skew_seconds=0):
                             debug_print("🦊 Camoufox proxy: acquired arena-auth-prod-v1 cookie (anonymous user).")
                             break
                         await asyncio.sleep(0.5)

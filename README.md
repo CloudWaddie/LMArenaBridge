@@ -43,7 +43,6 @@ A bridge to interact with LM Arena. This project provides an OpenAI compatible A
 Create a `.env` from `.env.example` and set:
 - `ADMIN_PASSWORD`
 - `ARENA_AUTH_TOKEN` or `AUTH_TOKENS`
-- `API_KEYS`
 
 ## Usage
 

@@ -28,10 +28,10 @@ import httpx
 # CONFIGURATION
 # ============================================================
 # Set to True for detailed logging, False for minimal logging
-DEBUG = True
+DEBUG = str(os.environ.get("DEBUG", "false")).strip().lower() in {"1", "true", "yes", "y"}
 
 # Port to run the server on
-PORT = 8000
+PORT = int(os.environ.get("PORT", "8000"))
 
 # HTTP Status Codes
 class HTTPStatus:
@@ -251,6 +251,23 @@ def debug_print(*args, **kwargs):
     """Print debug messages only if DEBUG is True"""
     if DEBUG:
         print(*args, **kwargs)
+
+
+def is_upstream_circuit_open() -> bool:
+    return time.monotonic() < UPSTREAM_CIRCUIT_OPEN_UNTIL
+
+
+def record_upstream_success() -> None:
+    global UPSTREAM_FAILURES, UPSTREAM_CIRCUIT_OPEN_UNTIL
+    UPSTREAM_FAILURES = 0
+    UPSTREAM_CIRCUIT_OPEN_UNTIL = 0.0
+
+
+def record_upstream_failure() -> None:
+    global UPSTREAM_FAILURES, UPSTREAM_CIRCUIT_OPEN_UNTIL
+    UPSTREAM_FAILURES += 1
+    if UPSTREAM_FAILURES >= UPSTREAM_CIRCUIT_THRESHOLD:
+        UPSTREAM_CIRCUIT_OPEN_UNTIL = time.monotonic() + max(1, UPSTREAM_CIRCUIT_COOLDOWN)
 
 # --- New reCAPTCHA Functions ---
 
@@ -2658,6 +2675,31 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# --- Runtime ---
+START_TIME = time.monotonic()
+
+# Circuit breaker for upstream LMArena
+UPSTREAM_FAILURES = 0
+UPSTREAM_CIRCUIT_OPEN_UNTIL = 0.0
+UPSTREAM_CIRCUIT_THRESHOLD = int(os.environ.get("UPSTREAM_CIRCUIT_THRESHOLD", "5"))
+UPSTREAM_CIRCUIT_COOLDOWN = int(os.environ.get("UPSTREAM_CIRCUIT_COOLDOWN", "60"))
+
+@app.middleware("http")
+async def request_id_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+
+@app.get("/healthz")
+async def healthz():
+    # Alias for /api/v1/health with basic uptime
+    base = await health_check()
+    base["uptime_seconds"] = int(time.monotonic() - START_TIME)
+    return base
+
 # --- Constants & Global State ---
 CONFIG_FILE = "config.json"
 MODELS_FILE = "models.json"
@@ -2722,7 +2764,31 @@ def get_config():
         config.setdefault("usage_stats", {})
         config.setdefault("prune_invalid_tokens", False)
         config.setdefault("persist_arena_auth_cookie", False)
-        
+
+        # Environment overrides (preferred for secrets)
+        env_password = str(os.environ.get("ADMIN_PASSWORD") or os.environ.get("ADMIN_PASS") or "").strip()
+        if env_password:
+            config["password"] = env_password
+
+        env_auth_token = str(os.environ.get("ARENA_AUTH_TOKEN") or "").strip()
+        if env_auth_token:
+            config["auth_token"] = env_auth_token
+
+        env_auth_tokens = str(os.environ.get("AUTH_TOKENS") or "").strip()
+        if env_auth_tokens:
+            tokens = [t.strip() for t in env_auth_tokens.split(",") if t.strip()]
+            if tokens:
+                config["auth_tokens"] = tokens
+
+        env_api_keys = str(os.environ.get("API_KEYS") or "").strip()
+        if env_api_keys:
+            keys = [k.strip() for k in env_api_keys.split(",") if k.strip()]
+            if keys:
+                config["api_keys"] = [
+                    {"key": key, "name": f"Env Key {i+1}", "created": int(time.time()), "rpm": 60}
+                    for i, key in enumerate(keys)
+                ]
+
         # Normalize api_keys to prevent KeyErrors in dashboard and rate limiting
         if isinstance(config.get("api_keys"), list):
             normalized_keys = []
@@ -6263,6 +6329,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
     debug_print("\n" + "="*80)
     debug_print("🔵 NEW API REQUEST RECEIVED")
     debug_print("="*80)
+
+    if is_upstream_circuit_open():
+        raise HTTPException(status_code=503, detail="Upstream temporarily unavailable (circuit open). Try again soon.")
     
     try:
         # Parse request body with error handling
@@ -8113,6 +8182,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         yield f"data: {json.dumps(error_chunk)}\n\n"
                         yield "data: [DONE]\n\n"
                         return
+            record_upstream_success()
             return StreamingResponse(generate_stream(), media_type="text/event-stream")
         
         # Handle non-streaming mode with retry
@@ -8458,10 +8528,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             
             debug_print(f"\n✅ REQUEST COMPLETED SUCCESSFULLY")
             debug_print("="*80 + "\n")
-            
+
+            record_upstream_success()
             return final_response
 
         except httpx.HTTPStatusError as e:
+            record_upstream_failure()
             # Log error status
             log_http_status(e.response.status_code, "Error Response")
             
@@ -8519,6 +8591,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             }
         
         except httpx.TimeoutException as e:
+            record_upstream_failure()
             print(f"\n⏱️  TIMEOUT ERROR")
             print(f"📛 Request timed out after 120 seconds")
             print(f"📤 Request URL: {url}")
@@ -8533,6 +8606,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             }
         
         except Exception as e:
+            record_upstream_failure()
             print(f"\n❌ UNEXPECTED ERROR IN HTTP CLIENT")
             print(f"📛 Error type: {type(e).__name__}")
             print(f"📛 Error message: {str(e)}")

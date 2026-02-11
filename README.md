@@ -39,6 +39,12 @@ A bridge to interact with LM Arena. This project provides an OpenAI compatible A
    pip install -r requirements.txt
    ```
 
+### Environment (recommended)
+Create a `.env` from `.env.example` and set:
+- `ADMIN_PASSWORD`
+- `ARENA_AUTH_TOKEN` or `AUTH_TOKENS`
+- `API_KEYS`
+
 ## Usage
 
 ### 1. Get your Authentication Token
@@ -100,6 +106,15 @@ You can use this project as a backend for [OpenWebUI](https://openwebui.com/), a
 ## Image Support
 
 LMArenaBridge supports sending images to vision-capable models on LMArena. When you send a message with images to a model that supports image input, the images are automatically uploaded to LMArena's R2 storage and included in the request.
+
+## Docker (optional)
+
+```bash
+docker compose up --build
+```
+
+Health check:
+- `GET /healthz`
 
 ## Production Deployment
 

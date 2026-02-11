@@ -37,7 +37,8 @@ from bridge.runtime import (
     record_upstream_failure,
 )
 from bridge.constants import HTTPStatus, log_http_status
-from bridge.config import CONFIG_FILE, MODELS_FILE, API_KEY_HEADER
+import bridge.config as cfg
+from bridge.config import CONFIG_FILE, MODELS_FILE, API_KEY_HEADER, get_config, load_usage_stats, save_config
 # ============================================================
 
 def get_rate_limit_sleep_seconds(retry_after: Optional[str], attempt: int) -> int:
@@ -2525,10 +2526,6 @@ dashboard_sessions = {}
 api_key_usage = defaultdict(list)
 # { "model_id": count }
 model_usage_stats = defaultdict(int)
-# Token cycling: current index for round-robin selection
-current_token_index = 0
-# Track config file path changes to reset per-config state in tests/dev.
-_LAST_CONFIG_FILE: Optional[str] = None
 # Track which token is assigned to each conversation (conversation_id -> token)
 conversation_tokens: Dict[str, str] = {}
 # Track failed tokens per request to avoid retrying with same token
@@ -2547,109 +2544,6 @@ RECAPTCHA_EXPIRY: datetime = datetime.now(timezone.utc) - timedelta(days=365)
 # --------------------------------------
 
 # --- Helper Functions ---
-
-def get_config():
-    global current_token_index, _LAST_CONFIG_FILE
-    # If tests or callers swap CONFIG_FILE at runtime, reset the token round-robin index so token selection
-    # is deterministic per config file.
-    if _LAST_CONFIG_FILE != CONFIG_FILE:
-        _LAST_CONFIG_FILE = CONFIG_FILE
-        current_token_index = 0
-    try:
-        with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        debug_print(f"⚠️  Config file error: {e}, using defaults")
-        config = {}
-    except Exception as e:
-        debug_print(f"⚠️  Unexpected error reading config: {e}, using defaults")
-        config = {}
-
-    # Ensure default keys exist
-    try:
-        config.setdefault("password", "admin")
-        config.setdefault("auth_token", "")
-        config.setdefault("auth_tokens", [])  # Multiple auth tokens
-        config.setdefault("cf_clearance", "")
-        config.setdefault("api_keys", [])
-        config.setdefault("usage_stats", {})
-        config.setdefault("prune_invalid_tokens", False)
-        config.setdefault("persist_arena_auth_cookie", False)
-
-        # Environment overrides (preferred for secrets)
-        env_password = str(os.environ.get("ADMIN_PASSWORD") or os.environ.get("ADMIN_PASS") or "").strip()
-        if env_password:
-            config["password"] = env_password
-
-        env_auth_token = str(os.environ.get("ARENA_AUTH_TOKEN") or "").strip()
-        if env_auth_token:
-            config["auth_token"] = env_auth_token
-
-        env_auth_tokens = str(os.environ.get("AUTH_TOKENS") or "").strip()
-        if env_auth_tokens:
-            tokens = [t.strip() for t in env_auth_tokens.split(",") if t.strip()]
-            if tokens:
-                config["auth_tokens"] = tokens
-
-        # Normalize api_keys to prevent KeyErrors in dashboard and rate limiting
-        if isinstance(config.get("api_keys"), list):
-            normalized_keys = []
-            for i, key_entry in enumerate(config["api_keys"]):
-                if isinstance(key_entry, dict):
-                    # Ensure 'key' exists as it's critical
-                    if "key" not in key_entry:
-                        continue # Skip invalid entries missing the actual key
-                    
-                    if "name" not in key_entry:
-                        key_entry["name"] = "Unnamed Key"
-                    if "created" not in key_entry:
-                        # Use a default old timestamp (Jan 3 2024)
-                        key_entry["created"] = 1704236400
-                    if "rpm" not in key_entry:
-                        key_entry["rpm"] = 60
-                    normalized_keys.append(key_entry)
-            config["api_keys"] = normalized_keys
-    except Exception as e:
-        debug_print(f"⚠️  Error setting config defaults: {e}")
-    
-    return config
-
-def load_usage_stats():
-    """Load usage stats from config into memory"""
-    global model_usage_stats
-    try:
-        config = get_config()
-        model_usage_stats = defaultdict(int, config.get("usage_stats", {}))
-    except Exception as e:
-        debug_print(f"⚠️  Error loading usage stats: {e}, using empty stats")
-        model_usage_stats = defaultdict(int)
-
-def save_config(config, *, preserve_auth_tokens: bool = True):
-    try:
-        # Avoid clobbering user-provided auth tokens when multiple tasks write config.json concurrently.
-        # Background refreshes/cookie upserts shouldn't overwrite auth tokens that may have been added via the dashboard.
-        if preserve_auth_tokens:
-            try:
-                with open(CONFIG_FILE, "r") as f:
-                    on_disk = json.load(f)
-            except Exception:
-                on_disk = None
-
-            if isinstance(on_disk, dict):
-                if "auth_tokens" in on_disk and isinstance(on_disk.get("auth_tokens"), list):
-                    config["auth_tokens"] = list(on_disk.get("auth_tokens") or [])
-                if "auth_token" in on_disk:
-                    config["auth_token"] = str(on_disk.get("auth_token") or "")
-
-        # Persist in-memory stats to the config dict before saving
-        config["usage_stats"] = dict(model_usage_stats)
-        tmp_path = f"{CONFIG_FILE}.tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(config, f, indent=4)
-        os.replace(tmp_path, CONFIG_FILE)
-    except Exception as e:
-        debug_print(f"❌ Error saving config: {e}")
-
 
 def _combine_split_arena_auth_cookies(cookies: list[dict]) -> Optional[str]:
     """
@@ -3420,7 +3314,6 @@ def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback:
         allow_ephemeral_fallback: If True, may fall back to an in-memory `EPHEMERAL_ARENA_AUTH_TOKEN` when all
             configured tokens are excluded.
     """
-    global current_token_index
     config = get_config()
     
     # Get all available tokens
@@ -3541,8 +3434,8 @@ def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback:
         available_tokens = auth_tokens
     
     # Round-robin selection from available tokens
-    token = available_tokens[current_token_index % len(available_tokens)]
-    current_token_index = (current_token_index + 1) % len(auth_tokens)
+    token = available_tokens[cfg.current_token_index % len(available_tokens)]
+    cfg.current_token_index = (cfg.current_token_index + 1) % len(auth_tokens)
     # If we selected a token we can conclusively determine is expired, prefer a valid in-memory token
     # captured from the browser session (Camoufox/Chrome) rather than hammering upstream with 401s.
     try:
@@ -3947,7 +3840,7 @@ async def startup_event():
         save_config(config)
         save_models(get_models())
         # Load usage stats from config
-        load_usage_stats()
+        load_usage_stats(model_usage_stats)
         
         # 1. First, get initial data (cookies, models, etc.)
         # We await this so we have the cookie BEFORE trying reCAPTCHA

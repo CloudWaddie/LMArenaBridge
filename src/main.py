@@ -1276,6 +1276,64 @@ def _cleanup_userscript_proxy_jobs(config: Optional[dict] = None) -> None:
         _USERSCRIPT_PROXY_JOBS.pop(job_id, None)
 
 
+def _mark_userscript_proxy_inactive() -> None:
+    """
+    Mark the userscript-proxy as inactive.
+
+    Do this when we detect proxy health/timeouts so strict-model routing stops preferring a proxy that is not
+    responding. The proxy becomes active again once a real poll/push updates the timestamps.
+    """
+    global USERSCRIPT_PROXY_LAST_POLL_AT, last_userscript_poll
+    USERSCRIPT_PROXY_LAST_POLL_AT = 0.0
+    last_userscript_poll = 0.0
+
+
+async def _finalize_userscript_proxy_job(job_id: str, *, error: Optional[str] = None, remove: bool = False) -> None:
+    """
+    Finalize a userscript-proxy job without touching proxy "last seen" timestamps.
+
+    This is intentionally separate from `push_proxy_chunk()`: server-side timeouts must not keep the proxy
+    marked as "active" because that would route future requests back into a dead proxy.
+    """
+    jid = str(job_id or "").strip()
+    if not jid:
+        return
+    job = _USERSCRIPT_PROXY_JOBS.get(jid)
+    if not isinstance(job, dict):
+        return
+
+    if error and not job.get("error"):
+        job["error"] = str(error)
+
+    if job.get("_finalized"):
+        if remove:
+            _USERSCRIPT_PROXY_JOBS.pop(jid, None)
+        return
+
+    job["_finalized"] = True
+    job["done"] = True
+
+    done_event = job.get("done_event")
+    if isinstance(done_event, asyncio.Event):
+        done_event.set()
+    status_event = job.get("status_event")
+    if isinstance(status_event, asyncio.Event):
+        status_event.set()
+
+    q = job.get("lines_queue")
+    if isinstance(q, asyncio.Queue):
+        try:
+            q.put_nowait(None)
+        except Exception:
+            try:
+                await q.put(None)
+            except Exception:
+                pass
+
+    if remove:
+        _USERSCRIPT_PROXY_JOBS.pop(jid, None)
+
+
 class UserscriptProxyStreamResponse:
     def __init__(self, job_id: str, timeout_seconds: int = 120):
         self.job_id = str(job_id)
@@ -1320,9 +1378,25 @@ class UserscriptProxyStreamResponse:
         if not isinstance(job, dict):
             self.status_code = 503
             return self
-        # Give the proxy a window to report the upstream HTTP status before we snapshot it.
+        # Give the proxy a short window to report the upstream HTTP status before we snapshot it, but don't
+        # block if it has already started streaming lines (some proxy implementations report status late).
         status_event = job.get("status_event")
+        should_wait_status = False
         if isinstance(status_event, asyncio.Event) and not status_event.is_set():
+            should_wait_status = True
+            try:
+                if job.get("error"):
+                    should_wait_status = False
+            except Exception:
+                pass
+            done_event = job.get("done_event")
+            if isinstance(done_event, asyncio.Event) and done_event.is_set():
+                should_wait_status = False
+            q = job.get("lines_queue")
+            if isinstance(q, asyncio.Queue) and not q.empty():
+                should_wait_status = False
+
+        if should_wait_status:
             try:
                 await asyncio.wait_for(
                     status_event.wait(),
@@ -7619,10 +7693,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 status_event = None
                                 done_event = None
                                 picked_up_event = None
+                                lines_queue = None
                                 if isinstance(proxy_job, dict):
                                     status_event = proxy_job.get("status_event")
                                     done_event = proxy_job.get("done_event")
                                     picked_up_event = proxy_job.get("picked_up_event")
+                                    lines_queue = proxy_job.get("lines_queue")
  
                                 if isinstance(status_event, asyncio.Event) and not status_event.is_set():
                                     try:
@@ -7635,17 +7711,43 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                                     try:
                                         proxy_status_timeout_seconds = float(
-                                            get_config().get("userscript_proxy_status_timeout_seconds", 180)
+                                            get_config().get("userscript_proxy_status_timeout_seconds", 30)
                                         )
                                     except Exception:
-                                        proxy_status_timeout_seconds = 180.0
+                                        proxy_status_timeout_seconds = 30.0
                                     proxy_status_timeout_seconds = max(5.0, min(proxy_status_timeout_seconds, 300.0))
  
                                     started = time.monotonic()
                                     proxy_status_timed_out = False
-                                    while not status_event.is_set():
+                                    while True:
+                                        if status_event.is_set():
+                                            break
                                         if isinstance(done_event, asyncio.Event) and done_event.is_set():
                                             break
+                                        # If the proxy is already streaming lines, don't stall waiting for a separate
+                                        # status report.
+                                        if isinstance(lines_queue, asyncio.Queue) and not lines_queue.empty():
+                                            break
+                                        # If an error has already been recorded, stop waiting and let downstream handle it.
+                                        try:
+                                            if isinstance(proxy_job, dict) and proxy_job.get("error"):
+                                                break
+                                        except Exception:
+                                            pass
+
+                                        # Abort quickly if the client disconnected.
+                                        try:
+                                            if await request.is_disconnected():
+                                                try:
+                                                    await _finalize_userscript_proxy_job(
+                                                        proxy_job_id, error="client disconnected", remove=True
+                                                    )
+                                                except Exception:
+                                                    pass
+                                                return
+                                        except Exception:
+                                            pass
+
                                         elapsed = time.monotonic() - started
                                         picked_up = True
                                         if isinstance(picked_up_event, asyncio.Event):
@@ -7657,16 +7759,13 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                             )
                                             disable_userscript_for_request = True
                                             try:
-                                                await push_proxy_chunk(
-                                                    proxy_job_id,
-                                                    {"error": "userscript proxy pickup timeout", "done": True},
-                                                )
+                                                _mark_userscript_proxy_inactive()
                                             except Exception:
                                                 pass
-                                            # Prevent the internal proxy worker from doing wasted work on a job we
-                                            # already declared dead.
                                             try:
-                                                _USERSCRIPT_PROXY_JOBS.pop(proxy_job_id, None)
+                                                await _finalize_userscript_proxy_job(
+                                                    proxy_job_id, error="userscript proxy pickup timeout", remove=True
+                                                )
                                             except Exception:
                                                 pass
                                             proxy_status_timed_out = True
@@ -7681,9 +7780,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                             # jobs that will never be picked up and stall for a long time.
                                             disable_userscript_for_request = True
                                             try:
-                                                await push_proxy_chunk(
-                                                    proxy_job_id,
-                                                    {"error": "userscript proxy status timeout", "done": True},
+                                                _mark_userscript_proxy_inactive()
+                                            except Exception:
+                                                pass
+                                            try:
+                                                await _finalize_userscript_proxy_job(
+                                                    proxy_job_id, error="userscript proxy status timeout", remove=True
                                                 )
                                             except Exception:
                                                 pass
@@ -8489,6 +8591,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             debug_print(f"✅ Stream completed - {len(response_text)} chars sent")
                             return  # Success, exit retry loop
                                 
+                    except asyncio.CancelledError:
+                        # Client disconnected or server shutdown. Avoid leaking proxy jobs or surfacing noisy uvicorn
+                        # "response not completed" warnings on cancellation.
+                        try:
+                            if transport_used == "userscript":
+                                jid = str(getattr(stream_context, "job_id", "") or "").strip()
+                                if jid:
+                                    await _finalize_userscript_proxy_job(jid, error="client disconnected", remove=True)
+                        except Exception:
+                            pass
+                        return
                     except httpx.HTTPStatusError as e:
                         # Handle retry-able errors
                         if e.response.status_code == 429:

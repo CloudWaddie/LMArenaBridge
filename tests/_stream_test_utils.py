@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -55,6 +56,11 @@ class BaseBridgeTest(unittest.IsolatedAsyncioTestCase):
         self._orig_debug = self.main.DEBUG
         self.main.DEBUG = False
 
+        # Ensure FastAPI lifespan startup skips real browser/network work when running unit tests under unittest.
+        self._orig_pytest_current_test = os.environ.get("PYTEST_CURRENT_TEST")
+        if not self._orig_pytest_current_test:
+            os.environ["PYTEST_CURRENT_TEST"] = "unittest"
+
         self.main.chat_sessions.clear()
         self.main.api_key_usage.clear()
 
@@ -80,6 +86,10 @@ class BaseBridgeTest(unittest.IsolatedAsyncioTestCase):
         self.main.CONFIG_FILE = self._orig_config_file
         if hasattr(self.main, "current_token_index"):
             self.main.current_token_index = self._orig_token_index
+        if self._orig_pytest_current_test is None:
+            os.environ.pop("PYTEST_CURRENT_TEST", None)
+        else:
+            os.environ["PYTEST_CURRENT_TEST"] = self._orig_pytest_current_test
         self._temp_dir.cleanup()
 
     def setup_config(self, config_data: dict) -> None:

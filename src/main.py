@@ -413,6 +413,21 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
     ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
     ShowWindow.restype = wintypes.BOOL
 
+    long_ptr_t = ctypes.c_ssize_t
+    if hasattr(user32, "GetWindowLongPtrW") and hasattr(user32, "SetWindowLongPtrW"):
+        GetWindowLongPtr = user32.GetWindowLongPtrW
+        SetWindowLongPtr = user32.SetWindowLongPtrW
+    else:
+        GetWindowLongPtr = user32.GetWindowLongW
+        SetWindowLongPtr = user32.SetWindowLongW
+        long_ptr_t = ctypes.c_long
+
+    GetWindowLongPtr.argtypes = [wintypes.HWND, ctypes.c_int]
+    GetWindowLongPtr.restype = long_ptr_t
+
+    SetWindowLongPtr.argtypes = [wintypes.HWND, ctypes.c_int, long_ptr_t]
+    SetWindowLongPtr.restype = long_ptr_t
+
     SetWindowPos = user32.SetWindowPos
     SetWindowPos.argtypes = [
         wintypes.HWND,
@@ -426,9 +441,13 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
     SetWindowPos.restype = wintypes.BOOL
 
     SW_MINIMIZE = 6
+    GWL_EXSTYLE = -20
+    WS_EX_TOOLWINDOW = 0x00000080
+    WS_EX_APPWINDOW = 0x00040000
     SWP_NOSIZE = 0x0001
     SWP_NOZORDER = 0x0004
     SWP_NOACTIVATE = 0x0010
+    SWP_FRAMECHANGED = 0x0020
 
     needle = title_substring.casefold()
     matched = {"any": False}
@@ -451,8 +470,23 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
 
             if normalized_mode == "hide":
                 # Avoid SW_HIDE: it can trigger occlusion/throttling behavior that breaks anti-bot challenges.
-                # "Hide" behaves like "offscreen" on Windows for better reliability.
-                SetWindowPos(hwnd, 0, -32000, -32000, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE)
+                # Remove taskbar/Alt-Tab presence (tool window, not app window), while keeping it headful.
+                try:
+                    current_exstyle = int(GetWindowLongPtr(hwnd, GWL_EXSTYLE) or 0)
+                    desired_exstyle = (current_exstyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
+                    if desired_exstyle != current_exstyle:
+                        SetWindowLongPtr(hwnd, GWL_EXSTYLE, long_ptr_t(desired_exstyle))
+                except Exception:
+                    pass
+                SetWindowPos(
+                    hwnd,
+                    0,
+                    -32000,
+                    -32000,
+                    0,
+                    0,
+                    SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                )
             elif normalized_mode == "minimize":
                 ShowWindow(hwnd, SW_MINIMIZE)
             elif normalized_mode == "offscreen":
@@ -3283,6 +3317,8 @@ def get_config():
         config.setdefault("usage_stats", {})
         config.setdefault("prune_invalid_tokens", False)
         config.setdefault("persist_arena_auth_cookie", False)
+        config.setdefault("camoufox_proxy_window_mode", "hide")
+        config.setdefault("camoufox_fetch_window_mode", "hide")
         
         # Normalize api_keys to prevent KeyErrors in dashboard and rate limiting
         if isinstance(config.get("api_keys"), list):

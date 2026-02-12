@@ -675,7 +675,7 @@ async def _mint_recaptcha_v3_token_in_page(
             s.defer = true;
             h.appendChild(s);
           }
-        } catch (e) {}
+        } catch (e) { console.error('LM Bridge: reCAPTCHA v3 script injection failed', e); }
       };
 
       let injected = false;
@@ -685,10 +685,10 @@ async def _mint_recaptcha_v3_token_in_page(
           try {
             // g.ready can hang; guard with a short timeout.
             await Promise.race([
-              new Promise((resolve) => { try { g.ready(resolve); } catch (e) { resolve(true); } }),
+              new Promise((resolve) => { try { g.ready(resolve); } catch (e) { console.error('LM Bridge: reCAPTCHA v3 ready callback failed', e); resolve(true); } }),
               sleep(5000),
             ]);
-          } catch (e) {}
+          } catch (e) { console.error('LM Bridge: reCAPTCHA v3 ready wait failed', e); }
           try {
             // Firefox Xray wrappers: build params in the page compartment.
             const params = new w.Object();
@@ -696,6 +696,7 @@ async def _mint_recaptcha_v3_token_in_page(
             const tok = await g.execute(key, params);
             return String(tok || '');
           } catch (e) {
+            console.error('LM Bridge: reCAPTCHA v3 execute failed', e);
             return '';
           }
         }

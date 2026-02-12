@@ -786,7 +786,8 @@ async def _camoufox_proxy_signup_anonymous_user(
             ),
             timeout=20.0,
         )
-    except Exception:
+    except Exception as e:
+        debug_print(f"Unexpected error during anonymous signup evaluate: {type(e).__name__}: {e}")
         resp = None
     return resp if isinstance(resp, dict) else None
 

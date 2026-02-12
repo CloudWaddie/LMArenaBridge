@@ -476,8 +476,8 @@ def _windows_apply_window_mode_by_title_substring(title_substring: str, mode: st
                     desired_exstyle = (current_exstyle | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW
                     if desired_exstyle != current_exstyle:
                         SetWindowLongPtr(hwnd, GWL_EXSTYLE, long_ptr_t(desired_exstyle))
-                except Exception:
-                    pass
+                except Exception as ex:
+                    debug_print(f"Windows hide mode exstyle update failed: {ex}")
                 SetWindowPos(
                     hwnd,
                     0,
@@ -5674,20 +5674,15 @@ async def userscript_push(request: Request):
     fetch_started = data.get("upstream_fetch_started")
     if fetch_started is None:
         fetch_started = data.get("fetch_started")
-    if fetch_started:
+    status_code = data.get("status")
+    if fetch_started or isinstance(status_code, int):
         try:
             if not job.get("upstream_fetch_started_at_monotonic"):
                 job["upstream_fetch_started_at_monotonic"] = time.monotonic()
         except Exception:
             pass
 
-    status_code = data.get("status")
     if isinstance(status_code, int):
-        try:
-            if not job.get("upstream_fetch_started_at_monotonic"):
-                job["upstream_fetch_started_at_monotonic"] = time.monotonic()
-        except Exception:
-            pass
         job["status_code"] = int(status_code)
         status_event = job.get("status_event")
         if isinstance(status_event, asyncio.Event):
@@ -5731,20 +5726,15 @@ async def push_proxy_chunk(jid, d) -> None:
         fetch_started = d.get("upstream_fetch_started")
         if fetch_started is None:
             fetch_started = d.get("fetch_started")
-        if fetch_started:
+        status = d.get("status")
+        if fetch_started or isinstance(status, int):
             try:
                 if not job.get("upstream_fetch_started_at_monotonic"):
                     job["upstream_fetch_started_at_monotonic"] = time.monotonic()
             except Exception:
                 pass
 
-        status = d.get("status")
         if isinstance(status, int):
-            try:
-                if not job.get("upstream_fetch_started_at_monotonic"):
-                    job["upstream_fetch_started_at_monotonic"] = time.monotonic()
-            except Exception:
-                pass
             job["status_code"] = int(status)
             status_event = job.get("status_event")
             if isinstance(status_event, asyncio.Event):

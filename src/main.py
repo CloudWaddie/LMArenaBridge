@@ -7942,7 +7942,23 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                                 preflight_timeout = proxy_preflight_timeout_seconds
                                                 if phase == "signup":
                                                     preflight_timeout = proxy_signup_preflight_timeout_seconds
-                                                preflight_elapsed = now_mono - pickup_at_mono
+                                                preflight_started_at_mono = pickup_at_mono
+                                                if phase == "fetch":
+                                                    upstream_started_at = proxy_job.get(
+                                                        "upstream_started_at_monotonic"
+                                                    )
+                                                    try:
+                                                        upstream_started_at_mono = float(
+                                                            upstream_started_at
+                                                        )
+                                                    except Exception:
+                                                        upstream_started_at_mono = 0.0
+                                                    if upstream_started_at_mono > 0:
+                                                        preflight_started_at_mono = (
+                                                            upstream_started_at_mono
+                                                        )
+
+                                                preflight_elapsed = now_mono - preflight_started_at_mono
                                                 if preflight_elapsed < 0:
                                                     preflight_elapsed = 0.0
                                                 if preflight_elapsed >= preflight_timeout:

@@ -6401,7 +6401,11 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         # Process last message content (may include images)
         try:
             last_message_content = messages[-1].get("content", "")
-            prompt, experimental_attachments = await process_message_content(last_message_content, model_capabilities)
+            try:
+                prompt, experimental_attachments = await process_message_content(last_message_content, model_capabilities)
+            except Exception as e:
+                debug_print(f"❌ Failed to process message content: {e}")
+                raise HTTPException(status_code=400, detail=f"Invalid message content: {str(e)}")
             
             # If there's a system prompt and this is the first user message, prepend it
             if system_prompt:

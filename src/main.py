@@ -7454,8 +7454,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             use_userscript = False
                             cfg_now = None
                             if (
-                                model_public_name in STRICT_CHROME_FETCH_MODELS
-                                and use_browser_transports
+                                use_browser_transports
                                 and not disable_userscript_for_request
                                 and not disable_userscript_proxy_env
                             ):
@@ -7952,6 +7951,39 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             async with stream_context as response:
                                 # Log status with human-readable message
                                 log_http_status(response.status_code, "LMArena API Stream")
+
+                                # Redirects break SSE streaming and usually indicate an origin change (arena.ai vs
+                                # lmarena.ai) or bot-mitigation. Switch to browser transports (userscript proxy when
+                                # active) and retry instead of trying to parse the redirect body as stream data.
+                                try:
+                                    status_int = int(getattr(response, "status_code", 0) or 0)
+                                except Exception:
+                                    status_int = 0
+                                if 300 <= status_int < 400:
+                                    location = ""
+                                    try:
+                                        location = str(
+                                            response.headers.get("location")
+                                            or response.headers.get("Location")
+                                            or ""
+                                        ).strip()
+                                    except Exception:
+                                        location = ""
+
+                                    if transport_used == "httpx":
+                                        debug_print(
+                                            f"Upstream returned redirect {status_int} ({location or 'no Location header'}). "
+                                            "Enabling browser transports and retrying..."
+                                        )
+                                        use_browser_transports = True
+                                    else:
+                                        debug_print(
+                                            f"Upstream returned redirect {status_int} ({location or 'no Location header'}). Retrying..."
+                                        )
+
+                                    async for ka in wait_with_keepalive(0.5):
+                                        yield ka
+                                    continue
                                 
                                 # Check for retry-able errors before processing stream
                                 if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:

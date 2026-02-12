@@ -7,20 +7,24 @@ import httpx
 from tests._stream_test_utils import BaseBridgeTest
 
 
-class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
+class TestStreamUserscriptProxySignupPreflightNoFallback(BaseBridgeTest):
     async def asyncSetUp(self) -> None:
         await super().asyncSetUp()
-        # Keep the proxy timeout small so the test exercises the fallback path quickly.
+        # Keep status timeout small to reproduce the regression where signup takes longer than status timeout.
+        # The fix should instead allow a longer preflight timeout while phase=signup.
         self.setup_config(
             {
                 "userscript_proxy_status_timeout_seconds": 5,
                 "userscript_proxy_pickup_timeout_seconds": 10,
+                "userscript_proxy_preflight_timeout_seconds": 5,
+                "userscript_proxy_signup_preflight_timeout_seconds": 20,
             }
         )
 
-    async def test_stream_proxy_status_timeout_falls_back_to_chrome_fetch(self) -> None:
+    async def test_signup_phase_delay_does_not_fallback_to_chrome_fetch(self) -> None:
         sleep_mock = AsyncMock()
         clock = [1000.0]
+        real_sleep = asyncio.sleep
 
         def _now() -> float:
             return float(clock[0])
@@ -30,6 +34,8 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
                 clock[0] += float(seconds)
             except Exception:
                 pass
+            # Yield control so background tasks (proxy simulation) can run deterministically.
+            await real_sleep(0)
             return None
 
         sleep_mock.side_effect = _sleep
@@ -43,32 +49,51 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
             proxy_calls["count"] += 1
             resp = await orig_proxy(*args, **kwargs)
             self.assertIsNotNone(resp)
-            job = self.main._USERSCRIPT_PROXY_JOBS.get(str(resp.job_id))
-            if isinstance(job, dict):
-                picked = job.get("picked_up_event")
-                if isinstance(picked, asyncio.Event) and not picked.is_set():
-                    picked.set()
-                # Simulate the proxy starting the upstream fetch, but never reporting status.
-                # The bridge should trigger the *status* timeout (not preflight) and fall back to Chrome.
+
+            job_id = str(resp.job_id)
+            job = self.main._USERSCRIPT_PROXY_JOBS.get(job_id)
+            self.assertIsInstance(job, dict)
+
+            picked = job.get("picked_up_event")
+            if isinstance(picked, asyncio.Event) and not picked.is_set():
+                picked.set()
+            job["picked_up_at_monotonic"] = float(self.main.time.monotonic())
+            job["phase"] = "signup"
+
+            async def _simulate_proxy_signup_then_stream() -> None:
+                # Stay in signup long enough to exceed userscript_proxy_status_timeout_seconds (5s) from pickup.
+                # With the fix, this should *not* trigger the upstream-status timeout because upstream hasn't started.
+                started_at = float(self.main.time.monotonic())
+                while float(self.main.time.monotonic()) < (started_at + 8.0):
+                    await asyncio.sleep(0)
+
                 job["phase"] = "fetch"
-                job["picked_up_at_monotonic"] = float(self.main.time.monotonic())
                 job["upstream_started_at_monotonic"] = float(self.main.time.monotonic())
                 job["upstream_fetch_started_at_monotonic"] = float(self.main.time.monotonic())
+                job["status_code"] = 200
+                status_event = job.get("status_event")
+                if isinstance(status_event, asyncio.Event):
+                    status_event.set()
+
+                q = job.get("lines_queue")
+                if isinstance(q, asyncio.Queue):
+                    await q.put('a0:"Hello"')
+                    await q.put('ad:{"finishReason":"stop"}')
+                    await q.put(None)
+
+                job["done"] = True
+                done_event = job.get("done_event")
+                if isinstance(done_event, asyncio.Event):
+                    done_event.set()
+
+            asyncio.create_task(_simulate_proxy_signup_then_stream())
             return resp
 
         proxy_mock = AsyncMock(side_effect=_proxy_stream)
 
-        chrome_resp = self.main.BrowserFetchStreamResponse(
-            status_code=200,
-            headers={},
-            text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
-            method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
-        )
-
         async def _chrome_stream(*args, **kwargs):  # noqa: ANN001
             chrome_calls["count"] += 1
-            return chrome_resp
+            raise AssertionError("Chrome fetch should not be called when proxy completes after signup preflight")
 
         chrome_mock = AsyncMock(side_effect=_chrome_stream)
 
@@ -117,13 +142,8 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
             self.assertIn("Hello", response.text)
             self.assertIn("[DONE]", response.text)
             self.assertGreaterEqual(proxy_calls["count"], 1)
-            self.assertGreaterEqual(chrome_calls["count"], 1)
-
-            # The timeout path must NOT keep the proxy marked active; otherwise strict-model requests keep routing
-            # back into a dead proxy and stall streaming.
-            self.assertFalse(self.main._userscript_proxy_is_active(self.main.get_config()))
+            self.assertEqual(chrome_calls["count"], 0)
 
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -1641,6 +1641,15 @@ async def fetch_lmarena_stream_via_userscript_proxy(
     job = {
         "created_at": time.time(),
         "job_id": job_id,
+        # Job lifecycle markers used by the server-side stream handler to apply timeouts correctly.
+        # - phase: queued -> picked_up -> signup -> fetch
+        # - picked_up_at_monotonic: set when any proxy worker/poller claims the job
+        # - upstream_started_at_monotonic: set when the proxy begins processing the request (may include preflight)
+        # - upstream_fetch_started_at_monotonic: set when the upstream HTTP fetch is initiated (after preflight)
+        "phase": "queued",
+        "picked_up_at_monotonic": None,
+        "upstream_started_at_monotonic": None,
+        "upstream_fetch_started_at_monotonic": None,
         "url": str(url),
         "method": str(http_method or "POST"),
         # Per-request auth token (do not mutate persisted config). The proxy worker uses this to set
@@ -5597,6 +5606,10 @@ async def userscript_poll(request: Request):
             picked = job.get("picked_up_event")
             if isinstance(picked, asyncio.Event) and not picked.is_set():
                 picked.set()
+                if not job.get("picked_up_at_monotonic"):
+                    job["picked_up_at_monotonic"] = time.monotonic()
+            if str(job.get("phase") or "") == "queued":
+                job["phase"] = "picked_up"
         except Exception:
             pass
         return {"job_id": str(job_id), "payload": job.get("payload") or {}}
@@ -5622,8 +5635,23 @@ async def userscript_push(request: Request):
     if not isinstance(job, dict):
         raise HTTPException(status_code=404, detail="Unknown job_id")
 
+    fetch_started = data.get("upstream_fetch_started")
+    if fetch_started is None:
+        fetch_started = data.get("fetch_started")
+    if fetch_started:
+        try:
+            if not job.get("upstream_fetch_started_at_monotonic"):
+                job["upstream_fetch_started_at_monotonic"] = time.monotonic()
+        except Exception:
+            pass
+
     status_code = data.get("status")
     if isinstance(status_code, int):
+        try:
+            if not job.get("upstream_fetch_started_at_monotonic"):
+                job["upstream_fetch_started_at_monotonic"] = time.monotonic()
+        except Exception:
+            pass
         job["status_code"] = int(status_code)
         status_event = job.get("status_event")
         if isinstance(status_event, asyncio.Event):
@@ -5664,8 +5692,23 @@ async def push_proxy_chunk(jid, d) -> None:
         return
 
     if isinstance(d, dict):
+        fetch_started = d.get("upstream_fetch_started")
+        if fetch_started is None:
+            fetch_started = d.get("fetch_started")
+        if fetch_started:
+            try:
+                if not job.get("upstream_fetch_started_at_monotonic"):
+                    job["upstream_fetch_started_at_monotonic"] = time.monotonic()
+            except Exception:
+                pass
+
         status = d.get("status")
         if isinstance(status, int):
+            try:
+                if not job.get("upstream_fetch_started_at_monotonic"):
+                    job["upstream_fetch_started_at_monotonic"] = time.monotonic()
+            except Exception:
+                pass
             job["status_code"] = int(status)
             status_event = job.get("status_event")
             if isinstance(status_event, asyncio.Event):
@@ -6428,6 +6471,10 @@ async def camoufox_proxy_worker():
                 picked = job.get("picked_up_event")
                 if isinstance(picked, asyncio.Event) and not picked.is_set():
                     picked.set()
+                if not job.get("picked_up_at_monotonic"):
+                    job["picked_up_at_monotonic"] = time.monotonic()
+                if str(job.get("phase") or "") == "queued":
+                    job["phase"] = "picked_up"
             except Exception:
                 pass
              
@@ -6563,16 +6610,23 @@ async def camoufox_proxy_worker():
                     try { bodyText = JSON.stringify(parsed); } catch (e) { bodyText = String(payload?.body || ''); }
                   }
 
-                  const doFetch = async (body, token) => fetch(payload.url, {
-                    method: payload.method || 'POST',
-                    body,
-                    headers: {
-                      ...(payload.headers || { 'Content-Type': 'text/plain;charset=UTF-8' }),
-                      ...(token ? { 'X-Recaptcha-Token': token, ...(action ? { 'X-Recaptcha-Action': action } : {}) } : {}),
-                    },
-                    credentials: 'include',
-                    signal: controller.signal,
-                  });
+                  let upstreamFetchMarked = false;
+                  const doFetch = async (body, token) => {
+                    if (!upstreamFetchMarked) {
+                      upstreamFetchMarked = true;
+                      emit({ upstream_fetch_started: true });
+                    }
+                    return fetch(payload.url, {
+                      method: payload.method || 'POST',
+                      body,
+                      headers: {
+                        ...(payload.headers || { 'Content-Type': 'text/plain;charset=UTF-8' }),
+                        ...(token ? { 'X-Recaptcha-Token': token, ...(action ? { 'X-Recaptcha-Action': action } : {}) } : {}),
+                      },
+                      credentials: 'include',
+                      signal: controller.signal,
+                    });
+                  };
 
                   dbg('before_fetch', { tokenLen: (tokenForHeaders || '').length });
                   let res = await doFetch(bodyText, tokenForHeaders);
@@ -6718,9 +6772,19 @@ async def camoufox_proxy_worker():
                 needs_signup = not bool(current_cookie)
             # Unit tests stub out the browser; avoid slow/interactive signup flows there.
             if needs_signup and not os.environ.get("PYTEST_CURRENT_TEST"):
+                try:
+                    job["phase"] = "signup"
+                except Exception:
+                    pass
                 await _attempt_anonymous_signup(min_interval_seconds=20.0)
-            
+             
             try:
+                try:
+                    job["phase"] = "fetch"
+                    if not job.get("upstream_started_at_monotonic"):
+                        job["upstream_started_at_monotonic"] = time.monotonic()
+                except Exception:
+                    pass
                 await asyncio.wait_for(
                     page.evaluate(
                         fetch_script,
@@ -7716,6 +7780,36 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     except Exception:
                                         proxy_status_timeout_seconds = 30.0
                                     proxy_status_timeout_seconds = max(5.0, min(proxy_status_timeout_seconds, 300.0))
+
+                                    # Time between pickup and the proxy actually starting the upstream fetch. When the
+                                    # Camoufox proxy needs to perform anonymous signup / Turnstile preflight, this can
+                                    # legitimately take much longer than the upstream-status timeout.
+                                    try:
+                                        proxy_preflight_timeout_seconds = float(
+                                            get_config().get(
+                                                "userscript_proxy_preflight_timeout_seconds",
+                                                proxy_status_timeout_seconds,
+                                            )
+                                        )
+                                    except Exception:
+                                        proxy_preflight_timeout_seconds = proxy_status_timeout_seconds
+                                    proxy_preflight_timeout_seconds = max(
+                                        5.0, min(proxy_preflight_timeout_seconds, 600.0)
+                                    )
+
+                                    try:
+                                        proxy_signup_preflight_timeout_seconds = float(
+                                            get_config().get(
+                                                "userscript_proxy_signup_preflight_timeout_seconds",
+                                                240,
+                                            )
+                                        )
+                                    except Exception:
+                                        proxy_signup_preflight_timeout_seconds = 240.0
+                                    proxy_signup_preflight_timeout_seconds = max(
+                                        proxy_preflight_timeout_seconds,
+                                        min(proxy_signup_preflight_timeout_seconds, 900.0),
+                                    )
  
                                     started = time.monotonic()
                                     proxy_status_timed_out = False
@@ -7748,7 +7842,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         except Exception:
                                             pass
 
-                                        elapsed = time.monotonic() - started
+                                        now_mono = time.monotonic()
+                                        elapsed = now_mono - started
                                         picked_up = True
                                         if isinstance(picked_up_event, asyncio.Event):
                                             picked_up = bool(picked_up_event.is_set())
@@ -7771,26 +7866,80 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                             proxy_status_timed_out = True
                                             break
 
-                                        if picked_up and elapsed >= proxy_status_timeout_seconds:
-                                            debug_print(
-                                                f"⚠️ Userscript proxy did not report upstream status within {int(proxy_status_timeout_seconds)}s."
-                                            )
-                                            # Treat the proxy as unavailable for the rest of this request and fall back
-                                            # to other transports (Chrome/Camoufox/httpx). Otherwise we'd keep queuing
-                                            # jobs that will never be picked up and stall for a long time.
-                                            disable_userscript_for_request = True
+                                        if picked_up and isinstance(proxy_job, dict):
+                                            pickup_at = proxy_job.get("picked_up_at_monotonic")
                                             try:
-                                                _mark_userscript_proxy_inactive()
+                                                pickup_at_mono = float(pickup_at)
                                             except Exception:
-                                                pass
+                                                pickup_at_mono = 0.0
+                                            if pickup_at_mono <= 0:
+                                                pickup_at_mono = float(now_mono)
+                                                proxy_job["picked_up_at_monotonic"] = pickup_at_mono
+
+                                            upstream_fetch_started_at = proxy_job.get(
+                                                "upstream_fetch_started_at_monotonic"
+                                            )
                                             try:
-                                                await _finalize_userscript_proxy_job(
-                                                    proxy_job_id, error="userscript proxy status timeout", remove=True
+                                                upstream_fetch_started_at_mono = float(
+                                                    upstream_fetch_started_at
                                                 )
                                             except Exception:
-                                                pass
-                                            proxy_status_timed_out = True
-                                            break
+                                                upstream_fetch_started_at_mono = 0.0
+
+                                            if upstream_fetch_started_at_mono > 0:
+                                                status_elapsed = now_mono - upstream_fetch_started_at_mono
+                                                if status_elapsed < 0:
+                                                    status_elapsed = 0.0
+                                                if status_elapsed >= proxy_status_timeout_seconds:
+                                                    debug_print(
+                                                        f"⚠️ Userscript proxy did not report upstream status within {int(proxy_status_timeout_seconds)}s."
+                                                    )
+                                                    # Treat the proxy as unavailable for the rest of this request and fall back
+                                                    # to other transports (Chrome/Camoufox/httpx). Otherwise we'd keep queuing
+                                                    # jobs that will never be picked up and stall for a long time.
+                                                    disable_userscript_for_request = True
+                                                    try:
+                                                        _mark_userscript_proxy_inactive()
+                                                    except Exception:
+                                                        pass
+                                                    try:
+                                                        await _finalize_userscript_proxy_job(
+                                                            proxy_job_id,
+                                                            error="userscript proxy status timeout",
+                                                            remove=True,
+                                                        )
+                                                    except Exception:
+                                                        pass
+                                                    proxy_status_timed_out = True
+                                                    break
+                                            else:
+                                                phase = str(proxy_job.get("phase") or "")
+                                                preflight_timeout = proxy_preflight_timeout_seconds
+                                                if phase == "signup":
+                                                    preflight_timeout = proxy_signup_preflight_timeout_seconds
+                                                preflight_elapsed = now_mono - pickup_at_mono
+                                                if preflight_elapsed < 0:
+                                                    preflight_elapsed = 0.0
+                                                if preflight_elapsed >= preflight_timeout:
+                                                    phase_note = phase or "unknown"
+                                                    debug_print(
+                                                        f"⚠️ Userscript proxy did not start upstream fetch within {int(preflight_timeout)}s (phase={phase_note})."
+                                                    )
+                                                    disable_userscript_for_request = True
+                                                    try:
+                                                        _mark_userscript_proxy_inactive()
+                                                    except Exception:
+                                                        pass
+                                                    try:
+                                                        await _finalize_userscript_proxy_job(
+                                                            proxy_job_id,
+                                                            error="userscript proxy preflight timeout",
+                                                            remove=True,
+                                                        )
+                                                    except Exception:
+                                                        pass
+                                                    proxy_status_timed_out = True
+                                                    break
  
                                         yield ": keep-alive\n\n"
                                         await asyncio.sleep(1.0)

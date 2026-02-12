@@ -7201,15 +7201,22 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         # Initialize failed tokens tracking for this request
         request_id = str(uuid.uuid4())
         failed_tokens = set()
+        force_browser_transports_in_stream = False
         
         # Get initial auth token using round-robin (excluding any failed ones)
         current_token = ""
         try:
             current_token = get_next_auth_token(exclude_tokens=failed_tokens)
         except HTTPException:
-            # For strict models we can still proceed via browser fetch transports, which may have a valid
-            # arena-auth cookie already stored in the persistent profile. For non-strict models we need a token.
-            if strict_chrome_fetch_model:
+            # Stream mode: when no auth token is configured, fall back to browser-backed transports
+            # (Userscript proxy / Chrome/Camoufox fetch). This matches strict-model behavior and avoids a hard 500.
+            if stream:
+                debug_print("⚠️ No auth token configured for streaming; enabling browser/proxy transports.")
+                current_token = ""
+                force_browser_transports_in_stream = True
+            # Non-streaming strict models can still proceed via browser fetch transports, which may have a valid
+            # arena-auth cookie already stored in the persistent profile.
+            elif strict_chrome_fetch_model:
                 debug_print("⚠️ No auth token configured; proceeding with browser-only transports.")
                 current_token = ""
             else:
@@ -7375,11 +7382,15 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         yield ": keep-alive\n\n"
                         await asyncio.sleep(min(1.0, end_time - time.time()))
 
-                # Only use browser transports (Chrome/Camoufox) proactively for models known to be strict with reCAPTCHA.
-                use_browser_transports = model_public_name in STRICT_CHROME_FETCH_MODELS
+                # Use browser transports (Userscript proxy / Chrome/Camoufox) proactively for:
+                #   - models known to be strict with reCAPTCHA
+                #   - any streaming request when no auth token is available (browser session may be able to sign up / reuse cookies)
+                use_browser_transports = force_browser_transports_in_stream or (model_public_name in STRICT_CHROME_FETCH_MODELS)
                 prefer_chrome_transport = True
-                if use_browser_transports:
+                if use_browser_transports and (model_public_name in STRICT_CHROME_FETCH_MODELS):
                     debug_print(f"🔐 Strict model detected ({model_public_name}), enabling browser fetch transport.")
+                elif use_browser_transports and force_browser_transports_in_stream:
+                    debug_print("⚠️ Stream mode without auth token: preferring userscript proxy / browser fetch transports.")
 
                 # Non-strict models: mint a fresh side-channel token before the first upstream attempt so we don't
                 # send an empty `recaptchaV3Token` (which commonly yields 403 "recaptcha validation failed").

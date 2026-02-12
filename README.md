@@ -41,6 +41,18 @@ A bridge to interact with LM Arena. This project provides an OpenAI compatible A
 
 ## Usage
 
+### Userscript Proxy (optional)
+
+There is an optional **userscript proxy** path that can improve reliability for some strict models and reCAPTCHA flows. It is **not required** and the bridge can run without it using direct httpx + browser fetch (Chrome/Camoufox).
+
+**Notes:**
+- The userscript is optional and only helpful in specific environments.
+- If you don’t want to use it, you can ignore it entirely.
+- When enabled, it acts as a helper to send requests via a browser tab and can improve reCAPTCHA success rates.
+
+If you want this documented more deeply, let us know what environment you’re on and we’ll add step-by-step instructions.
+
+
 ### 1. Get your Authentication Token
 
 To use the LM Arena Bridge, you need to get your authentication token from the LM Arena website.

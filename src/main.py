@@ -2539,6 +2539,28 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         debug_print(f"❌ Unexpected error uploading image: {type(e).__name__}: {e}")
         return None
 
+def _coerce_message_content_to_text(content) -> str:
+    """Best-effort coercion of message content to plain text (no images)."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for part in content:
+            if isinstance(part, dict):
+                if part.get("type") == "text":
+                    parts.append(str(part.get("text", "")))
+                elif "text" in part:
+                    parts.append(str(part.get("text", "")))
+                elif "content" in part:
+                    parts.append(str(part.get("content", "")))
+            elif isinstance(part, str):
+                parts.append(part)
+        return "\n".join([p for p in parts if p is not None]).strip()
+    return str(content)
+
+
 async def process_message_content(content, model_capabilities: dict) -> tuple[str, List[dict]]:
     """
     Process message content, handle images if present and model supports them.
@@ -2566,6 +2588,10 @@ async def process_message_content(content, model_capabilities: dict) -> tuple[st
             if isinstance(part, dict):
                 if part.get('type') == 'text':
                     text_parts.append(part.get('text', ''))
+                elif 'text' in part:
+                    text_parts.append(part.get('text', ''))
+                elif 'content' in part:
+                    text_parts.append(part.get('content', ''))
                     
                 elif part.get('type') == 'image_url' and supports_images:
                     image_url = part.get('image_url', {})
@@ -2640,6 +2666,8 @@ async def process_message_content(content, model_capabilities: dict) -> tuple[st
                         
                 elif part.get('type') == 'image_url' and not supports_images:
                     debug_print(f"⚠️  Image provided but model doesn't support images")
+            elif isinstance(part, str):
+                text_parts.append(part)
         
         # Combine text parts
         text_content = '\n'.join(text_parts).strip()
@@ -6367,7 +6395,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         system_prompt = ""
         system_messages = [m for m in messages if m.get("role") == "system"]
         if system_messages:
-            system_prompt = "\n\n".join([m.get("content", "") for m in system_messages])
+            system_prompt = "\n\n".join([_coerce_message_content_to_text(m.get("content", "")) for m in system_messages])
             debug_print(f"📋 System prompt found: {system_prompt[:100]}..." if len(system_prompt) > 100 else f"📋 System prompt: {system_prompt}")
         
         # Process last message content (may include images)

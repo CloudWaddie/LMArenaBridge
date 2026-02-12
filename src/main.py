@@ -718,7 +718,11 @@ async def _mint_recaptcha_v3_token_in_page(
             ),
             timeout=float(outer_timeout_seconds),
         )
-    except Exception:
+    except asyncio.TimeoutError:
+        debug_print("reCAPTCHA v3 mint timed out in page.")
+        tok = ""
+    except Exception as e:
+        debug_print(f"Unexpected error minting reCAPTCHA v3 token in page: {type(e).__name__}: {e}")
         tok = ""
     return str(tok or "").strip()
 
@@ -805,8 +809,8 @@ async def _set_provisional_user_id_in_browser(page, context, *, provisional_user
             # - Others store it as a host-only cookie on `lmarena.ai` (via `url`)
             # If the two disagree, upstream can reject /nextjs-api/sign-up with confusing errors.
             await context.add_cookies(_provisional_user_id_cookie_specs(provisional_user_id))
-    except Exception:
-        pass
+    except Exception as e:
+        debug_print(f"Failed to set provisional_user_id cookies in browser context: {type(e).__name__}: {e}")
 
     try:
         await page.evaluate(

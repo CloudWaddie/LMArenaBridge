@@ -7385,12 +7385,28 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 # Use browser transports (Userscript proxy / Chrome/Camoufox) proactively for:
                 #   - models known to be strict with reCAPTCHA
                 #   - any streaming request when no auth token is available (browser session may be able to sign up / reuse cookies)
-                use_browser_transports = force_browser_transports_in_stream or (model_public_name in STRICT_CHROME_FETCH_MODELS)
+                disable_userscript_proxy_env = bool(os.environ.get("LM_BRIDGE_DISABLE_USERSCRIPT_PROXY"))
+                proxy_active_at_start = False
+                if not disable_userscript_proxy_env:
+                    try:
+                        proxy_active_at_start = _userscript_proxy_is_active()
+                    except Exception:
+                        proxy_active_at_start = False
+
+                # If the userscript proxy is active (internal Camoufox worker / extension poller), route streaming
+                # through it immediately to avoid side-channel reCAPTCHA token minting (which can launch headful Chrome).
+                use_browser_transports = (
+                    force_browser_transports_in_stream
+                    or (model_public_name in STRICT_CHROME_FETCH_MODELS)
+                    or proxy_active_at_start
+                )
                 prefer_chrome_transport = True
                 if use_browser_transports and (model_public_name in STRICT_CHROME_FETCH_MODELS):
                     debug_print(f"🔐 Strict model detected ({model_public_name}), enabling browser fetch transport.")
                 elif use_browser_transports and force_browser_transports_in_stream:
                     debug_print("⚠️ Stream mode without auth token: preferring userscript proxy / browser fetch transports.")
+                elif use_browser_transports and proxy_active_at_start:
+                    debug_print("🦊 Userscript proxy is ACTIVE: routing stream through proxy and skipping side-channel reCAPTCHA mint.")
 
                 # Non-strict models: mint a fresh side-channel token before the first upstream attempt so we don't
                 # send an empty `recaptchaV3Token` (which commonly yields 403 "recaptcha validation failed").
@@ -7416,7 +7432,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 strict_token_prefill_attempted = False
                 disable_userscript_for_request = False
                 force_proxy_recaptcha_mint = False
-                disable_userscript_proxy_env = bool(os.environ.get("LM_BRIDGE_DISABLE_USERSCRIPT_PROXY"))
 
                 retry_429_count = 0
                 retry_403_count = 0

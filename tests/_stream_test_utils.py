@@ -63,6 +63,15 @@ class BaseBridgeTest(unittest.IsolatedAsyncioTestCase):
 
         self.main.chat_sessions.clear()
         self.main.api_key_usage.clear()
+        try:
+            # Ensure userscript-proxy state doesn't leak across tests.
+            self.main._USERSCRIPT_PROXY_JOBS.clear()
+            self.main._USERSCRIPT_PROXY_QUEUE = None
+            self.main.proxy_pending_tasks.clear()
+            self.main.proxy_task_queue.clear()
+            self.main._mark_userscript_proxy_inactive()
+        except Exception:
+            pass
 
         self._orig_config_file = self.main.CONFIG_FILE
         self._orig_token_index = getattr(self.main, "current_token_index", 0)

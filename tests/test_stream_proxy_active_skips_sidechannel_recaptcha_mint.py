@@ -4,29 +4,13 @@ from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from tests._stream_test_utils import BaseBridgeTest, FakeStreamContext, FakeStreamResponse
+from tests._stream_test_utils import BaseBridgeTest
 
 
-class TestStream301RedirectRetriesViaUserscriptProxy(BaseBridgeTest):
-    async def test_non_strict_redirect_retries_via_userscript_proxy(self) -> None:
-        stream_calls: dict[str, int] = {"count": 0}
-        bridge = self.main
-
-        def fake_stream(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
-            stream_calls["count"] += 1
-            if stream_calls["count"] == 1:
-                # Simulate the proxy becoming available after the initial redirect response.
-                bridge._touch_userscript_poll()
-                return FakeStreamContext(
-                    FakeStreamResponse(
-                        status_code=301,
-                        headers={"Location": "https://arena.ai/nextjs-api/stream/create-evaluation"},
-                        text="",
-                    )
-                )
-            raise AssertionError("httpx stream should not be used after redirect when userscript proxy is active")
-
+class TestStreamProxyActiveSkipsSidechannelRecaptchaMint(BaseBridgeTest):
+    async def test_stream_proxy_active_skips_sidechannel_recaptcha_and_httpx(self) -> None:
         proxy_calls: dict[str, int] = {"count": 0}
+
         orig_proxy = self.main.fetch_lmarena_stream_via_userscript_proxy
 
         async def _proxy_stream(*args, **kwargs):  # noqa: ANN001
@@ -46,7 +30,6 @@ class TestStream301RedirectRetriesViaUserscriptProxy(BaseBridgeTest):
             job["picked_up_at_monotonic"] = float(self.main.time.monotonic())
             job["upstream_started_at_monotonic"] = float(self.main.time.monotonic())
             job["upstream_fetch_started_at_monotonic"] = float(self.main.time.monotonic())
-
             job["status_code"] = 200
             status_event = job.get("status_event")
             if isinstance(status_event, asyncio.Event):
@@ -66,31 +49,35 @@ class TestStream301RedirectRetriesViaUserscriptProxy(BaseBridgeTest):
             return resp
 
         proxy_mock = AsyncMock(side_effect=_proxy_stream)
-        sleep_mock = AsyncMock()
 
-        chrome_mock = AsyncMock(side_effect=AssertionError("Chrome fetch should not be used when userscript proxy is active"))
-        camoufox_mock = AsyncMock(
-            side_effect=AssertionError("Camoufox fetch should not be used when userscript proxy is active")
-        )
+        async def _fail_if_sidechannel_recaptcha_called(*args, **kwargs):  # noqa: ANN001,ARG001
+            raise AssertionError("Side-channel reCAPTCHA mint should be skipped when userscript proxy is active")
+
+        async def _fail_if_chrome_called(*args, **kwargs):  # noqa: ANN001,ARG001
+            raise AssertionError("Chrome fetch should not be used when userscript proxy is active")
+
+        def _fail_if_httpx_stream_called(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
+            raise AssertionError("httpx.AsyncClient.stream should not be called when userscript proxy is active")
 
         with (
             patch.object(self.main, "get_models") as get_models_mock,
-            patch.object(self.main, "refresh_recaptcha_token", AsyncMock(return_value="recaptcha-token")),
+            patch.object(self.main, "refresh_recaptcha_token", AsyncMock(side_effect=_fail_if_sidechannel_recaptcha_called)),
             patch.object(self.main, "fetch_lmarena_stream_via_userscript_proxy", proxy_mock),
-            patch.object(self.main, "fetch_lmarena_stream_via_chrome", chrome_mock),
-            patch.object(self.main, "fetch_lmarena_stream_via_camoufox", camoufox_mock),
-            patch.object(httpx.AsyncClient, "stream", new=fake_stream),
+            patch.object(self.main, "fetch_lmarena_stream_via_chrome", AsyncMock(side_effect=_fail_if_chrome_called)),
+            patch.object(httpx.AsyncClient, "stream", new=_fail_if_httpx_stream_called),
             patch("src.main.print"),
-            patch("src.main.asyncio.sleep", sleep_mock),
         ):
+            # Mark proxy as active so proxy-first routing is taken before any side-channel token minting.
+            self.main._touch_userscript_poll()
+
             get_models_mock.return_value = [
                 {
-                    "publicName": "test-search-model",
+                    "publicName": "claude-3-opus",
                     "id": "model-id",
                     "organization": "test-org",
                     "capabilities": {
                         "inputCapabilities": {"text": True},
-                        "outputCapabilities": {"search": True},
+                        "outputCapabilities": {"text": True},
                     },
                 }
             ]
@@ -101,7 +88,7 @@ class TestStream301RedirectRetriesViaUserscriptProxy(BaseBridgeTest):
                     "/api/v1/chat/completions",
                     headers={"Authorization": "Bearer test-key"},
                     json={
-                        "model": "test-search-model",
+                        "model": "claude-3-opus",
                         "messages": [{"role": "user", "content": "Hello"}],
                         "stream": True,
                     },
@@ -111,7 +98,6 @@ class TestStream301RedirectRetriesViaUserscriptProxy(BaseBridgeTest):
         self.assertEqual(response.status_code, 200)
         self.assertIn("Hello", response.text)
         self.assertIn("[DONE]", response.text)
-        self.assertEqual(stream_calls["count"], 1)
         self.assertGreaterEqual(proxy_calls["count"], 1)
 
 

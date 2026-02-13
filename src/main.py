@@ -1832,8 +1832,6 @@ async def fetch_lmarena_stream_via_chrome(
     user_agent = normalize_user_agent_value(config.get("user_agent"))
 
     fetch_url = _normalize_userscript_proxy_url(url)
-    if fetch_url and not fetch_url.startswith("/"):
-        fetch_url = "/" + fetch_url
 
     def _is_recaptcha_validation_failed(status: int, text: object) -> bool:
         if int(status or 0) != HTTPStatus.FORBIDDEN:
@@ -2321,8 +2319,6 @@ async def fetch_lmarena_stream_via_camoufox(
     user_agent = normalize_user_agent_value(config.get("user_agent"))
 
     fetch_url = _normalize_userscript_proxy_url(url)
-    if fetch_url and not fetch_url.startswith("/"):
-        fetch_url = "/" + fetch_url
 
     def _is_recaptcha_validation_failed(status: int, text: object) -> bool:
         if int(status or 0) != HTTPStatus.FORBIDDEN:

@@ -871,8 +871,8 @@ async def _set_provisional_user_id_in_browser(page, context, *, provisional_user
             }""",
             provisional_user_id,
         )
-    except Exception:
-        pass
+    except Exception as e:
+        debug_print(f"Failed to set provisional_user_id in localStorage: {type(e).__name__}: {e}")
 
 
 async def _maybe_inject_arena_auth_cookie_from_localstorage(page, context) -> Optional[str]:

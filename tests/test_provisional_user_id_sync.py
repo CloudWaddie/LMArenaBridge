@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from tests._stream_test_utils import BaseBridgeTest
 
@@ -41,3 +41,20 @@ class TestProvisionalUserIdSync(BaseBridgeTest):
         script_arg, value_arg = page.evaluate.call_args.args
         self.assertIn("localStorage.setItem", str(script_arg))
         self.assertEqual(value_arg, "prov-1")
+
+    async def test_logs_localstorage_sync_failure(self) -> None:
+        page = _FakePage()
+        page.evaluate = AsyncMock(side_effect=RuntimeError("ls write failed"))
+        context = _FakeContext()
+
+        with patch.object(self.main, "debug_print") as debug_print_mock:
+            await self.main._set_provisional_user_id_in_browser(page, context, provisional_user_id="prov-1")
+
+        self.assertIsInstance(context.added, list)
+        self.assertTrue(context.added)
+        page.evaluate.assert_awaited()
+        debug_print_mock.assert_called_once()
+        debug_message = str(debug_print_mock.call_args.args[0])
+        self.assertIn("localStorage", debug_message)
+        self.assertIn("RuntimeError", debug_message)
+        self.assertIn("ls write failed", debug_message)

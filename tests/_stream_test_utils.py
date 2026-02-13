@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -55,8 +56,22 @@ class BaseBridgeTest(unittest.IsolatedAsyncioTestCase):
         self._orig_debug = self.main.DEBUG
         self.main.DEBUG = False
 
+        # Ensure FastAPI lifespan startup skips real browser/network work when running unit tests under unittest.
+        self._orig_pytest_current_test = os.environ.get("PYTEST_CURRENT_TEST")
+        if not self._orig_pytest_current_test:
+            os.environ["PYTEST_CURRENT_TEST"] = "unittest"
+
         self.main.chat_sessions.clear()
         self.main.api_key_usage.clear()
+        try:
+            # Ensure userscript-proxy state doesn't leak across tests.
+            self.main._USERSCRIPT_PROXY_JOBS.clear()
+            self.main._USERSCRIPT_PROXY_QUEUE = None
+            self.main.proxy_pending_tasks.clear()
+            self.main.proxy_task_queue.clear()
+            self.main._mark_userscript_proxy_inactive()
+        except Exception:
+            pass
 
         self._orig_config_file = self.main.CONFIG_FILE
         self._orig_token_index = getattr(self.main, "current_token_index", 0)
@@ -80,6 +95,10 @@ class BaseBridgeTest(unittest.IsolatedAsyncioTestCase):
         self.main.CONFIG_FILE = self._orig_config_file
         if hasattr(self.main, "current_token_index"):
             self.main.current_token_index = self._orig_token_index
+        if self._orig_pytest_current_test is None:
+            os.environ.pop("PYTEST_CURRENT_TEST", None)
+        else:
+            os.environ["PYTEST_CURRENT_TEST"] = self._orig_pytest_current_test
         self._temp_dir.cleanup()
 
     def setup_config(self, config_data: dict) -> None:

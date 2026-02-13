@@ -1663,7 +1663,7 @@ async def _get_arena_context_cookies(context, *, page_url: Optional[str] = None)
         pass
 
     merged: list[dict] = []
-    seen: set[tuple[str, str, str, str]] = set()
+    seen: set[tuple[str, str, str]] = set()
     for url in urls:
         try:
             chunk = await context.cookies(url)
@@ -1677,7 +1677,6 @@ async def _get_arena_context_cookies(context, *, page_url: Optional[str] = None)
                     str(c.get("name") or ""),
                     str(c.get("domain") or ""),
                     str(c.get("path") or ""),
-                    str(c.get("value") or ""),
                 )
             except Exception:
                 continue

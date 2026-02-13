@@ -38,3 +38,31 @@ class TestArenaOriginAndCookieScoping(BaseBridgeTest):
         self.assertEqual(urls, {"https://lmarena.ai", "https://arena.ai"})
         self.assertEqual(domains, {".lmarena.ai", ".arena.ai"})
 
+    async def test_get_arena_context_cookies_dedupes_by_name_domain_path(self) -> None:
+        class _FakeContext:
+            def __init__(self) -> None:
+                self.calls: list[object] = []
+
+            async def cookies(self, urls):  # noqa: ANN001
+                self.calls.append(urls)
+                if isinstance(urls, list):
+                    raise RuntimeError("bulk not supported")
+                if urls == "https://lmarena.ai":
+                    return [
+                        {"name": "a", "domain": "lmarena.ai", "path": "/", "value": "v1"},
+                        {"name": "b", "domain": "lmarena.ai", "path": "/", "value": "b1"},
+                    ]
+                if urls == "https://arena.ai":
+                    return [
+                        {"name": "a", "domain": "lmarena.ai", "path": "/", "value": "v2"},
+                        {"name": "c", "domain": "arena.ai", "path": "/", "value": "c1"},
+                    ]
+                return []
+
+        ctx = _FakeContext()
+        cookies = await self.main._get_arena_context_cookies(ctx, page_url="https://lmarena.ai/?mode=direct")
+
+        a_values = [c.get("value") for c in cookies if c.get("name") == "a"]
+        self.assertEqual(a_values, ["v1"], "Expected cookies to be deduped by (name, domain, path)")
+        self.assertEqual({c.get("name") for c in cookies}, {"a", "b", "c"})
+

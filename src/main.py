@@ -511,7 +511,7 @@ async def _maybe_apply_camoufox_window_mode(
     headless: bool,
 ) -> None:
     """
-    Best-effort: keep Camoufox headed (for bot-score reliability) while hiding the actual OS window on Windows.
+    Best-effort: keep browser headed (for bot-score reliability) while hiding the actual OS window on Windows.
     """
     if headless:
         return
@@ -521,14 +521,62 @@ async def _maybe_apply_camoufox_window_mode(
     mode = _normalize_camoufox_window_mode(cfg.get(mode_key))
     if mode == "visible":
         return
+
+    marker_str = str(marker)
+
+    # The OS window title reflects the *active tab*. In persistent contexts, a new page may not
+    # become active immediately; set the title marker across all known pages best-effort.
+    pages_to_mark: list = []
     try:
-        await page.evaluate("t => { document.title = t; }", str(marker))
+        pages_to_mark.append(page)
+    except Exception:
+        pages_to_mark = []
+    try:
+        ctx = getattr(page, "context", None)
+        if callable(ctx):
+            ctx = ctx()
+        ctx_pages = getattr(ctx, "pages", None) if ctx is not None else None
+        if callable(ctx_pages):
+            ctx_pages = ctx_pages()
+        if isinstance(ctx_pages, list) and ctx_pages:
+            pages_to_mark.extend(ctx_pages)
     except Exception:
         pass
+
+    seen: set[int] = set()
+    unique_pages: list = []
+    for p in pages_to_mark:
+        try:
+            pid = id(p)
+        except Exception:
+            continue
+        if pid in seen:
+            continue
+        seen.add(pid)
+        unique_pages.append(p)
+
+    for p in unique_pages:
+        try:
+            await p.evaluate("t => { document.title = t; }", marker_str)
+        except Exception:
+            continue
+
+    # Try a short synchronous window-scan first; if it races window creation, continue in background.
     for _ in range(20):  # ~2s worst-case
-        if _windows_apply_window_mode_by_title_substring(str(marker), mode):
+        if _windows_apply_window_mode_by_title_substring(marker_str, mode):
             return
         await asyncio.sleep(0.1)
+
+    async def _late_apply() -> None:
+        for _ in range(180):  # ~18s best-effort
+            if _windows_apply_window_mode_by_title_substring(marker_str, mode):
+                return
+            await asyncio.sleep(0.1)
+
+    try:
+        asyncio.create_task(_late_apply())
+    except Exception:
+        return
 
 
 async def click_turnstile(page):
@@ -1029,6 +1077,13 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
                     pass
 
             page = await context.new_page()
+            await _maybe_apply_camoufox_window_mode(
+                page,
+                config,
+                mode_key="chrome_fetch_window_mode",
+                marker="LMArenaBridge Chrome Fetch",
+                headless=bool(headless),
+            )
             await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
 
             # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile.
@@ -1854,6 +1909,13 @@ async def fetch_lmarena_stream_via_chrome(
                     pass
 
             page = await context.new_page()
+            await _maybe_apply_camoufox_window_mode(
+                page,
+                config,
+                mode_key="chrome_fetch_window_mode",
+                marker="LMArenaBridge Chrome Fetch",
+                headless=bool(headless),
+            )
             await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
 
             # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile before minting tokens.
@@ -3325,6 +3387,7 @@ def get_config():
         config.setdefault("persist_arena_auth_cookie", False)
         config.setdefault("camoufox_proxy_window_mode", "hide")
         config.setdefault("camoufox_fetch_window_mode", "hide")
+        config.setdefault("chrome_fetch_window_mode", "hide")
         
         # Normalize api_keys to prevent KeyErrors in dashboard and rate limiting
         if isinstance(config.get("api_keys"), list):

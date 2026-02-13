@@ -15,6 +15,7 @@ class TestCamoufoxWindowMode(BaseBridgeTest):
         config = self.main.get_config()
         self.assertEqual("hide", config.get("camoufox_proxy_window_mode"))
         self.assertEqual("hide", config.get("camoufox_fetch_window_mode"))
+        self.assertEqual("hide", config.get("chrome_fetch_window_mode"))
 
     async def test_camoufox_proxy_window_mode_hide_calls_win32_helper(self) -> None:
         from unittest.mock import patch
@@ -40,6 +41,34 @@ class TestCamoufoxWindowMode(BaseBridgeTest):
             self.assertIn("document.title", str(args[0]))
             self.assertEqual("TEST_TITLE", args[1])
             hide.assert_called_with("TEST_TITLE", "hide")
+
+    async def test_window_mode_sets_title_on_all_context_pages_best_effort(self) -> None:
+        from unittest.mock import patch
+
+        page1 = _FakePage()
+        page2 = _FakePage()
+        ctx = type("_FakeContext", (), {})()
+        ctx.pages = [page1, page2]
+        page1.context = ctx
+        page2.context = ctx
+
+        config = self.main.get_config()
+        config["camoufox_proxy_window_mode"] = "hide"
+
+        with (
+            patch.object(self.main, "_is_windows", return_value=True),
+            patch.object(self.main, "_windows_apply_window_mode_by_title_substring", return_value=True),
+        ):
+            await self.main._maybe_apply_camoufox_window_mode(
+                page1,
+                config,
+                mode_key="camoufox_proxy_window_mode",
+                marker="TEST_TITLE",
+                headless=False,
+            )
+
+        self.assertTrue(page1.evaluate_calls, "Expected page1 title to be marked")
+        self.assertTrue(page2.evaluate_calls, "Expected page2 title to be marked")
 
     async def test_camoufox_proxy_window_mode_visible_is_noop(self) -> None:
         from unittest.mock import patch

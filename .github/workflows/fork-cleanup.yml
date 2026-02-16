@@ -1,0 +1,104 @@
+name: Fork Branch Cleanup
+
+on:
+  pull_request_target:
+    types: [closed]
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+    
+    permissions:
+      contents: write
+      pull-requests: write
+    
+    steps:
+      - name: Check GH_PAT secret
+        id: check_secret
+        run: |
+          echo "=== DEBUG: GH_PAT Secret Check ==="
+          echo "Secret value length: ${#GH_PAT}"
+          echo "Secret first 4 chars: ${GH_PAT:0:4}"
+          
+          if [ -z "$GH_PAT" ]; then
+            echo "WARNING: GH_PAT secret is not set or is empty!"
+            echo "The workflow cannot clean up fork branches without GH_PAT."
+            echo "To enable branch cleanup:"
+            echo "1. Go to repository Settings → Secrets and variables → Actions"
+            echo "2. Add a new secret named 'GH_PAT'"
+            echo "3. Use a Personal Access Token with 'repo' scope"
+            echo ""
+            echo "For now, skipping cleanup..."
+            echo "secret_set=false" >> $GITHUB_OUTPUT
+          else
+            echo "GH_PAT secret is set (length: ${#GH_PAT})"
+            echo "secret_set=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+
+      - name: Verify authentication
+        if: steps.check_secret.outputs.secret_set == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          echo "=== Verifying GitHub Authentication ==="
+          gh auth status
+          echo "========================================"
+          
+      - name: Cleanup fork branch after PR merge
+        if: steps.check_secret.outputs.secret_set == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # Get the branch name from the merged PR head
+          BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
+          FORK_REPO="cloudwaddie-agent/${{ github.event.repository.name }}"
+          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
+          
+          echo "=== Fork Cleanup Debug Info ==="
+          echo "Branch name: $BRANCH_NAME"
+          echo "Fork repo: $FORK_REPO"
+          echo "Head repo: $HEAD_REPO"
+          echo "================================"
+          
+          # Only cleanup if the PR was from our fork
+          if [[ "$HEAD_REPO" == "$FORK_REPO" ]]; then
+            echo "Cleaning up fork branch: $BRANCH_NAME"
+            
+            # Delete the branch from the fork using gh API
+            # Note: Disable set -e to capture the exit code properly
+            echo "Deleting branch via API..."
+            set +e
+            RESPONSE=$(gh api "repos/$FORK_REPO/git/refs/heads/$BRANCH_NAME" -X DELETE 2>&1)
+            EXIT_CODE=$?
+            set -e
+            
+            echo "API Response: $RESPONSE"
+            echo "Exit code: $EXIT_CODE"
+            
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "Successfully deleted branch: $BRANCH_NAME"
+            elif echo "$RESPONSE" | grep -q "Not Found" || echo "$RESPONSE" | grep -q "404"; then
+              # Branch doesn't exist - that's OK
+              echo "Branch already deleted or does not exist (404)"
+            elif echo "$RESPONSE" | grep -qi "authentication\|GH_TOKEN\|credential"; then
+              # Authentication error - this is a real problem
+              echo "ERROR: Authentication failed. Please check GH_PAT secret."
+              echo "Error: $RESPONSE"
+              exit 1
+            elif [ $EXIT_CODE -eq 4 ]; then
+              # Exit code 4 could be various errors - check if it's something we can ignore
+              echo "Warning: gh api returned exit code 4. Response: $RESPONSE"
+              # Don't treat as success, but don't fail either
+            else
+              echo "Failed to delete branch. Exit code: $EXIT_CODE"
+              echo "Error: $RESPONSE"
+              exit 1
+            fi
+            
+            echo "Cleanup complete for branch: $BRANCH_NAME"
+          else
+            echo "Skipping cleanup - PR was not from fork ($HEAD_REPO != $FORK_REPO)"
+          fi

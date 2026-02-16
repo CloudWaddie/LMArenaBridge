@@ -157,9 +157,9 @@ jobs:
           opencode --version
 
           CLAUDE_FLAG="--claude=no"
-          OPENAI_FLAG="--openai=yes"
+          OPENAI_FLAG="--openai=no"
           GEMINI_FLAG="--gemini=no"
-          COPILOT_FLAG="--copilot=yes"
+          COPILOT_FLAG="--copilot=no"
 
           if [[ -n "$OPENCODE_AUTH_JSON" ]]; then
             mkdir -p ~/.local/share/opencode
@@ -191,7 +191,7 @@ jobs:
 
           if [[ -z "$OPENCODE_AUTH_JSON" ]]; then
             echo "No auth provided - using free OpenCode models"
-            jq '.model = "opencode/minimax-m2.5-free"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
+            jq '.model = "opencode/kimi-k2.5-free"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
           fi
 
           # Configure oh-my-opencode prompt_append with ultrawork mode

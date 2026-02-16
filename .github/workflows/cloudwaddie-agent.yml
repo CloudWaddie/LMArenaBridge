@@ -157,9 +157,9 @@ jobs:
 
           # Configure auth FIRST (before install) so providers can be detected
           CLAUDE_FLAG="--claude=no"
-          OPENAI_FLAG="--openai=no"
+          OPENAI_FLAG="--openai=yes"
           GEMINI_FLAG="--gemini=no"
-          COPILOT_FLAG="--copilot=no"
+          COPILOT_FLAG="--copilot=yes"
 
           if [[ -n "$OPENCODE_AUTH_JSON" ]]; then
             # Write auth.json so install can detect providers

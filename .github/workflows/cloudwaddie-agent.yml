@@ -16,6 +16,9 @@ on:
 jobs:
   agent:
     runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: false
     # @cloudwaddie-agent mention only (contributors, exclude self)
     if: >-
       github.event_name == 'workflow_dispatch' ||

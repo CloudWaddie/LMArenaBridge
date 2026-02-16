@@ -93,14 +93,15 @@ jobs:
       - name: Get OpenCode latest version
         id: opencode-version
         run: |
-          # Fetch version with validation
-          VERSION=$(curl -s https://opencode.ai/api/version 2>/dev/null | head -n 1 | tr -cd '[:alnum:].-')
+          # Fetch version from npm (more reliable than deprecated API endpoint)
+          VERSION=$(npm view opencode-ai version 2>/dev/null)
       
-          # Validate: ensure it looks like a version string (not HTML/CSS)
-          if [[ ! "$VERSION" =~ ^[a-zA-Z0-9._-]+$ ]] || [[ -z "$VERSION" ]]; then
+          # Validate: ensure it looks like a version string
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ -z "$VERSION" ]]; then
             echo "VERSION environment variable is invalid or empty."
             exit 1
           fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Cache OpenCode CLI
         uses: actions/cache@v5
@@ -155,43 +156,30 @@ jobs:
           fi
           opencode --version
 
-          # Configure auth FIRST (before install) so providers can be detected
           CLAUDE_FLAG="--claude=no"
-          OPENAI_FLAG="--openai=yes"
+          OPENAI_FLAG="--openai=true"
           GEMINI_FLAG="--gemini=no"
-          COPILOT_FLAG="--copilot=yes"
+          COPILOT_FLAG="--copilot=true"
 
           if [[ -n "$OPENCODE_AUTH_JSON" ]]; then
-            # Write auth.json so install can detect providers
             mkdir -p ~/.local/share/opencode
             echo "$OPENCODE_AUTH_JSON" > ~/.local/share/opencode/auth.json
             chmod 600 ~/.local/share/opencode/auth.json
 
             rm -rf ~/.cache/oh-my-opencode/connected-providers.json ~/.cache/oh-my-opencode/provider-models.json 2>/dev/null || true
 
-            # Detect which providers have credentials
             if echo "$OPENCODE_AUTH_JSON" | jq -e '.anthropic' > /dev/null 2>&1; then
               CLAUDE_FLAG="--claude=yes"
-              echo "Detected Anthropic credentials - enabling Claude"
             fi
             if echo "$OPENCODE_AUTH_JSON" | jq -e '.openai' > /dev/null 2>&1; then
               OPENAI_FLAG="--openai=yes"
-              echo "Detected OpenAI credentials - enabling OpenAI"
             fi
             if echo "$OPENCODE_AUTH_JSON" | jq -e '.google' > /dev/null 2>&1; then
               GEMINI_FLAG="--gemini=yes"
-              echo "Detected Google credentials - enabling Gemini"
             fi
-            # Enable copilot when any provider is available
-            if [[ "$CLAUDE_FLAG" == "--claude=yes" ]] || [[ "$OPENAI_FLAG" == "--openai=yes" ]] || [[ "$GEMINI_FLAG" == "--gemini=yes" ]]; then
-              COPILOT_FLAG="--copilot=yes"
-              echo "Provider detected - enabling Copilot"
-            fi
-          else
-            echo "No auth provided - using free OpenCode models"
+            COPILOT_FLAG="--copilot=yes"
           fi
 
-          # Run local oh-my-opencode install with dynamic provider flags
           bun run oh-my-opencode/dist/cli/index.js install --no-tui $CLAUDE_FLAG $OPENAI_FLAG $GEMINI_FLAG $COPILOT_FLAG
 
           # Override plugin to use local file reference
@@ -201,9 +189,9 @@ jobs:
             .plugin = [.plugin[] | select(. != "oh-my-opencode")] + [$path]
           ' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
 
-          # Configure model for free tier if no auth
           if [[ -z "$OPENCODE_AUTH_JSON" ]]; then
-            jq '.model = "opencode/big-pickle"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
+            echo "No auth provided - using free OpenCode models"
+            jq '.model = "opencode/minimax-m2.5-free"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
           fi
 
           # Configure oh-my-opencode prompt_append with ultrawork mode

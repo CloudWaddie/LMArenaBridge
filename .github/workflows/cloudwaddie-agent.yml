@@ -167,6 +167,8 @@ jobs:
             echo "$OPENCODE_AUTH_JSON" > ~/.local/share/opencode/auth.json
             chmod 600 ~/.local/share/opencode/auth.json
 
+            rm -rf ~/.cache/oh-my-opencode/connected-providers.json ~/.cache/oh-my-opencode/provider-models.json 2>/dev/null || true
+
             # Detect which providers have credentials
             if echo "$OPENCODE_AUTH_JSON" | jq -e '.anthropic' > /dev/null 2>&1; then
               CLAUDE_FLAG="--claude=yes"

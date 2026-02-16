@@ -155,8 +155,42 @@ jobs:
           fi
           opencode --version
 
-          # Run local oh-my-opencode install (uses built dist)
-          bun run oh-my-opencode/dist/cli/index.js install --no-tui --claude=no --openai=no --gemini=no --copilot=no
+          # Configure auth FIRST (before install) so providers can be detected
+          CLAUDE_FLAG="--claude=no"
+          OPENAI_FLAG="--openai=no"
+          GEMINI_FLAG="--gemini=no"
+          COPILOT_FLAG="--copilot=no"
+
+          if [[ -n "$OPENCODE_AUTH_JSON" ]]; then
+            # Write auth.json so install can detect providers
+            mkdir -p ~/.local/share/opencode
+            echo "$OPENCODE_AUTH_JSON" > ~/.local/share/opencode/auth.json
+            chmod 600 ~/.local/share/opencode/auth.json
+
+            # Detect which providers have credentials
+            if echo "$OPENCODE_AUTH_JSON" | jq -e '.anthropic' > /dev/null 2>&1; then
+              CLAUDE_FLAG="--claude=yes"
+              echo "Detected Anthropic credentials - enabling Claude"
+            fi
+            if echo "$OPENCODE_AUTH_JSON" | jq -e '.openai' > /dev/null 2>&1; then
+              OPENAI_FLAG="--openai=yes"
+              echo "Detected OpenAI credentials - enabling OpenAI"
+            fi
+            if echo "$OPENCODE_AUTH_JSON" | jq -e '.google' > /dev/null 2>&1; then
+              GEMINI_FLAG="--gemini=yes"
+              echo "Detected Google credentials - enabling Gemini"
+            fi
+            # Enable copilot when any provider is available
+            if [[ "$CLAUDE_FLAG" == "--claude=yes" ]] || [[ "$OPENAI_FLAG" == "--openai=yes" ]] || [[ "$GEMINI_FLAG" == "--gemini=yes" ]]; then
+              COPILOT_FLAG="--copilot=yes"
+              echo "Provider detected - enabling Copilot"
+            fi
+          else
+            echo "No auth provided - using free OpenCode models"
+          fi
+
+          # Run local oh-my-opencode install with dynamic provider flags
+          bun run oh-my-opencode/dist/cli/index.js install --no-tui $CLAUDE_FLAG $OPENAI_FLAG $GEMINI_FLAG $COPILOT_FLAG
 
           # Override plugin to use local file reference
           OPENCODE_JSON=~/.config/opencode/opencode.json
@@ -165,14 +199,8 @@ jobs:
             .plugin = [.plugin[] | select(. != "oh-my-opencode")] + [$path]
           ' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
 
-          # Configure auth if provided, otherwise use free models
-          if [[ -n "$OPENCODE_AUTH_JSON" ]]; then
-            mkdir -p ~/.local/share/opencode
-            echo "$OPENCODE_AUTH_JSON" > ~/.local/share/opencode/auth.json
-            chmod 600 ~/.local/share/opencode/auth.json
-          else
-            echo "No auth provided - using free OpenCode models"
-            # Set default model to free tier
+          # Configure model for free tier if no auth
+          if [[ -z "$OPENCODE_AUTH_JSON" ]]; then
             jq '.model = "opencode/big-pickle"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
           fi
 

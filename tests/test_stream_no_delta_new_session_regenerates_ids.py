@@ -88,10 +88,9 @@ class TestStreamNoDeltaNewSessionRegeneratesIds(BaseBridgeTest):
         self.assertIn("Hello", response.text)
         self.assertIn("[DONE]", response.text)
         self.assertGreaterEqual(len(payloads), 2)
-        self.assertNotEqual(payloads[0].get("id"), payloads[1].get("id"))
-        self.assertNotEqual(payloads[0].get("userMessageId"), payloads[1].get("userMessageId"))
-        self.assertNotEqual(payloads[0].get("modelAMessageId"), payloads[1].get("modelAMessageId"))
-        self.assertNotEqual(payloads[0].get("modelBMessageId"), payloads[1].get("modelBMessageId"))
+        for key in ("id", "userMessageId", "modelAMessageId", "modelBMessageId"):
+            with self.subTest(key=key):
+                self.assertNotEqual(payloads[0].get(key), payloads[1].get(key))
 
 
 if __name__ == "__main__":

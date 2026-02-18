@@ -263,6 +263,7 @@ RECAPTCHA_V2_SITEKEY = "6Ld7ePYrAAAAAB34ovoFoDau1fqCJ6IyOjFEQaMn"
 # Cloudflare Turnstile sitekey used by LMArena to mint anonymous-user signup tokens.
 # (Used for POST /nextjs-api/sign-up before `arena-auth-prod-v1` exists.)
 TURNSTILE_SITEKEY = "0x4AAAAAAA65vWDmG-O_lPtT"
+STREAM_CREATE_EVALUATION_PATH = "/nextjs-api/stream/create-evaluation"
 
 # LMArena occasionally changes the reCAPTCHA sitekey/action. We try to discover them from captured JS chunks on startup
 # and persist them into config.json; these helpers read and apply those values with safe fallbacks.
@@ -7250,7 +7251,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = "https://lmarena.ai/nextjs-api/stream/create-evaluation"
+            url = f"https://lmarena.ai{STREAM_CREATE_EVALUATION_PATH}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
@@ -8864,7 +8865,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         (not session)
                                         and isinstance(payload, dict)
                                         and http_method.upper() == "POST"
-                                        and "/nextjs-api/stream/create-evaluation" in url
+                                        and STREAM_CREATE_EVALUATION_PATH in url
                                     ):
                                         session_id = str(uuid7())
                                         user_msg_id = str(uuid7())

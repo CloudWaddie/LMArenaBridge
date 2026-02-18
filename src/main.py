@@ -8863,8 +8863,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     if (
                                         (not session)
                                         and isinstance(payload, dict)
-                                        and str(http_method).upper() == "POST"
-                                        and "/nextjs-api/stream/create-evaluation" in str(url)
+                                        and http_method.upper() == "POST"
+                                        and "/nextjs-api/stream/create-evaluation" in url
                                     ):
                                         session_id = str(uuid7())
                                         user_msg_id = str(uuid7())

@@ -7443,6 +7443,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         if stream:
             async def generate_stream():
                 nonlocal current_token, headers, failed_tokens, recaptcha_token
+                nonlocal session_id, user_msg_id, model_msg_id, model_b_msg_id
                 
                 # Safety: don't keep client sockets open forever on repeated upstream failures.
                 try:
@@ -8857,6 +8858,23 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     async for ka in wait_with_keepalive(sleep_seconds):
                                         yield ka
                                 else:
+                                    # New-session create-evaluation retries must use fresh IDs. Reusing IDs after an
+                                    # upstream no-delta/error response can trigger 400 duplicate/invalid request errors.
+                                    if (
+                                        (not session)
+                                        and isinstance(payload, dict)
+                                        and str(http_method).upper() == "POST"
+                                        and "/nextjs-api/stream/create-evaluation" in str(url)
+                                    ):
+                                        session_id = str(uuid7())
+                                        user_msg_id = str(uuid7())
+                                        model_msg_id = str(uuid7())
+                                        model_b_msg_id = str(uuid7())
+                                        payload["id"] = session_id
+                                        payload["userMessageId"] = user_msg_id
+                                        payload["modelAMessageId"] = model_msg_id
+                                        payload["modelBMessageId"] = model_b_msg_id
+                                        debug_print("🔁 Retrying create-evaluation with fresh session/message IDs.")
                                     async for ka in wait_with_keepalive(1.5):
                                         yield ka
                                 continue

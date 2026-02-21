@@ -5,7 +5,7 @@
 
 
 > [!WARNING]
-> This project is going to be maintained by me again. However, at some point this project will probably stop working. If you are interested in a Yupp.AI bridge, I will be selling early access to it, as well as releasing a free open-source version when I finish it. I will update this section of the README when more details are available.
+> MAJOR REFACTORS ARE HAPPENING.
 
 ## Description
 

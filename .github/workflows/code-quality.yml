@@ -1,0 +1,294 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  schedule:
+    - cron: '0 0 * * 0'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  format-check:
+    name: Code Formatting
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install formatting tools
+        run: |
+          pip install black isort ruff
+
+      - name: Check Black formatting
+        id: black
+        run: |
+          echo "=== Black Format Check ==="
+          black --check --diff src/ tests/ 2>&1 | tee black_output.txt || true
+          if grep -q "would reformat" black_output.txt; then
+            echo "needs_formatting=true" >> $GITHUB_OUTPUT
+            echo "❌ Code needs formatting"
+          else
+            echo "needs_formatting=false" >> $GITHUB_OUTPUT
+            echo "✅ Code is properly formatted"
+          fi
+        continue-on-error: true
+
+      - name: Check import order
+        id: isort
+        run: |
+          echo "=== isort Import Check ==="
+          isort --check-only --diff src/ tests/ 2>&1 | tee isort_output.txt || true
+          if grep -q "ERROR" isort_output.txt; then
+            echo "needs_sorting=true" >> $GITHUB_OUTPUT
+            echo "❌ Imports need sorting"
+          else
+            echo "needs_sorting=false" >> $GITHUB_OUTPUT
+            echo "✅ Imports are sorted correctly"
+          fi
+        continue-on-error: true
+
+      - name: Auto-fix with Ruff
+        run: |
+          echo "=== Ruff Auto-fix Attempt ==="
+          ruff check --fix --exit-zero src/ tests/ || true
+
+  complexity-analysis:
+    name: Code Complexity Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install analysis tools
+        run: |
+          pip install radon xenon
+
+      - name: Analyze code complexity
+        run: |
+          echo "=== Cyclomatic Complexity Analysis ==="
+          radon cc src/ -a -nc || true
+          
+          echo ""
+          echo "=== Maintainability Index ==="
+          radon mi src/ || true
+          
+          echo ""
+          echo "=== Raw Metrics ==="
+          radon raw src/ | head -50 || true
+
+      - name: Check complexity thresholds
+        run: |
+          echo "=== Complexity Threshold Check ==="
+          # Check for functions with complexity > 10
+          high_complexity=$(radon cc src/ -nc | grep -c "[A-F]" || echo "0")
+          echo "Files with high complexity: $high_complexity"
+          
+          if [ "$high_complexity" -gt 5 ]; then
+            echo "⚠️ Found $high_complexity files with high complexity. Consider refactoring."
+          fi
+        continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install security tools
+        run: |
+          pip install bandit safety semgrep
+
+      - name: Run Bandit security scan
+        run: |
+          echo "=== Bandit Security Scan ==="
+          bandit -r src/ -ll || true
+
+      - name: Check for hardcoded secrets
+        run: |
+          echo "=== Secret Detection ==="
+          # Check for common secret patterns
+          if grep -r "password\s*=" src/ --include="*.py" | grep -v "example\|test\|dummy" | head -5; then
+            echo "⚠️ Potential hardcoded passwords found"
+          fi
+          
+          if grep -r "api_key\s*=" src/ --include="*.py" | grep -v "example\|test\|dummy\|os.getenv\|config.get" | head -5; then
+            echo "⚠️ Potential hardcoded API keys found"
+          fi
+          
+          if grep -r "secret\s*=" src/ --include="*.py" | grep -v "example\|test\|dummy\|os.getenv\|config.get" | head -5; then
+            echo "⚠️ Potential hardcoded secrets found"
+          fi
+        continue-on-error: true
+
+      - name: Run Semgrep rules
+        run: |
+          echo "=== Semgrep Analysis ==="
+          semgrep --config=auto src/ --error || true
+        continue-on-error: true
+
+  dead-code-detection:
+    name: Dead Code Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install vulture
+        run: |
+          pip install vulture
+
+      - name: Detect dead code
+        run: |
+          echo "=== Dead Code Detection ==="
+          vulture src/ --min-confidence 80 --sort-by-size 2>&1 | tee dead_code.txt || true
+          
+          dead_count=$(grep -c "^src/" dead_code.txt || echo "0")
+          echo "Found $dead_count potentially unused code elements"
+          
+          if [ "$dead_count" -gt 10 ]; then
+            echo "⚠️ High number of potentially dead code elements ($dead_count). Review recommended."
+          fi
+        continue-on-error: true
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Check docstring coverage
+        run: |
+          echo "=== Docstring Coverage Check ==="
+          pip install pydocstyle || true
+          
+          # Check for functions without docstrings
+          python << 'EOF'
+          import ast
+          import os
+          from pathlib import Path
+          
+          def check_docstrings(filepath):
+              with open(filepath, 'r') as f:
+                  try:
+                      tree = ast.parse(f.read())
+                  except:
+                      return
+              
+              for node in ast.walk(tree):
+                  if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                      if not ast.get_docstring(node):
+                          print(f"⚠️  {filepath}:{node.lineno} - {node.name} missing docstring")
+          
+          for py_file in Path('src').rglob('*.py'):
+              check_docstrings(py_file)
+          EOF
+        continue-on-error: true
+
+      - name: Check README updates
+        run: |
+          echo "=== README Check ==="
+          if [ -f README.md ]; then
+            readme_lines=$(wc -l < README.md)
+            echo "README.md has $readme_lines lines"
+            
+            if [ $readme_lines -lt 20 ]; then
+              echo "⚠️ README.md seems short. Consider adding more documentation."
+            fi
+          else
+            echo "❌ README.md not found"
+          fi
+
+  metrics:
+    name: Code Metrics
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate metrics
+        run: |
+          echo "=== Code Metrics ==="
+          
+          # Count lines of code
+          py_lines=$(find src -name "*.py" -type f -exec wc -l {} + | tail -1 | awk '{print $1}')
+          test_lines=$(find tests -name "*.py" -type f -exec wc -l {} + 2>/dev/null | tail -1 | awk '{print $1}')
+          
+          echo "Python source lines: $py_lines"
+          echo "Test lines: $test_lines"
+          
+          if [ -n "$test_lines" ] && [ "$test_lines" -gt 0 ]; then
+            ratio=$(echo "scale=2; $test_lines / $py_lines" | bc 2>/dev/null || echo "N/A")
+            echo "Test/Source ratio: $ratio"
+          fi
+          
+          # Count files
+          py_files=$(find src -name "*.py" -type f | wc -l)
+          test_files=$(find tests -name "*.py" -type f 2>/dev/null | wc -l)
+          
+          echo "Python files: $py_files"
+          echo "Test files: $test_files"
+
+  summary:
+    name: Quality Summary
+    runs-on: ubuntu-latest
+    needs: [format-check, complexity-analysis, security-scan, dead-code-detection, documentation-check, metrics]
+    if: always()
+    
+    steps:
+      - name: Generate Summary
+        run: |
+          echo "## Code Quality Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Format Check | ${{ needs.format-check.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Complexity Analysis | ${{ needs.complexity-analysis.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dead Code Detection | ${{ needs.dead-code-detection.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Documentation Check | ${{ needs.documentation-check.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Code Metrics | ${{ needs.metrics.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "### Notes" >> $GITHUB_STEP_SUMMARY
+          echo "- All checks run with \`continue-on-error: true\` to provide feedback without blocking" >> $GITHUB_STEP_SUMMARY
+          echo "- Review the logs for specific issues" >> $GITHUB_STEP_SUMMARY
+          echo "- Consider addressing warnings before merging" >> $GITHUB_STEP_SUMMARY

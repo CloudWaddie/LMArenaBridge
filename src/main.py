@@ -263,6 +263,7 @@ RECAPTCHA_V2_SITEKEY = "6Ld7ePYrAAAAAB34ovoFoDau1fqCJ6IyOjFEQaMn"
 # Cloudflare Turnstile sitekey used by LMArena to mint anonymous-user signup tokens.
 # (Used for POST /nextjs-api/sign-up before `arena-auth-prod-v1` exists.)
 TURNSTILE_SITEKEY = "0x4AAAAAAA65vWDmG-O_lPtT"
+STREAM_CREATE_EVALUATION_PATH = "/nextjs-api/stream/create-evaluation"
 
 # LMArena occasionally changes the reCAPTCHA sitekey/action. We try to discover them from captured JS chunks on startup
 # and persist them into config.json; these helpers read and apply those values with safe fallbacks.
@@ -7250,7 +7251,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = "https://lmarena.ai/nextjs-api/stream/create-evaluation"
+            url = f"https://lmarena.ai{STREAM_CREATE_EVALUATION_PATH}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
@@ -7443,6 +7444,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         if stream:
             async def generate_stream():
                 nonlocal current_token, headers, failed_tokens, recaptcha_token
+                nonlocal session_id, user_msg_id, model_msg_id, model_b_msg_id
                 
                 # Safety: don't keep client sockets open forever on repeated upstream failures.
                 try:
@@ -8857,6 +8859,23 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     async for ka in wait_with_keepalive(sleep_seconds):
                                         yield ka
                                 else:
+                                    # New-session create-evaluation retries must use fresh IDs. Reusing IDs after an
+                                    # upstream no-delta/error response can trigger 400 duplicate/invalid request errors.
+                                    if (
+                                        (not session)
+                                        and isinstance(payload, dict)
+                                        and http_method.upper() == "POST"
+                                        and STREAM_CREATE_EVALUATION_PATH in url
+                                    ):
+                                        session_id = str(uuid7())
+                                        user_msg_id = str(uuid7())
+                                        model_msg_id = str(uuid7())
+                                        model_b_msg_id = str(uuid7())
+                                        payload["id"] = session_id
+                                        payload["userMessageId"] = user_msg_id
+                                        payload["modelAMessageId"] = model_msg_id
+                                        payload["modelBMessageId"] = model_b_msg_id
+                                        debug_print("🔁 Retrying create-evaluation with fresh session/message IDs.")
                                     async for ka in wait_with_keepalive(1.5):
                                         yield ka
                                 continue

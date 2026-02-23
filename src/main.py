@@ -25,197 +25,72 @@ from fastapi.security import APIKeyHeader
 
 import httpx
 
-# ============================================================
-# CONFIGURATION
-# ============================================================
-# Set to True for detailed logging, False for minimal logging
-DEBUG = True
+# Import from modularized modules
+from . import constants
+from . import config as _config_module
+from . import state as _state_module
+from .config import get_models, save_models
 
-# Port to run the server on
-PORT = 8000
+# Aliases for backward compatibility
+DEBUG = constants.DEBUG
+PORT = constants.PORT
+HTTPStatus = constants.HTTPStatus
+STATUS_MESSAGES = constants.STATUS_MESSAGES
+RECAPTCHA_SITEKEY = constants.RECAPTCHA_SITEKEY
+RECAPTCHA_ACTION = constants.RECAPTCHA_ACTION
+RECAPTCHA_V2_SITEKEY = constants.RECAPTCHA_V2_SITEKEY
+TURNSTILE_SITEKEY = constants.TURNSTILE_SITEKEY
+STRICT_CHROME_FETCH_MODELS = constants.STRICT_CHROME_FETCH_MODELS
+LMARENA_ORIGIN = constants.LMARENA_ORIGIN
+ARENA_ORIGIN = constants.ARENA_ORIGIN
+ARENA_HOST_TO_ORIGIN = constants.ARENA_HOST_TO_ORIGIN
+DEFAULT_REQUEST_TIMEOUT = constants.DEFAULT_REQUEST_TIMEOUT
+GRECAPTCHA_TIMEOUT_MS = constants.GRECAPTCHA_TIMEOUT_MS
+GRECAPTCHA_POLL_MS = constants.GRECAPTCHA_POLL_MS
+TOKEN_EXPIRY_SKEW_SECONDS = constants.TOKEN_EXPIRY_SKEW_SECONDS
+RECAPTCHA_TOKEN_EXPIRY_SECONDS = constants.RECAPTCHA_TOKEN_EXPIRY_SECONDS
+RECAPTCHA_V3_TOKEN_LIFETIME_SECONDS = constants.RECAPTCHA_V3_TOKEN_LIFETIME_SECONDS
+PERIODIC_REFRESH_INTERVAL_SECONDS = constants.PERIODIC_REFRESH_INTERVAL_SECONDS
+DEFAULT_RATE_LIMIT_RPM = constants.DEFAULT_RATE_LIMIT_RPM
+RATE_LIMIT_WINDOW_SECONDS = constants.RATE_LIMIT_WINDOW_SECONDS
+DEFAULT_USERSCRIPT_PROXY_POLL_TIMEOUT_SECONDS = constants.DEFAULT_USERSCRIPT_PROXY_POLL_TIMEOUT_SECONDS
+DEFAULT_USERSCRIPT_PROXY_JOB_TTL_SECONDS = constants.DEFAULT_USERSCRIPT_PROXY_JOB_TTL_SECONDS
+USERSCRIPT_PROXY_ACTIVE_WINDOW_BUFFER_SECONDS = constants.USERSCRIPT_PROXY_ACTIVE_WINDOW_BUFFER_SECONDS
+USERSCRIPT_PROXY_JOB_TTL_MAX_SECONDS = constants.USERSCRIPT_PROXY_JOB_TTL_MAX_SECONDS
+DEFAULT_CAMOUFOX_PROXY_WINDOW_MODE = constants.DEFAULT_CAMOUFOX_PROXY_WINDOW_MODE
+DEFAULT_CAMOUFOX_FETCH_WINDOW_MODE = constants.DEFAULT_CAMOUFOX_FETCH_WINDOW_MODE
+DEFAULT_CHROME_FETCH_WINDOW_MODE = constants.DEFAULT_CHROME_FETCH_WINDOW_MODE
+VALID_WINDOW_MODES = constants.VALID_WINDOW_MODES
+CHROME_PATH_CANDIDATES = constants.CHROME_PATH_CANDIDATES
+EDGE_PATH_CANDIDATES = constants.EDGE_PATH_CANDIDATES
+DEFAULT_USER_AGENT = constants.DEFAULT_USER_AGENT
+MAX_IMAGE_SIZE_BYTES = constants.MAX_IMAGE_SIZE_BYTES
+SUPPORTED_IMAGE_MIME_TYPES = constants.SUPPORTED_IMAGE_MIME_TYPES
+CF_CLEARANCE_COOKIE = constants.CF_CLEARANCE_COOKIE
+CF_BM_COOKIE = constants.CF_BM_COOKIE
+CF_UVID_COOKIE = constants.CF_UVID_COOKIE
+PROVISIONAL_USER_ID_COOKIE = constants.PROVISIONAL_USER_ID_COOKIE
+ARENA_AUTH_COOKIE = constants.ARENA_AUTH_COOKIE
+GRECAPTCHA_COOKIE = constants.GRECAPTCHA_COOKIE
+ARENA_COOKIE_DOMAINS = constants.ARENA_COOKIE_DOMAINS
+ARENA_DIRECT_MODE_URL = constants.ARENA_DIRECT_MODE_URL
+NEXTJS_API_SIGNUP = constants.NEXTJS_API_SIGNUP
+CONTENT_TYPE_TEXT_PLAIN_UTF8 = constants.CONTENT_TYPE_TEXT_PLAIN_UTF8
+CONTENT_TYPE_APPLICATION_JSON = constants.CONTENT_TYPE_APPLICATION_JSON
+TURNSTILE_SELECTORS = constants.TURNSTILE_SELECTORS
+TURNSTILE_INNER_SELECTORS = constants.TURNSTILE_INNER_SELECTORS
+ARENA_ORIGIN_HEADER = constants.ARENA_ORIGIN_HEADER
+ARENA_REFERER_HEADER = constants.ARENA_REFERER_HEADER
+SUPABASE_JWT_PATTERN = constants.SUPABASE_JWT_PATTERN
+CLOUDFLARE_CHALLENGE_TITLE = constants.CLOUDFLARE_CHALLENGE_TITLE
 
-# HTTP Status Codes
-class HTTPStatus:
-    # 1xx Informational
-    CONTINUE = 100
-    SWITCHING_PROTOCOLS = 101
-    PROCESSING = 102
-    EARLY_HINTS = 103
-    
-    # 2xx Success
-    OK = 200
-    CREATED = 201
-    ACCEPTED = 202
-    NON_AUTHORITATIVE_INFORMATION = 203
-    NO_CONTENT = 204
-    RESET_CONTENT = 205
-    PARTIAL_CONTENT = 206
-    MULTI_STATUS = 207
-    
-    # 3xx Redirection
-    MULTIPLE_CHOICES = 300
-    MOVED_PERMANENTLY = 301
-    MOVED_TEMPORARILY = 302
-    SEE_OTHER = 303
-    NOT_MODIFIED = 304
-    USE_PROXY = 305
-    TEMPORARY_REDIRECT = 307
-    PERMANENT_REDIRECT = 308
-    
-    # 4xx Client Errors
-    BAD_REQUEST = 400
-    UNAUTHORIZED = 401
-    PAYMENT_REQUIRED = 402
-    FORBIDDEN = 403
-    NOT_FOUND = 404
-    METHOD_NOT_ALLOWED = 405
-    NOT_ACCEPTABLE = 406
-    PROXY_AUTHENTICATION_REQUIRED = 407
-    REQUEST_TIMEOUT = 408
-    CONFLICT = 409
-    GONE = 410
-    LENGTH_REQUIRED = 411
-    PRECONDITION_FAILED = 412
-    REQUEST_TOO_LONG = 413
-    REQUEST_URI_TOO_LONG = 414
-    UNSUPPORTED_MEDIA_TYPE = 415
-    REQUESTED_RANGE_NOT_SATISFIABLE = 416
-    EXPECTATION_FAILED = 417
-    IM_A_TEAPOT = 418
-    INSUFFICIENT_SPACE_ON_RESOURCE = 419
-    METHOD_FAILURE = 420
-    MISDIRECTED_REQUEST = 421
-    UNPROCESSABLE_ENTITY = 422
-    LOCKED = 423
-    FAILED_DEPENDENCY = 424
-    UPGRADE_REQUIRED = 426
-    PRECONDITION_REQUIRED = 428
-    TOO_MANY_REQUESTS = 429
-    REQUEST_HEADER_FIELDS_TOO_LARGE = 431
-    UNAVAILABLE_FOR_LEGAL_REASONS = 451
-    
-    # 5xx Server Errors
-    INTERNAL_SERVER_ERROR = 500
-    NOT_IMPLEMENTED = 501
-    BAD_GATEWAY = 502
-    SERVICE_UNAVAILABLE = 503
-    GATEWAY_TIMEOUT = 504
-    HTTP_VERSION_NOT_SUPPORTED = 505
-    INSUFFICIENT_STORAGE = 507
-    NETWORK_AUTHENTICATION_REQUIRED = 511
-
-# Status code descriptions for logging
-STATUS_MESSAGES = {
-    100: "Continue",
-    101: "Switching Protocols",
-    102: "Processing",
-    103: "Early Hints",
-    200: "OK - Success",
-    201: "Created",
-    202: "Accepted",
-    203: "Non-Authoritative Information",
-    204: "No Content",
-    205: "Reset Content",
-    206: "Partial Content",
-    207: "Multi-Status",
-    300: "Multiple Choices",
-    301: "Moved Permanently",
-    302: "Moved Temporarily",
-    303: "See Other",
-    304: "Not Modified",
-    305: "Use Proxy",
-    307: "Temporary Redirect",
-    308: "Permanent Redirect",
-    400: "Bad Request - Invalid request syntax",
-    401: "Unauthorized - Invalid or expired token",
-    402: "Payment Required",
-    403: "Forbidden - Access denied",
-    404: "Not Found - Resource doesn't exist",
-    405: "Method Not Allowed",
-    406: "Not Acceptable",
-    407: "Proxy Authentication Required",
-    408: "Request Timeout",
-    409: "Conflict",
-    410: "Gone - Resource permanently deleted",
-    411: "Length Required",
-    412: "Precondition Failed",
-    413: "Request Too Long - Payload too large",
-    414: "Request URI Too Long",
-    415: "Unsupported Media Type",
-    416: "Requested Range Not Satisfiable",
-    417: "Expectation Failed",
-    418: "I'm a Teapot",
-    419: "Insufficient Space on Resource",
-    420: "Method Failure",
-    421: "Misdirected Request",
-    422: "Unprocessable Entity",
-    423: "Locked",
-    424: "Failed Dependency",
-    426: "Upgrade Required",
-    428: "Precondition Required",
-    429: "Too Many Requests - Rate limit exceeded",
-    431: "Request Header Fields Too Large",
-    451: "Unavailable For Legal Reasons",
-    500: "Internal Server Error",
-    501: "Not Implemented",
-    502: "Bad Gateway",
-    503: "Service Unavailable",
-    504: "Gateway Timeout",
-    505: "HTTP Version Not Supported",
-    507: "Insufficient Storage",
-    511: "Network Authentication Required"
-}
-
-def get_status_emoji(status_code: int) -> str:
-    """Get emoji for status code"""
-    if 200 <= status_code < 300:
-        return "✅"
-    elif 300 <= status_code < 400:
-        return "↪️"
-    elif 400 <= status_code < 500:
-        if status_code == 401:
-            return "🔒"
-        elif status_code == 403:
-            return "🚫"
-        elif status_code == 404:
-            return "❓"
-        elif status_code == 429:
-            return "⏱️"
-        return "⚠️"
-    elif 500 <= status_code < 600:
-        return "❌"
-    return "ℹ️"
-
-def log_http_status(status_code: int, context: str = ""):
-    """Log HTTP status with readable message"""
-    emoji = get_status_emoji(status_code)
-    message = STATUS_MESSAGES.get(status_code, f"Unknown Status {status_code}")
-    if context:
-        debug_print(f"{emoji} HTTP {status_code}: {message} ({context})")
-    else:
-        debug_print(f"{emoji} HTTP {status_code}: {message}")
-# ============================================================
-
+# Backoff functions
 def get_rate_limit_sleep_seconds(retry_after: Optional[str], attempt: int) -> int:
-    """Compute backoff seconds for upstream 429 responses."""
-    if isinstance(retry_after, str):
-        try:
-            value = int(float(retry_after.strip()))
-        except Exception:
-            value = 0
-        if value > 0:
-            # Respect upstream guidance when present (Retry-After can exceed 60s).
-            return min(value, 3600)
-
-    attempt = max(0, int(attempt))
-    # Exponential backoff, capped to avoid unbounded waits.
-    return int(min(5 * (2**attempt), 300))
-
+    return constants.get_rate_limit_backoff_seconds(retry_after, attempt)
 
 def get_general_backoff_seconds(attempt: int) -> int:
-    """Compute general exponential backoff seconds."""
-    attempt = max(0, int(attempt))
-    return int(min(2 * (2**attempt), 30))
+    return constants.get_general_backoff_seconds(attempt)
+
 
 def safe_print(*args, **kwargs) -> None:
     """
@@ -248,21 +123,41 @@ def safe_print(*args, **kwargs) -> None:
 # (Some environments default to GBK, which cannot encode emoji.)
 print = safe_print  # type: ignore[assignment]
 
+
 def debug_print(*args, **kwargs):
     """Print debug messages only if DEBUG is True"""
     if DEBUG:
         print(*args, **kwargs)
 
-# --- New reCAPTCHA Functions ---
 
-# Updated constants from gpt4free/g4f/Provider/needs_auth/LMArena.py
-RECAPTCHA_SITEKEY = "6Led_uYrAAAAAKjxDIF58fgFtX3t8loNAK85bW9I"
-RECAPTCHA_ACTION = "chat_submit"
-# reCAPTCHA Enterprise v2 sitekey used when v3 scoring fails and LMArena prompts a checkbox challenge.
-RECAPTCHA_V2_SITEKEY = "6Ld7ePYrAAAAAB34ovoFoDau1fqCJ6IyOjFEQaMn"
-# Cloudflare Turnstile sitekey used by LMArena to mint anonymous-user signup tokens.
-# (Used for POST /nextjs-api/sign-up before `arena-auth-prod-v1` exists.)
-TURNSTILE_SITEKEY = "0x4AAAAAAA65vWDmG-O_lPtT"
+def get_status_emoji(status_code: int) -> str:
+    if 200 <= status_code < 300:
+        return "✅"
+    elif 300 <= status_code < 400:
+        return "↪️"
+    elif 400 <= status_code < 500:
+        if status_code == 401:
+            return "🔒"
+        elif status_code == 403:
+            return "🚫"
+        elif status_code == 404:
+            return "❓"
+        elif status_code == 429:
+            return "⏱️"
+        return "⚠️"
+    elif 500 <= status_code < 600:
+        return "❌"
+    return "ℹ️"
+
+
+def log_http_status(status_code: int, context: str = "") -> None:
+    emoji = get_status_emoji(status_code)
+    message = STATUS_MESSAGES.get(status_code, f"Unknown Status {status_code}")
+    if context:
+        debug_print(f"{emoji} HTTP {status_code}: {message} ({context})")
+    else:
+        debug_print(f"{emoji} HTTP {status_code}: {message}")
+
 
 # LMArena occasionally changes the reCAPTCHA sitekey/action. We try to discover them from captured JS chunks on startup
 # and persist them into config.json; these helpers read and apply those values with safe fallbacks.
@@ -342,14 +237,6 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
     if not action:
         action = RECAPTCHA_ACTION
     return sitekey, action
-
-# Models that should always use the in-browser (Chrome fetch) transport for streaming.
-# These are especially sensitive to reCAPTCHA / bot scoring and are much more reliable when executed in-page.
-STRICT_CHROME_FETCH_MODELS = {
-    "gemini-3-pro-grounding",
-    "gemini-exp-1206",
-}
-
 
 def _is_windows() -> bool:
     return os.name == "nt" or sys.platform == "win32"
@@ -3317,8 +3204,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 # --- Constants & Global State ---
-CONFIG_FILE = "config.json"
-MODELS_FILE = "models.json"
+CONFIG_FILE = constants.CONFIG_FILE
+MODELS_FILE = constants.MODELS_FILE
 API_KEY_HEADER = APIKeyHeader(name="Authorization", auto_error=False)
 
 # In-memory stores
@@ -3372,40 +3259,12 @@ def get_config():
 
     # Ensure default keys exist
     try:
-        config.setdefault("password", "admin")
-        config.setdefault("auth_token", "")
-        config.setdefault("auth_tokens", [])  # Multiple auth tokens
-        config.setdefault("cf_clearance", "")
-        config.setdefault("api_keys", [])
-        config.setdefault("usage_stats", {})
-        config.setdefault("prune_invalid_tokens", False)
-        config.setdefault("persist_arena_auth_cookie", False)
-        config.setdefault("camoufox_proxy_window_mode", "hide")
-        config.setdefault("camoufox_fetch_window_mode", "hide")
-        config.setdefault("chrome_fetch_window_mode", "hide")
-        
-        # Normalize api_keys to prevent KeyErrors in dashboard and rate limiting
-        if isinstance(config.get("api_keys"), list):
-            normalized_keys = []
-            for i, key_entry in enumerate(config["api_keys"]):
-                if isinstance(key_entry, dict):
-                    # Ensure 'key' exists as it's critical
-                    if "key" not in key_entry:
-                        continue # Skip invalid entries missing the actual key
-                    
-                    if "name" not in key_entry:
-                        key_entry["name"] = "Unnamed Key"
-                    if "created" not in key_entry:
-                        # Use a default old timestamp (Jan 3 2024)
-                        key_entry["created"] = 1704236400
-                    if "rpm" not in key_entry:
-                        key_entry["rpm"] = 60
-                    normalized_keys.append(key_entry)
-            config["api_keys"] = normalized_keys
+        _config_module._apply_config_defaults(config)
     except Exception as e:
         debug_print(f"⚠️  Error setting config defaults: {e}")
-    
+
     return config
+
 
 def load_usage_stats():
     """Load usage stats from config into memory"""
@@ -3573,23 +3432,6 @@ def _upsert_browser_session_into_config(config: dict, cookies: list[dict], user_
         changed = True
 
     return changed
-
-def get_models():
-    try:
-        with open(MODELS_FILE, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
-
-def save_models(models):
-    try:
-        tmp_path = f"{MODELS_FILE}.tmp"
-        with open(tmp_path, "w") as f:
-            json.dump(models, f, indent=2)
-        os.replace(tmp_path, MODELS_FILE)
-    except Exception as e:
-        debug_print(f"❌ Error saving models: {e}")
-
 
 def get_request_headers():
     """Get request headers with the first available auth token (for compatibility)"""

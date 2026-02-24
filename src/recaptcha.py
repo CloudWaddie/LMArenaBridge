@@ -520,7 +520,7 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
                 config,
                 mode_key="chrome_fetch_window_mode",
                 marker="LMArenaBridge Chrome Fetch",
-                headless=bool(headless),
+                headless=False,
             )
             await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
 

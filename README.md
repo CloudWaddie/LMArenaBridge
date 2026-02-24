@@ -1,5 +1,7 @@
 # LM Arena Bridge
 
+<a href="https://www.drips.network/app/projects/github/CloudWaddie/LMArenaBridge" target="_blank"><img src="https://www.drips.network/api/embed/project/https%3A%2F%2Fgithub.com%2FCloudWaddie%2FLMArenaBridge/support.png?background=light&style=drips&text=project&stat=support" alt="Support LMArenaBridge on drips.network" height="32"></a>
+
 ### Thank you to the [AI Leaks server](https://discord.gg/fqmaHkQpJZ) for being a partner!
 ![AI-Leaks-Logo](https://github.com/user-attachments/assets/5fd3d456-152c-44e2-acee-f4c2a1ca2caa)
 

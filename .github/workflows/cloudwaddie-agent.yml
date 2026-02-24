@@ -194,7 +194,7 @@ jobs:
 
           if [[ -z "$OPENCODE_AUTH_JSON" ]]; then
             echo "No auth provided - using free OpenCode models"
-            jq '.model = "opencode/kimi-k2.5-free"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
+            jq '.model = "opencode/big-pickle"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
           fi
 
           # Configure oh-my-opencode prompt_append with ultrawork mode

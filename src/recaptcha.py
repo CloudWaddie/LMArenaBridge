@@ -15,6 +15,7 @@ accessed via _m() late-import of main so test patches remain effective.
 
 import asyncio
 import os
+import re
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path

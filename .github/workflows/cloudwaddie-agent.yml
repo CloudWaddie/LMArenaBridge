@@ -16,7 +16,6 @@ on:
 jobs:
   agent:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false
@@ -46,6 +45,56 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 0
+
+      # Auto-sync this workflow from actions-agent source
+      - name: Sync workflow from actions-agent
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          # Skip sync if this IS the actions-agent repo
+          if [[ "${{ github.repository }}" == "CloudWaddie/actions-agent" ]]; then
+            echo "Source repo — skipping sync"
+            exit 0
+          fi
+
+          curl -sSfL \
+            "https://raw.githubusercontent.com/CloudWaddie/actions-agent/main/.github/workflows/cloudwaddie-agent.yml" \
+            -o /tmp/cloudwaddie-agent.yml
+
+          if diff -q .github/workflows/cloudwaddie-agent.yml /tmp/cloudwaddie-agent.yml > /dev/null 2>&1; then
+            echo "Workflow is up to date"
+            exit 0
+          fi
+
+          echo "Workflow is outdated — creating sync PR"
+          BRANCH="auto/sync-agent-workflow"
+
+          git config user.name "cloudwaddie-agent"
+          git config user.email "cloudwaddie-agent@users.noreply.github.com"
+
+          # Close existing sync PR if any
+          existing_pr=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -n "$existing_pr" ]; then
+            gh pr close "$existing_pr" --delete-branch || true
+          fi
+
+          git checkout -B "$BRANCH"
+          cp /tmp/cloudwaddie-agent.yml .github/workflows/cloudwaddie-agent.yml
+          git add .github/workflows/cloudwaddie-agent.yml
+          git commit -m "chore: sync cloudwaddie-agent.yml from actions-agent"
+          git push -f origin "$BRANCH"
+
+          gh pr create \
+            --title "chore: sync cloudwaddie-agent.yml from actions-agent" \
+            --body "$(cat <<'PREOF'
+          Automated sync of \`cloudwaddie-agent.yml\` from [CloudWaddie/actions-agent](https://github.com/CloudWaddie/actions-agent).
+
+          This PR was created automatically because the local copy differs from the source.
+          PREOF
+          )"
+
+          # Switch back to the original branch so the rest of the job runs normally
+          git checkout -
 
       # Git config - commits as cloudwaddie-agent
       - name: Configure Git as cloudwaddie-agent
@@ -196,7 +245,7 @@ jobs:
 
           if [[ -z "$OPENCODE_AUTH_JSON" ]]; then
             echo "No auth provided - using free OpenCode models"
-            jq '.model = "opencode/big-pickle"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
+            jq '.model = "opencode/minimax-m2.5-free"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
           fi
 
           # Configure oh-my-opencode prompt_append with ultrawork mode
@@ -537,12 +586,12 @@ jobs:
               **GIT WORKFLOW**: Use fork-based workflow for all changes:
               1. Fork the repo: `gh repo fork --remote=false` (creates fork under cloudwaddie-agent account)
               2. Sync fork main branch from upstream BEFORE creating new branch:
-                 - `git remote add upstream https://github.com/REPO_PLACEHOLDER.git` (if not already added)
+                 - `git remote add upstream https://github.com/CloudWaddie/actions-agent.git` (if not already added)
                  - `git fetch upstream`
-                 - `git checkout -b feature-branch upstream/BRANCH_PLACEHOLDER` (branch off fresh upstream main, NOT stale fork main)
+                 - `git checkout -b feature-branch upstream/main` (branch off fresh upstream main, NOT stale fork main)
               3. Commit changes with clear, atomic commits
-              4. Push to YOUR FORK: `git push origin feature-branch` (after forking, origin points to your fork)
-              5. Create PR from fork to upstream: `gh pr create --repo REPO_PLACEHOLDER --head cloudwaddie-agent:feature-branch --base BRANCH_PLACEHOLDER`
+              4. Push to YOUR FORK: `git push https://github.com/cloudwaddie-agent/actions-agent.git feature-branch`
+              5. Create PR from fork to upstream: `gh pr create --repo CloudWaddie/actions-agent --head cloudwaddie-agent:feature-branch --base main`
 
               **IMPORTANT**: Always sync from upstream main before creating branches. Never branch from the fork's main (which may be stale).
 
@@ -607,3 +656,4 @@ jobs:
                 -X POST -f content="+1" || true
             fi
           fi
+

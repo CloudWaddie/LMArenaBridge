@@ -68,26 +68,33 @@ jobs:
 
           echo "Workflow is outdated — creating sync PR"
           BRANCH="auto/sync-agent-workflow"
+          REPO="${{ github.repository }}"
 
           git config user.name "cloudwaddie-agent"
           git config user.email "cloudwaddie-agent@users.noreply.github.com"
 
+          # Fork the repo (idempotent — no-op if already forked)
+          gh repo fork "$REPO" --remote=false 2>/dev/null || true
+          FORK="cloudwaddie-agent/$(basename "$REPO")"
+
           # Close existing sync PR if any
-          existing_pr=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
+          existing_pr=$(gh pr list --repo "$REPO" --head "cloudwaddie-agent:$BRANCH" --json number --jq '.[0].number' 2>/dev/null || true)
           if [ -n "$existing_pr" ]; then
-            gh pr close "$existing_pr" --delete-branch || true
+            gh pr close "$existing_pr" --repo "$REPO" --delete-branch || true
           fi
 
           git checkout -B "$BRANCH"
           cp /tmp/cloudwaddie-agent.yml .github/workflows/cloudwaddie-agent.yml
           git add .github/workflows/cloudwaddie-agent.yml
           git commit -m "chore: sync cloudwaddie-agent.yml from actions-agent"
-          git push -f origin "$BRANCH"
+          git push -f "https://github.com/$FORK.git" "$BRANCH"
 
           gh pr create \
+            --repo "$REPO" \
+            --head "cloudwaddie-agent:$BRANCH" \
             --title "chore: sync cloudwaddie-agent.yml from actions-agent" \
             --body "$(cat <<'PREOF'
-          Automated sync of \`cloudwaddie-agent.yml\` from [CloudWaddie/actions-agent](https://github.com/CloudWaddie/actions-agent).
+          Automated sync of `cloudwaddie-agent.yml` from [CloudWaddie/actions-agent](https://github.com/CloudWaddie/actions-agent).
 
           This PR was created automatically because the local copy differs from the source.
           PREOF

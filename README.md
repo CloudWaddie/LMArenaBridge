@@ -77,7 +77,7 @@ To use the LM Arena Bridge, you need to get your authentication token from the L
 Once you have configured your authentication token, you can run the application:
 
 ```bash
-python src/main.py
+python -m src.main
 ```
 
 The application will start a server on `localhost:8000`.

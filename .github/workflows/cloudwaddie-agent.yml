@@ -126,11 +126,12 @@ jobs:
       - name: Build oh-my-opencode
         working-directory: oh-my-opencode
         run: |
+          # Always install dependencies (needed for src/index.ts runtime resolution)
+          bun install
           # Skip build if dist already cached and valid
           if [ -d "dist" ] && [ "$(ls -A dist)" ]; then
             echo "Using cached dist folder"
           else
-            bun install
             bun run build
           fi
 

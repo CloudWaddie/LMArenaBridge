@@ -16,6 +16,7 @@ on:
 jobs:
   agent:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     concurrency:
       group: ${{ github.workflow }}-${{ github.ref }}
       cancel-in-progress: false
@@ -536,12 +537,12 @@ jobs:
               **GIT WORKFLOW**: Use fork-based workflow for all changes:
               1. Fork the repo: `gh repo fork --remote=false` (creates fork under cloudwaddie-agent account)
               2. Sync fork main branch from upstream BEFORE creating new branch:
-                 - `git remote add upstream https://github.com/CloudWaddie/actions-agent.git` (if not already added)
+                 - `git remote add upstream https://github.com/REPO_PLACEHOLDER.git` (if not already added)
                  - `git fetch upstream`
-                 - `git checkout -b feature-branch upstream/main` (branch off fresh upstream main, NOT stale fork main)
+                 - `git checkout -b feature-branch upstream/BRANCH_PLACEHOLDER` (branch off fresh upstream main, NOT stale fork main)
               3. Commit changes with clear, atomic commits
-              4. Push to YOUR FORK: `git push https://github.com/cloudwaddie-agent/actions-agent.git feature-branch`
-              5. Create PR from fork to upstream: `gh pr create --repo CloudWaddie/actions-agent --head cloudwaddie-agent:feature-branch --base main`
+              4. Push to YOUR FORK: `git push origin feature-branch` (after forking, origin points to your fork)
+              5. Create PR from fork to upstream: `gh pr create --repo REPO_PLACEHOLDER --head cloudwaddie-agent:feature-branch --base BRANCH_PLACEHOLDER`
 
               **IMPORTANT**: Always sync from upstream main before creating branches. Never branch from the fork's main (which may be stale).
 

@@ -590,8 +590,18 @@ jobs:
           1. **First todo**: "Summarize issue/PR context and requirements"
           2. **Break down work** into atomic, verifiable steps
           3. **GIT WORKFLOW** (for implementation tasks):
-             
               **GIT WORKFLOW**: Use fork-based workflow for all changes:
+
+              **STEP 1: Check for existing PR from agent**
+              Before forking or creating branches, check if there's already an open PR from cloudwaddie-agent:
+              ```bash
+              existing_pr=$(gh pr list --repo REPO_PLACEHOLDER --head "cloudwaddie-agent:" --json number,headRefName --jq '.[] | "\(.number):\(.headRefName)"' 2>/dev/null || true)
+              ```
+              If an existing PR is found, note the branch name (e.g., from "123:feature-branch" format) and skip to STEP 3.
+
+              **STEP 2: Fork and branch ONLY if no existing PR found**
+              - If existing PR found → Skip forking, go to STEP 3
+              - If no existing PR → Continue below:
               1. Fork the repo: `gh repo fork --remote=false` (creates fork under cloudwaddie-agent account)
               2. Sync fork main branch from upstream BEFORE creating new branch:
                  - `git remote add upstream https://github.com/REPO_PLACEHOLDER.git` (if not already added)
@@ -600,6 +610,17 @@ jobs:
               3. Commit changes with clear, atomic commits
               4. Push to YOUR FORK: `git push origin feature-branch` (after forking, origin points to your fork)
               5. Create PR from fork to upstream: `gh pr create --repo REPO_PLACEHOLDER --head cloudwaddie-agent:feature-branch --base BRANCH_PLACEHOLDER`
+
+              **STEP 3: If existing PR found, update it**
+              - Checkout the existing branch from the fork:
+                - `git remote add upstream https://github.com/REPO_PLACEHOLDER.git` (if not already added)
+                - `git fetch upstream`
+                - `git fetch origin`
+                - `git checkout -b feature-branch origin/feature-branch` (or `git checkout feature-branch` if it exists)
+              - Sync it with upstream: `git rebase upstream/BRANCH_PLACEHOLDER`
+              - Make changes and commit
+              - Push to update: `git push origin feature-branch`
+              - The existing PR will be automatically updated
 
               **IMPORTANT**: Always sync from upstream main before creating branches. Never branch from the fork's main (which may be stale).
 

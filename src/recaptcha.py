@@ -631,20 +631,19 @@ async def get_recaptcha_v3_token() -> Optional[str]:
             # Allow time for the widget to render if it's going to
             try:
                 # Check for challenge title or widget presence
-                for _ in range(5):
+                # click_turnstile() includes a 2-second wait after successful click
+                max_attempts = _m().constants.TURNSTILE_MAX_ATTEMPTS  # 15 attempts with 2s click_turnstile wait = 30s max
+                for attempt in range(max_attempts):
                     title = await page.title()
-                    if "Just a moment" in title:
-                        _m().debug_print("  🔒 Cloudflare challenge active. Attempting to click...")
-                        clicked = await _m().click_turnstile(page)
-                        if clicked:
-                            _m().debug_print("  ✅ Clicked Turnstile.")
-                            # Give it time to verify
-                            await asyncio.sleep(3)
-                    else:
-                        # If title is normal, we might still have a widget on the page
-                        await _m().click_turnstile(page)
+                    if "Just a moment" not in title:
+                        # Title changed - Turnstile likely completed
+                        _m().debug_print(f"  ✅ Turnstile challenge resolved (title: {title[:30]}...)")
                         break
-                    await asyncio.sleep(1)
+                    _m().debug_print(f"  🔒 Cloudflare challenge active (attempt {attempt + 1}/{max_attempts})...")
+                    clicked = await _m().click_turnstile(page)
+                    if clicked:
+                        _m().debug_print("  🖱️  Clicked Turnstile.")
+                    # Note: click_turnstile() already includes 2-second wait after successful click
                 
                 # Wait for the page to actually settle into the main app
                 await page.wait_for_load_state("domcontentloaded")

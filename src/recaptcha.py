@@ -635,7 +635,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 max_attempts = _m().constants.TURNSTILE_MAX_ATTEMPTS  # 15 attempts with 2s click_turnstile wait = 30s max
                 for attempt in range(max_attempts):
                     title = await page.title()
-                    if "Just a moment" not in title:
+                    if _m().CLOUDFLARE_CHALLENGE_TITLE not in title:
                         # Title changed - Turnstile likely completed
                         _m().debug_print(f"  ✅ Turnstile challenge resolved (title: {title[:30]}...)")
                         break

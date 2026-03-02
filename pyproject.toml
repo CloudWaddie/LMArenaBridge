@@ -27,6 +27,7 @@ dependencies = [
     "camoufox",
     "playwright",
     "httpx",
+    "cloudscraper",
     "python-multipart",
 ]
 

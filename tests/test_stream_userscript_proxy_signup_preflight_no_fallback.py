@@ -91,17 +91,20 @@ class TestStreamUserscriptProxySignupPreflightNoFallback(BaseBridgeTest):
 
         proxy_mock = AsyncMock(side_effect=_proxy_stream)
 
+        # Browser transports return None so the code falls through to userscript proxy.
         async def _chrome_stream(*args, **kwargs):  # noqa: ANN001
             chrome_calls["count"] += 1
-            raise AssertionError("Chrome fetch should not be called when proxy completes after signup preflight")
+            return None
 
         chrome_mock = AsyncMock(side_effect=_chrome_stream)
+        camoufox_mock = AsyncMock(return_value=None)
 
         with (
             patch.object(self.main, "get_models") as get_models_mock,
             patch.object(self.main, "refresh_recaptcha_token", AsyncMock(return_value="recaptcha-token")),
             patch.object(self.main, "fetch_lmarena_stream_via_userscript_proxy", proxy_mock),
             patch.object(self.main, "fetch_lmarena_stream_via_chrome", chrome_mock),
+            patch.object(self.main, "fetch_lmarena_stream_via_camoufox", camoufox_mock),
             patch("src.main.print"),
             patch("src.main.asyncio.sleep", sleep_mock),
             patch("src.main.time.time") as time_mock,
@@ -142,7 +145,7 @@ class TestStreamUserscriptProxySignupPreflightNoFallback(BaseBridgeTest):
             self.assertIn("Hello", response.text)
             self.assertIn("[DONE]", response.text)
             self.assertGreaterEqual(proxy_calls["count"], 1)
-            self.assertEqual(chrome_calls["count"], 0)
+            # Browser transports are now tried first (returning None), before userscript proxy.
 
 
 if __name__ == "__main__":

@@ -110,7 +110,8 @@ RECAPTCHA_SITEKEY = constants.RECAPTCHA_SITEKEY
 RECAPTCHA_ACTION = constants.RECAPTCHA_ACTION
 RECAPTCHA_V2_SITEKEY = constants.RECAPTCHA_V2_SITEKEY
 TURNSTILE_SITEKEY = constants.TURNSTILE_SITEKEY
-STRICT_CHROME_FETCH_MODELS = constants.STRICT_CHROME_FETCH_MODELS
+STRICT_BROWSER_FETCH_MODELS = constants.STRICT_BROWSER_FETCH_MODELS
+STRICT_CHROME_FETCH_MODELS = STRICT_BROWSER_FETCH_MODELS  # backward compat alias
 LMARENA_ORIGIN = constants.LMARENA_ORIGIN
 ARENA_ORIGIN = constants.ARENA_ORIGIN
 ARENA_HOST_TO_ORIGIN = constants.ARENA_HOST_TO_ORIGIN
@@ -312,21 +313,21 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             "Referer": "https://lmarena.ai/?mode=direct",
         })
         
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.post(
-                    "https://lmarena.ai/?mode=direct",
-                    headers=request_headers,
-                    content=json.dumps([filename, mime_type]),
-                    timeout=30.0
-                )
-                response.raise_for_status()
-            except httpx.TimeoutException:
-                debug_print("❌ Timeout while requesting upload URL")
-                return None
-            except httpx.HTTPError as e:
-                debug_print(f"❌ HTTP error while requesting upload URL: {e}")
-                return None
+        import cloudscraper as _cs
+        def _cs_upload():
+            scraper = _cs.create_scraper()
+            return scraper.post(
+                "https://lmarena.ai/?mode=direct",
+                headers=request_headers,
+                data=json.dumps([filename, mime_type]),
+                timeout=30.0,
+            )
+        try:
+            response = await asyncio.to_thread(_cs_upload)
+            response.raise_for_status()
+        except (cloudscraper.exceptions.CloudflareException, requests.exceptions.RequestException) as e:
+            debug_print(f"❌ Error while requesting upload URL: {e}")
+            return None
             
             # Parse response - format: 0:{...}\n1:{...}\n
             try:
@@ -2338,8 +2339,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         # --- NEW: Get reCAPTCHA v3 Token for Payload ---
         # For strict models, we defer token minting to the in-browser fetch transport to avoid extra
         # automation-driven token requests (which can lower scores and increase flakiness).
-        use_chrome_fetch_for_model = model_public_name in STRICT_CHROME_FETCH_MODELS
-        strict_chrome_fetch_model = use_chrome_fetch_for_model
+        use_browser_fetch_for_model = model_public_name in STRICT_BROWSER_FETCH_MODELS
+        strict_chrome_fetch_model = use_browser_fetch_for_model  # compat alias
 
         recaptcha_token = ""
         if strict_chrome_fetch_model:
@@ -2555,78 +2556,82 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             
             for attempt in range(max_retries):
                 try:
-                    async with httpx.AsyncClient() as client:
+                    import cloudscraper as _cs
+                    def _cs_request():
+                        scraper = _cs.create_scraper()
                         if http_method == "PUT":
-                            response = await client.put(url, json=payload, headers=headers, timeout=120)
+                            return scraper.put(url, json=payload, headers=headers, timeout=120)
                         else:
-                            response = await client.post(url, json=payload, headers=headers, timeout=120)
-                        
-                        # Log status with human-readable message
-                        log_http_status(response.status_code, "LMArena API")
-                        
-                        # Check for retry-able errors
-                        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
-                            debug_print(f"⏱️  Attempt {attempt + 1}/{max_retries} - Rate limit with token {current_token[:20]}...")
-                            retry_after = response.headers.get("Retry-After")
-                            sleep_seconds = get_rate_limit_sleep_seconds(retry_after, attempt)
-                            debug_print(f"  Retry-After header: {retry_after!r}")
-                            
-                            if attempt < max_retries - 1:
-                                try:
-                                    # Try with next token (excluding failed ones)
-                                    current_token = get_next_auth_token(exclude_tokens=failed_tokens)
-                                    headers = get_request_headers_with_token(current_token, recaptcha_token)
-                                    debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
-                                    await asyncio.sleep(sleep_seconds)
-                                    continue
-                                except HTTPException as e:
-                                    debug_print(f"❌ No more tokens available: {e.detail}")
-                                    break
-                        
-                        elif response.status_code == HTTPStatus.FORBIDDEN:
-                            try:
-                                error_body = response.json()
-                            except Exception:
-                                error_body = None
-                            if isinstance(error_body, dict) and error_body.get("error") == "recaptcha validation failed":
-                                debug_print(
-                                    f"🤖 Attempt {attempt + 1}/{max_retries} - reCAPTCHA validation failed. Refreshing token..."
-                                )
-                                new_token = await refresh_recaptcha_token(force_new=True)
-                                if new_token and isinstance(payload, dict):
-                                    payload["recaptchaV3Token"] = new_token
-                                    recaptcha_token = new_token
-                                if attempt < max_retries - 1:
-                                    headers = get_request_headers_with_token(current_token, recaptcha_token)
-                                    await asyncio.sleep(1)
-                                    continue
+                            return scraper.post(url, json=payload, headers=headers, timeout=120)
+                    response = await asyncio.to_thread(_cs_request)
 
-                        elif response.status_code == HTTPStatus.UNAUTHORIZED:
-                            debug_print(f"🔒 Attempt {attempt + 1}/{max_retries} - Auth failed with token {current_token[:20]}...")
-                            # Add current token to failed set
-                            failed_tokens.add(current_token)
-                            # (Pruning disabled)
-                            debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
-                            
+                    # Log status with human-readable message
+                    log_http_status(response.status_code, "LMArena API")
+
+                    # Check for retry-able errors
+                    if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+                        debug_print(f"⏱️  Attempt {attempt + 1}/{max_retries} - Rate limit with token {current_token[:20]}...")
+                        retry_after = response.headers.get("Retry-After")
+                        sleep_seconds = get_rate_limit_sleep_seconds(retry_after, attempt)
+                        debug_print(f"  Retry-After header: {retry_after!r}")
+
+                        if attempt < max_retries - 1:
+                            try:
+                                # Try with next token (excluding failed ones)
+                                current_token = get_next_auth_token(exclude_tokens=failed_tokens)
+                                headers = get_request_headers_with_token(current_token, recaptcha_token)
+                                debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
+                                await asyncio.sleep(sleep_seconds)
+                                continue
+                            except HTTPException as e:
+                                debug_print(f"❌ No more tokens available: {e.detail}")
+                                break
+
+                    elif response.status_code == HTTPStatus.FORBIDDEN:
+                        try:
+                            error_body = response.json()
+                        except Exception:
+                            error_body = None
+                        if isinstance(error_body, dict) and error_body.get("error") == "recaptcha validation failed":
+                            debug_print(
+                                f"🤖 Attempt {attempt + 1}/{max_retries} - reCAPTCHA validation failed. Refreshing token..."
+                            )
+                            new_token = await refresh_recaptcha_token(force_new=True)
+                            if new_token and isinstance(payload, dict):
+                                payload["recaptchaV3Token"] = new_token
+                                recaptcha_token = new_token
                             if attempt < max_retries - 1:
-                                try:
-                                    # Try with next available token (excluding failed ones)
-                                    current_token = get_next_auth_token(exclude_tokens=failed_tokens)
-                                    headers = get_request_headers_with_token(current_token, recaptcha_token)
-                                    debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
-                                    await asyncio.sleep(1)  # Brief delay
-                                    continue
-                                except HTTPException as e:
-                                    debug_print(f"❌ No more tokens available: {e.detail}")
-                                    break
-                        
-                        # If we get here, return the response (success or non-retryable error)
-                        response.raise_for_status()
-                        return response
-                        
-                except httpx.HTTPStatusError as e:
-                    # Only handle 429 and 401, let other errors through
-                    if e.response.status_code not in [429, 401]:
+                                headers = get_request_headers_with_token(current_token, recaptcha_token)
+                                await asyncio.sleep(1)
+                                continue
+
+                    elif response.status_code == HTTPStatus.UNAUTHORIZED:
+                        debug_print(f"🔒 Attempt {attempt + 1}/{max_retries} - Auth failed with token {current_token[:20]}...")
+                        # Add current token to failed set
+                        failed_tokens.add(current_token)
+                        # (Pruning disabled)
+                        debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
+
+                        if attempt < max_retries - 1:
+                            try:
+                                # Try with next available token (excluding failed ones)
+                                current_token = get_next_auth_token(exclude_tokens=failed_tokens)
+                                headers = get_request_headers_with_token(current_token, recaptcha_token)
+                                debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
+                                await asyncio.sleep(1)  # Brief delay
+                                continue
+                            except HTTPException as e:
+                                debug_print(f"❌ No more tokens available: {e.detail}")
+                                break
+
+                    # If we get here, return the response (success or non-retryable error)
+                    response.raise_for_status()
+                    return response
+
+                except (requests.exceptions.HTTPError, cloudscraper.exceptions.CloudflareException) as e:
+                    # Handle HTTP errors from cloudscraper (requests-based)
+                    status_code = getattr(getattr(e, 'response', None), 'status_code', None)
+                    if status_code and status_code not in [429, 401]:
                         raise
                     # If last attempt, raise the error
                     if attempt == max_retries - 1:
@@ -2684,11 +2689,11 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 # through it immediately to avoid side-channel reCAPTCHA token minting (which can launch headful Chrome).
                 use_browser_transports = (
                     force_browser_transports_in_stream
-                    or (model_public_name in STRICT_CHROME_FETCH_MODELS)
+                    or (model_public_name in STRICT_BROWSER_FETCH_MODELS)
                     or proxy_active_at_start
                 )
-                prefer_chrome_transport = True
-                if use_browser_transports and (model_public_name in STRICT_CHROME_FETCH_MODELS):
+                prefer_chrome_transport = False
+                if use_browser_transports and (model_public_name in STRICT_BROWSER_FETCH_MODELS):
                     debug_print(f"🔐 Strict model detected ({model_public_name}), enabling browser fetch transport.")
                 elif use_browser_transports and force_browser_transports_in_stream:
                     debug_print("⚠️ Stream mode without auth token: preferring userscript proxy / browser fetch transports.")
@@ -2761,11 +2766,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             stream_context = None
                             transport_used = "httpx"
                             
-                            # Prefer the userscript proxy only when it is actually polling (or when a poller connects
-                            # shortly after the request starts). This avoids hanging strict-model requests when no
-                            # proxy is running, while still supporting "late" pollers (tests/reconnects).
+                            # Userscript proxy is now a backup-only transport.  We check
+                            # availability here but defer actually using it until after
+                            # browser transports have been attempted.
                             use_userscript = False
                             cfg_now = None
+                            userscript_proxy_available = False
                             if (
                                 use_browser_transports
                                 and not disable_userscript_for_request
@@ -2800,8 +2806,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                             await asyncio.sleep(0.05)
 
                                 if proxy_active:
-                                    use_userscript = True
-                                    debug_print("🌐 Userscript Proxy is ACTIVE. Preferring Proxy over direct/Chrome fetch.")
+                                    userscript_proxy_available = True
+                                    debug_print("🌐 Userscript Proxy is ACTIVE (will use as backup after browser transports).")
                                 # Default behavior: mint in-page (higher success rate than side-channel cached tokens).
                                 # Optional: allow pre-filling a cached token for speed via config flag.
                                 try:
@@ -2821,36 +2827,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     if cached:
                                         debug_print(f"🔐 Using cached reCAPTCHA v3 token for proxy (len={len(str(cached))})")
                                         payload["recaptchaV3Token"] = cached
-
-                            if use_userscript:
-                                debug_print(
-                                    f"📫 Delegating request to Userscript Proxy (poll active {int(time.time() - last_userscript_poll)}s ago)..."
-                                )
-                                proxy_auth_token = str(current_token or "").strip()
-                                try:
-                                    # Preserve expired base64 Supabase session cookies: they can often be refreshed
-                                    # in-page via their embedded refresh_token (no user interaction).
-                                    if (
-                                        proxy_auth_token
-                                        and not str(proxy_auth_token).startswith("base64-")
-                                        and is_arena_auth_token_expired(proxy_auth_token, skew_seconds=0)
-                                    ):
-                                        proxy_auth_token = ""
-                                except Exception:
-                                    pass
-                                stream_context = await fetch_via_proxy_queue(
-                                    url=url,
-                                    payload=payload if isinstance(payload, dict) else {},
-                                    http_method=http_method,
-                                    timeout_seconds=120,
-                                    streaming=True,
-                                    auth_token=proxy_auth_token,
-                                )
-                                if stream_context is None:
-                                    debug_print("⚠️ Userscript Proxy returned None (timeout?). Falling back...")
-                                    use_userscript = False
-                                else:
-                                    transport_used = "userscript"
 
                             # Strict models: when we're about to fall back to buffered browser fetch transports (not the
                             # streaming proxy), a side-channel token can avoid hangs while grecaptcha loads in-page.
@@ -3047,7 +3023,38 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         if stream_context is not None:
                                             transport_used = "chrome"
 
+                            # Userscript proxy: backup transport after browser transports fail.
+                            if stream_context is None and userscript_proxy_available and not disable_userscript_for_request:
+                                use_userscript = True
+                                debug_print(
+                                    f"📫 Delegating request to Userscript Proxy (poll active {int(time.time() - last_userscript_poll)}s ago)..."
+                                )
+                                proxy_auth_token = str(current_token or "").strip()
+                                try:
+                                    if (
+                                        proxy_auth_token
+                                        and not str(proxy_auth_token).startswith("base64-")
+                                        and is_arena_auth_token_expired(proxy_auth_token, skew_seconds=0)
+                                    ):
+                                        proxy_auth_token = ""
+                                except Exception:
+                                    pass
+                                stream_context = await fetch_via_proxy_queue(
+                                    url=url,
+                                    payload=payload if isinstance(payload, dict) else {},
+                                    http_method=http_method,
+                                    timeout_seconds=120,
+                                    streaming=True,
+                                    auth_token=proxy_auth_token,
+                                )
+                                if stream_context is None:
+                                    debug_print("⚠️ Userscript Proxy returned None (timeout?). Falling back to cloudscraper...")
+                                    use_userscript = False
+                                else:
+                                    transport_used = "userscript"
+
                             if stream_context is None:
+                                # Last-resort: httpx streaming fallback.
                                 client = await stack.enter_async_context(httpx.AsyncClient())
                                 if http_method == "PUT":
                                     stream_context = client.stream('PUT', url, json=payload, headers=headers, timeout=120)

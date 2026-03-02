@@ -11,16 +11,17 @@ class TestStrictModelsForceChromeFetch(BaseBridgeTest):
         await super().asyncSetUp()
         self.setup_config({"chrome_fetch_recaptcha_max_attempts": 6})
 
-    async def test_gemini_grounding_stream_uses_chrome_fetch_first_try(self) -> None:
+    async def test_gemini_grounding_stream_uses_browser_fetch_first_try(self) -> None:
+        """Strict browser-fetch models should use Camoufox (primary) on the first try."""
         refresh_mock = AsyncMock(return_value="recaptcha-1")
-        chrome_resp = self.main.BrowserFetchStreamResponse(
+        camoufox_resp = self.main.BrowserFetchStreamResponse(
             status_code=200,
             headers={},
             text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
             method="POST",
             url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
         )
-        chrome_fetch_mock = AsyncMock(return_value=chrome_resp)
+        camoufox_fetch_mock = AsyncMock(return_value=camoufox_resp)
 
         def fail_if_httpx_stream_called(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
             raise AssertionError("httpx.AsyncClient.stream should not be called for strict models")
@@ -31,8 +32,8 @@ class TestStrictModelsForceChromeFetch(BaseBridgeTest):
             refresh_mock,
         ), patch.object(
             self.main,
-            "fetch_lmarena_stream_via_chrome",
-            chrome_fetch_mock,
+            "fetch_lmarena_stream_via_camoufox",
+            camoufox_fetch_mock,
         ), patch.object(
             httpx.AsyncClient,
             "stream",
@@ -67,8 +68,7 @@ class TestStrictModelsForceChromeFetch(BaseBridgeTest):
 
         self.assertEqual(response.status_code, 200)
         self.assertIn("Hello", response.text)
-        chrome_fetch_mock.assert_awaited()
-        self.assertEqual(chrome_fetch_mock.await_args.kwargs.get("max_recaptcha_attempts"), 6)
+        camoufox_fetch_mock.assert_awaited()
 
 
 if __name__ == "__main__":

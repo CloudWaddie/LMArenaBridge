@@ -58,7 +58,7 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
 
         proxy_mock = AsyncMock(side_effect=_proxy_stream)
 
-        chrome_resp = self.main.BrowserFetchStreamResponse(
+        browser_resp = self.main.BrowserFetchStreamResponse(
             status_code=200,
             headers={},
             text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
@@ -66,9 +66,19 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
             url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
         )
 
+        # Browser transports return None on first call (to let proxy be tried), then succeed on retry.
+        camoufox_calls: list[int] = [0]
+        async def _camoufox_stream(*args, **kwargs):  # noqa: ANN001
+            camoufox_calls[0] += 1
+            if camoufox_calls[0] == 1:
+                return None  # First attempt: let proxy be tried
+            return browser_resp
+
+        camoufox_mock = AsyncMock(side_effect=_camoufox_stream)
+
         async def _chrome_stream(*args, **kwargs):  # noqa: ANN001
             chrome_calls["count"] += 1
-            return chrome_resp
+            return None
 
         chrome_mock = AsyncMock(side_effect=_chrome_stream)
 
@@ -77,6 +87,7 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
             patch.object(self.main, "refresh_recaptcha_token", AsyncMock(return_value="recaptcha-token")),
             patch.object(self.main, "fetch_lmarena_stream_via_userscript_proxy", proxy_mock),
             patch.object(self.main, "fetch_lmarena_stream_via_chrome", chrome_mock),
+            patch.object(self.main, "fetch_lmarena_stream_via_camoufox", camoufox_mock),
             patch("src.main.print"),
             patch("src.main.asyncio.sleep", sleep_mock),
             patch("src.main.time.time") as time_mock,
@@ -117,7 +128,7 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
             self.assertIn("Hello", response.text)
             self.assertIn("[DONE]", response.text)
             self.assertGreaterEqual(proxy_calls["count"], 1)
-            self.assertGreaterEqual(chrome_calls["count"], 1)
+            self.assertGreaterEqual(camoufox_calls[0], 2)  # First returns None, second returns response
 
             # The timeout path must NOT keep the proxy marked active; otherwise strict-model requests keep routing
             # back into a dead proxy and stall streaming.

@@ -519,13 +519,14 @@ async def refresh_arena_auth_token_via_lmarena_http(old_token: str, config: Opti
     cookies["arena-auth-prod-v1"] = old_token
 
     try:
-        async with httpx.AsyncClient(
-            headers={"User-Agent": ua},
-            follow_redirects=True,
-            timeout=httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0),
-        ) as client:
-            resp = await client.get("https://lmarena.ai/", cookies=cookies)
-    except Exception:
+        import cloudscraper as _cs
+        def _cs_get():
+            scraper = _cs.create_scraper()
+            scraper.headers.update({"User-Agent": ua})
+            return scraper.get("https://lmarena.ai/", cookies=cookies, timeout=30, allow_redirects=True)
+        import asyncio as _aio
+        resp = await _aio.to_thread(_cs_get)
+    except (cloudscraper.exceptions.CloudflareException, requests.exceptions.RequestException):
         return None
 
     try:

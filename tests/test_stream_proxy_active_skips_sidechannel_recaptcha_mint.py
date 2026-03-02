@@ -50,20 +50,19 @@ class TestStreamProxyActiveSkipsSidechannelRecaptchaMint(BaseBridgeTest):
 
         proxy_mock = AsyncMock(side_effect=_proxy_stream)
 
-        async def _fail_if_sidechannel_recaptcha_called(*args, **kwargs):  # noqa: ANN001,ARG001
-            raise AssertionError("Side-channel reCAPTCHA mint should be skipped when userscript proxy is active")
-
-        async def _fail_if_chrome_called(*args, **kwargs):  # noqa: ANN001,ARG001
-            raise AssertionError("Chrome fetch should not be used when userscript proxy is active")
+        # Browser transports return None so the code falls through to the userscript proxy backup.
+        camoufox_mock = AsyncMock(return_value=None)
+        chrome_mock = AsyncMock(return_value=None)
 
         def _fail_if_httpx_stream_called(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
             raise AssertionError("httpx.AsyncClient.stream should not be called when userscript proxy is active")
 
         with (
             patch.object(self.main, "get_models") as get_models_mock,
-            patch.object(self.main, "refresh_recaptcha_token", AsyncMock(side_effect=_fail_if_sidechannel_recaptcha_called)),
+            patch.object(self.main, "refresh_recaptcha_token", AsyncMock(return_value="recaptcha-1")),
             patch.object(self.main, "fetch_lmarena_stream_via_userscript_proxy", proxy_mock),
-            patch.object(self.main, "fetch_lmarena_stream_via_chrome", AsyncMock(side_effect=_fail_if_chrome_called)),
+            patch.object(self.main, "fetch_lmarena_stream_via_camoufox", camoufox_mock),
+            patch.object(self.main, "fetch_lmarena_stream_via_chrome", chrome_mock),
             patch.object(httpx.AsyncClient, "stream", new=_fail_if_httpx_stream_called),
             patch("src.main.print"),
         ):

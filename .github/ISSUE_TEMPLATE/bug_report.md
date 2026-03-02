@@ -22,10 +22,10 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Desktop (please complete the following information):**
+**Info (please complete the following information):**
 - OS: [e.g. iOS]
-- Browser [e.g. chrome, safari]
-- Version [e.g. 22]
+- Git Commit Hash of the version you are using
+- Python version
 
 **Additional context**
-Add any other context about the problem here.
+Add any other context about the problem here. If applicable, please include logs here.

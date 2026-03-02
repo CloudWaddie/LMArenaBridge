@@ -646,6 +646,7 @@ async def fetch_lmarena_stream_via_chrome(
         )
     if grecaptcha_cookie:
         desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
+    if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
 
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))

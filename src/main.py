@@ -325,7 +325,7 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         try:
             response = await asyncio.to_thread(_cs_upload)
             response.raise_for_status()
-        except Exception as e:
+        except (cloudscraper.exceptions.CloudflareException, requests.exceptions.RequestException) as e:
             debug_print(f"❌ Error while requesting upload URL: {e}")
             return None
             

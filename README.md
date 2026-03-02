@@ -5,6 +5,8 @@
 ### Thank you to the [AI Leaks server](https://discord.gg/fqmaHkQpJZ) for being a partner!
 ![AI-Leaks-Logo](https://github.com/user-attachments/assets/5fd3d456-152c-44e2-acee-f4c2a1ca2caa)
 
+### Check out my sister project [YuppBridge](https://github.com/cloudWaddie/yuppbridge) - A bridge to interact with Yupp Arena!
+
 
 > [!WARNING]
 > MAJOR REFACTORS ARE HAPPENING.

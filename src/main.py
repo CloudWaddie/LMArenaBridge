@@ -1176,6 +1176,24 @@ async def login_page(request: Request, error: Optional[str] = None):
                     border-radius: 6px;
                     margin-bottom: 20px;
                     border-left: 4px solid #c33;
+                .error-message {{
+                    background: #fee;
+                    color: #c33;
+                    padding: 12px;
+                    border-radius: 6px;
+                    margin-bottom: 20px;
+                    border-left: 4px solid #c33;
+                }}
+                .password-hint {{
+                    font-size: 12px;
+                    color: #888;
+                    margin-top: 8px;
+                }}
+                .password-hint code {{
+                    background: #f5f5f5;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    font-family: monospace;
                 }}
             </style>
         </head>
@@ -1188,6 +1206,10 @@ async def login_page(request: Request, error: Optional[str] = None):
                     <div class="form-group">
                         <label for="password">Password</label>
                         <input type="password" id="password" name="password" placeholder="Enter your password" required autofocus>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" placeholder="Enter your password" required autofocus>
+                        <div class="password-hint">Default password: <code>admin</code></div>
                     </div>
                     <button type="submit">Sign In</button>
                 </form>

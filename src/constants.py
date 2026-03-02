@@ -186,8 +186,8 @@ ARENA_HOST_TO_ORIGIN = {
 # BROWSER FETCH MODELS
 # ============================================================
 
-# Models that should always use the in-browser (Chrome fetch) transport for streaming
-STRICT_CHROME_FETCH_MODELS = {
+# Models that should always use an in-browser fetch transport for streaming
+STRICT_BROWSER_FETCH_MODELS = {
     "gemini-3-pro-grounding",
     "gemini-exp-1206",
 }

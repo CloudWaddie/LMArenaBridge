@@ -466,8 +466,8 @@ def _provisional_user_id_cookie_specs(provisional_user_id: str, *, page_url: Opt
     for origin in _arena_origin_candidates(page_url):
         specs.append({"name": "provisional_user_id", "value": value, "url": origin, "path": "/"})
     for domain in (".lmarena.ai", ".arena.ai"):
-        specs.append({"name": "provisional_user_id", "value": value, "domain": domain, "path": "/"})
-    return specs
+        # When using domain, do NOT include path - they're mutually exclusive in Playwright
+        specs.append({"name": "provisional_user_id", "value": value, "domain": domain})
 
 
 async def _get_arena_context_cookies(context, *, page_url: Optional[str] = None) -> list[dict]:
@@ -633,19 +633,19 @@ async def fetch_lmarena_stream_via_chrome(
     grecaptcha_cookie = str(cookie_map.get("_GRECAPTCHA") or "").strip()
 
     desired_cookies: list[dict] = []
+    # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai", "path": "/"})
+        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
     if cf_bm:
-        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai", "path": "/"})
+        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
     if cfuvid:
-        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai", "path": "/"})
+        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
     if provisional_user_id:
         desired_cookies.append(
-            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai", "path": "/"}
+            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
         )
     if grecaptcha_cookie:
-        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai", "path": "/"})
-    if auth_token:
+        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
 
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))
@@ -1120,21 +1120,21 @@ async def fetch_lmarena_stream_via_camoufox(
     grecaptcha_cookie = str(cookie_map.get("_GRECAPTCHA") or "").strip()
 
     desired_cookies: list[dict] = []
+    # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai", "path": "/"})
+        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
     if cf_bm:
-        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai", "path": "/"})
+        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
     if cfuvid:
-        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai", "path": "/"})
+        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
     if provisional_user_id:
         desired_cookies.append(
-            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai", "path": "/"}
+            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
         )
     if grecaptcha_cookie:
-        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai", "path": "/"})
+        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
-
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))
 
     fetch_url = _normalize_userscript_proxy_url(url)
@@ -1854,17 +1854,17 @@ async def camoufox_proxy_worker():
                 provisional_user_id = str(cfg.get("provisional_user_id") or cookie_map.get("provisional_user_id") or "").strip()
 
                 desired_cookies: list[dict] = []
+                # When using domain, do NOT include path - they're mutually exclusive in Playwright
                 if cf_clearance:
-                    desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai", "path": "/"})
+                    desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
                 if cf_bm:
-                    desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai", "path": "/"})
+                    desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
                 if cfuvid:
-                    desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai", "path": "/"})
+                    desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
                 if provisional_user_id:
                     desired_cookies.append(
-                        {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai", "path": "/"}
+                        {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
                     )
-
                 if desired_cookies:
                     try:
                         existing_names: set[str] = set()

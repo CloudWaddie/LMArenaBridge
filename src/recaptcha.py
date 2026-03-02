@@ -446,17 +446,17 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
     recaptcha_sitekey, recaptcha_action = get_recaptcha_settings(config)
 
     cookies = []
+    # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai", "path": "/"})
+        cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
     if cf_bm:
-        cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai", "path": "/"})
+        cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
     if cfuvid:
-        cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai", "path": "/"})
+        cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
     if provisional_user_id:
         cookies.append(
-            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai", "path": "/"}
+            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
         )
-
     async with async_playwright() as p:
         context = await p.chromium.launch_persistent_context(
             user_data_dir=str(profile_dir),

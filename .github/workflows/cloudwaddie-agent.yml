@@ -528,6 +528,11 @@ jobs:
           - Repository: REPO_PLACEHOLDER
           - Default Branch: BRANCH_PLACEHOLDER
 
+          ## IMPORTANT: Directory Awareness
+          - The `oh-my-opencode/` directory is part of the agent itself (from code-yeongyu/oh-my-opencode), NOT the project being worked on
+          - When exploring or modifying the project, IGNORE the `oh-my-opencode/` directory
+          - Focus only on the actual project files, not the agent's own tooling
+
           ## User's Request
           COMMENT_PLACEHOLDER
 

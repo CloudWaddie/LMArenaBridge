@@ -608,9 +608,9 @@ async def get_recaptcha_v3_token() -> Optional[str]:
             _m().RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
             return chrome_token
 
-        # Use isolated world (main_world_eval=False) to avoid execution context destruction issues.
-        # We will access the main world objects via window.wrappedJSObject.
-        async with _m().AsyncCamoufox(headless=True, main_world_eval=False) as browser:
+        # Use main world (main_world_eval=True) to access wrappedJSObject properly.
+        # This bypasses Firefox's Xray wrapper for cross-origin reCAPTCHA objects.
+        async with _m().AsyncCamoufox(headless=True, main_world_eval=True) as browser:
             context = await browser.new_context()
             if cf_clearance:
                 await context.add_cookies([{

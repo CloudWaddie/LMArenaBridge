@@ -70,10 +70,6 @@ To use the LM Arena Bridge, you need to get your authentication token from the L
 
 ### 2. Configure the Application
 
-1.  Go to the admin portal.
-2.  Login.
-### 2. Configure the Application
-
 1.  Run the bridge: `python src/main.py`
 2.  Open the admin portal at `http://localhost:8000/dashboard`
 3.  Login with the default password: `admin`

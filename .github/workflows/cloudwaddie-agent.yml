@@ -490,6 +490,7 @@ jobs:
           fi
 
       - name: Run oh-my-opencode
+        id: agent-run
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
           USER_COMMENT: ${{ steps.context.outputs.comment }}
@@ -662,7 +663,53 @@ jobs:
           # Use Python for USER_COMMENT to handle all special characters safely
           PROMPT=$(python3 -c "import sys; print(sys.stdin.read().replace('COMMENT_PLACEHOLDER', '''$USER_COMMENT'''))" <<< "$PROMPT")
           
-          stdbuf -oL -eL bun run oh-my-opencode/dist/cli/index.js run "$PROMPT"
+          # Trap SIGTERM (exit 143) to handle GitHub runner shutdown gracefully.
+          # When the runner receives a shutdown signal, we forward it to the agent
+          # process and exit with a distinct code so the notification step can detect it.
+          AGENT_PID=""
+          cleanup() {
+            echo "::warning::Received SIGTERM - runner is shutting down"
+            if [[ -n "$AGENT_PID" ]]; then
+              kill -TERM "$AGENT_PID" 2>/dev/null || true
+              wait "$AGENT_PID" 2>/dev/null || true
+            fi
+            pkill -TERM -f "opencode" 2>/dev/null || true
+            exit 143
+          }
+          trap cleanup SIGTERM
+
+          stdbuf -oL -eL bun run oh-my-opencode/dist/cli/index.js run "$PROMPT" &
+          AGENT_PID=$!
+          wait $AGENT_PID
+          EXIT_CODE=$?
+          exit $EXIT_CODE
+
+      - name: Notify on agent interruption
+        if: failure() && steps.agent-run.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          CONTEXT_TYPE="${{ steps.context.outputs.type }}"
+          CONTEXT_NUMBER="${{ steps.context.outputs.number }}"
+          if [[ -z "$CONTEXT_NUMBER" ]]; then
+            echo "No context number, skipping notification"
+            exit 0
+          fi
+          BODY=$(cat <<'NOTIFY_EOF'
+          :warning: **Agent interrupted** - the GitHub Actions runner was shut down before I could finish (exit code 143/SIGTERM).
+
+          This can happen when:
+          - The runner VM was preempted or recycled by GitHub
+          - Another workflow run replaced this one in the concurrency queue
+
+          Please re-trigger by mentioning `@cloudwaddie-agent` again.
+          NOTIFY_EOF
+          )
+          if [[ "$CONTEXT_TYPE" == "pr" ]]; then
+            gh pr comment "$CONTEXT_NUMBER" --body "$BODY" || true
+          else
+            gh issue comment "$CONTEXT_NUMBER" --body "$BODY" || true
+          fi
 
       - name: Update reaction
         if: always()

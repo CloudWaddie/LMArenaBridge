@@ -72,7 +72,7 @@ To use the LM Arena Bridge, you need to get your authentication token from the L
 
 ### 2. Configure the Application
 
-1.  Run the bridge: `python src/main.py`
+1.  Run the bridge: `python -m src.main`
 2.  Open the admin portal at `http://localhost:8000/dashboard`
 3.  Login with the default password: `admin`
 4.  Add your `arena-auth-prod-v1` token to the list
@@ -97,7 +97,7 @@ You can use this project as a backend for [OpenWebUI](https://openwebui.com/), a
 1.  **Run the LM Arena Bridge:**
     Make sure the `lmarenabridge` application is running.
     ```bash
-    python src/main.py
+    python -m src.main
     ```
 
 2.  **Open OpenWebUI:**
@@ -224,7 +224,7 @@ Type=simple
 User=youruser
 WorkingDirectory=/path/to/lmarenabridge
 Environment="PATH=/path/to/venv/bin"
-ExecStart=/path/to/venv/bin/python src/main.py
+ExecStart=/path/to/venv/bin/python -m src.main
 Restart=always
 RestartSec=10
 

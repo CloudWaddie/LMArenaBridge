@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Run the server
-python src/main.py
+python -m src.main
 
 # Run all tests
 python -m pytest tests/

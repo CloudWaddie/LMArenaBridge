@@ -101,8 +101,19 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
     action = str((cfg or {}).get("recaptcha_action") or "").strip()
     if not sitekey:
         sitekey = _m().RECAPTCHA_SITEKEY
+    
     if not action:
-        action = _m().RECAPTCHA_ACTION
+        auth_tokens = cfg.get("auth_tokens", []) if cfg else []
+        if isinstance(auth_tokens, list):
+            auth_tokens = [str(t or "").strip() for t in auth_tokens if str(t or "").strip()]
+        
+        has_valid_token = any(
+            _m().is_probably_valid_arena_auth_token(t) 
+            for t in auth_tokens
+        )
+        
+        action = "chat_submit" if has_valid_token else "sign_up"
+    
     return sitekey, action
 
 

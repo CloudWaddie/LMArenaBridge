@@ -87,6 +87,8 @@ jobs:
           # Fork the repo (idempotent — no-op if already forked)
           gh repo fork "$REPO" --remote=false 2>/dev/null || true
 
+          # Get the authenticated user's login (the one who will have the fork)
+          FORK=$(gh api user --jq '.login')
           git checkout -B "$BRANCH"
           cp /tmp/cloudwaddie-agent.yml .github/workflows/cloudwaddie-agent.yml
           git add .github/workflows/cloudwaddie-agent.yml
@@ -701,7 +703,7 @@ jobs:
           exit $EXIT_CODE
 
       - name: Notify on agent interruption
-        if: failure() && steps.agent-run.outcome == 'failure'
+        if: steps.agent-run.outcome != 'success'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
         run: |
@@ -712,7 +714,7 @@ jobs:
             exit 0
           fi
           BODY=$(cat <<'NOTIFY_EOF'
-          :warning: **Agent interrupted** - the GitHub Actions runner was shut down before I could finish (exit code 143/SIGTERM).
+          :warning: **Agent interrupted** - the GitHub Actions runner was shut down or cancelled before I could finish.
 
           This can happen when:
           - The runner VM was preempted or recycled by GitHub
@@ -762,4 +764,3 @@ jobs:
                 -X POST -f content="+1" || true
             fi
           fi
-

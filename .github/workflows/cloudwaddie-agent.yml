@@ -69,39 +69,29 @@ jobs:
 
           echo "Workflow is outdated — creating sync PR"
           BRANCH="auto/sync-agent-workflow"
-          REPO="${{ github.repository }}"
-
-          existing_pr=$(gh pr list --repo "$REPO" --head "cloudwaddie-agent:$BRANCH" --json number,state --jq '.[0]' 2>/dev/null || true)
-          if [ -n "$existing_pr" ]; then
-            PR_STATE=$(echo "$existing_pr" | jq -r '.state')
-            if [ "$PR_STATE" == "OPEN" ]; then
-              echo "Sync PR already exists and is open — skipping"
-              exit 0
-            fi
-            gh pr close "$existing_pr" --repo "$REPO" --delete-branch || true
-          fi
-
-          git config user.name "cloudwaddie-agent"
-          git config user.email "cloudwaddie-agent@users.noreply.github.com"
-
+          REPO_FULL="${{ github.repository }}"
+          REPO_NAME="${REPO_FULL##*/}"
+          
+          existing_pr=$(gh pr list --repo "$REPO_FULL" --head "cloudwaddie-agent:$BRANCH" --json number,state --jq '.[0]' 2>/dev/null || true)
+          
           # Fork the repo (idempotent — no-op if already forked)
-          gh repo fork "$REPO" --remote=false 2>/dev/null || true
-
+          gh repo fork "$REPO_FULL" --remote=false 2>/dev/null || true
+          
           # Get the authenticated user's login (the one who will have the fork)
           FORK=$(gh api user --jq '.login')
           git checkout -B "$BRANCH"
           cp /tmp/cloudwaddie-agent.yml .github/workflows/cloudwaddie-agent.yml
           git add .github/workflows/cloudwaddie-agent.yml
           git commit -m "chore: sync cloudwaddie-agent.yml from actions-agent" -m "Co-authored-by: CloudWaddie <CloudWaddie@users.noreply.github.com>"
-          git push -f "https://github.com/$FORK/$REPO.git" "$BRANCH"
-
+          git push -f "https://github.com/$FORK/$REPO_NAME.git" "$BRANCH"
+          
           gh pr create \
-            --repo "$REPO" \
+            --repo "$REPO_FULL" \
             --head "cloudwaddie-agent:$BRANCH" \
             --title "chore: sync cloudwaddie-agent.yml from actions-agent" \
             --body "$(cat <<'PREOF'
-          Automated sync of `cloudwaddie-agent.yml` from [CloudWaddie/actions-agent](https://github.com/CloudWaddie/actions-agent).
-
+          Automated sync of `cloudwaddie-agent.yml` from [CloudWaddie/actions-agent](https://github.com/Cloudwaddie/actions-agent).
+          
           This PR was created automatically because the local copy differs from the source.
           PREOF
           )"

@@ -93,7 +93,7 @@ jobs:
           cp /tmp/cloudwaddie-agent.yml .github/workflows/cloudwaddie-agent.yml
           git add .github/workflows/cloudwaddie-agent.yml
           git commit -m "chore: sync cloudwaddie-agent.yml from actions-agent" -m "Co-authored-by: CloudWaddie <CloudWaddie@users.noreply.github.com>"
-          git push -f "https://github.com/$FORK.git" "$BRANCH"
+          git push -f "https://github.com/$FORK/$REPO.git" "$BRANCH"
 
           gh pr create \
             --repo "$REPO" \

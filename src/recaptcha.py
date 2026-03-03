@@ -682,10 +682,21 @@ async def get_recaptcha_v3_token() -> Optional[str]:
             # 4. TRIGGER: Execute reCAPTCHA and write to the variable
             # We do NOT await the result here. We just fire the process.
             _m().debug_print("  🚀 Triggering reCAPTCHA execution...")
+            # Firefox Xray wrapper blocks inline objects - use new w.Object() pattern
             trigger_script = f"""() => {{
                 const w = window.wrappedJSObject || window;
                 try {{
-                    w.grecaptcha.enterprise.execute('{recaptcha_sitekey}', {{ action: '{recaptcha_action}' }})
+                    // Pick the right grecaptcha (enterprise or regular)
+                    const ent = w?.grecaptcha?.enterprise;
+                    const g = (ent && typeof ent.execute === 'function') ? ent : w?.grecaptcha;
+                    if (!g || typeof g.execute !== 'function') {{
+                        w.__token_result = 'SYNC_ERROR: No valid grecaptcha found';
+                        return;
+                    }}
+                    // Firefox Xray wrappers: build params in the page compartment.
+                    const params = new w.Object();
+                    params.action = '{recaptcha_action}';
+                    g.execute('{recaptcha_sitekey}', params)
                     .then(token => {{
                         w.__token_result = token;
                     }})

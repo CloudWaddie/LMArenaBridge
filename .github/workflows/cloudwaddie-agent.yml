@@ -77,6 +77,10 @@ jobs:
           # Fork the repo (idempotent — no-op if already forked)
           gh repo fork "$REPO_FULL" --remote=false 2>/dev/null || true
           
+          # Configure git user identity (required for commits in sync step)
+          git config user.name "cloudwaddie-agent"
+          git config user.email "cloudwaddie-agent@users.noreply.github.com"
+
           # Get the authenticated user's login (the one who will have the fork)
           FORK=$(gh api user --jq '.login')
           git checkout -B "$BRANCH"

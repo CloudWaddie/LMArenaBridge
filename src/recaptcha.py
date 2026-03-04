@@ -693,12 +693,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                     _m().debug_print("❌ reCAPTCHA library never loaded.")
                     return None
 
-            # 3. SETUP: Initialize our global result variable
-            # We use a unique name to avoid conflicts
-            await _m().safe_page_evaluate(page, "() => { (window.wrappedJSObject || window).__token_result = 'PENDING'; }")
-
-            # 4. TRIGGER: Execute reCAPTCHA and write to the variable
-            # We use async/await directly instead of .then() to ensure the Promise resolves
+            # 3. TRIGGER: Execute reCAPTCHA using async/await for reliable Promise resolution
             _m().debug_print("  🚀 Triggering reCAPTCHA execution...")
             # Firefox Xray wrapper blocks inline objects - use new w.Object() pattern
             trigger_script = f"""async () => {{
@@ -728,41 +723,13 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 _m().RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
                 _m().debug_print(f"✅ Token captured! ({len(token)} chars)")
                 return token
-            elif token and token.startswith('SYNC_ERROR'):
-                _m().debug_print(f"❌ {token}")
             
-            # Fallback: if direct await failed, try the polling approach
-            if not token or token == 'PENDING':
-                _m().debug_print("  👀 Polling for result...")
-                token = None
-                
-                for i in range(20): # Wait up to 20 seconds
-                    # Read the global variable
-                    result = await _m().safe_page_evaluate(page, "() => (window.wrappedJSObject || window).__token_result", retries=2)
-                    
-                    if result != 'PENDING':
-                        if result and result.startswith('ERROR'):
-                            _m().debug_print(f"❌ JS Execution Error: {result}")
-                            return None
-                        elif result and result.startswith('SYNC_ERROR'):
-                            _m().debug_print(f"❌ JS Sync Error: {result}")
-                            return None
-                        else:
-                            token = result
-                            _m().debug_print(f"✅ Token captured! ({len(token)} chars)")
-                            break
-                    
-                    if i % 2 == 0:
-                        _m().debug_print(f"    ... waiting ({i}s)")
-                    await asyncio.sleep(1)
+            if token and token.startswith('SYNC_ERROR'):
+                _m().debug_print(f"❌ {token}")
+            else:
+                _m().debug_print("❌ Failed to get token via direct evaluate (timed out or other error).")
 
-                if token:
-                    _m().RECAPTCHA_TOKEN = token
-                    _m().RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
-                    return token
-                else:
-                    _m().debug_print("❌ Timed out waiting for token variable to update.")
-                    return None
+            return None
 
     except Exception as e:
         _m().debug_print(f"❌ Unexpected error: {e}")

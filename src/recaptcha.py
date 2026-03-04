@@ -103,6 +103,7 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
         sitekey = _m().RECAPTCHA_SITEKEY
     
     if not action:
+        # Support both auth_tokens (list) and auth_token (legacy singular)
         auth_tokens = cfg.get("auth_tokens", []) if cfg else []
         # Backward compatibility: also check for singular auth_token
         singular_token = cfg.get("auth_token", "") if cfg else ""
@@ -110,6 +111,11 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
             auth_tokens = [singular_token]
         if isinstance(auth_tokens, list):
             auth_tokens = [str(t or "").strip() for t in auth_tokens if str(t or "").strip()]
+        
+        # Also check legacy auth_token field
+        legacy_token = str(cfg.get("auth_token") or "").strip() if cfg else ""
+        if legacy_token and legacy_token not in auth_tokens:
+            auth_tokens.append(legacy_token)
         
         has_valid_token = any(
             _m().is_probably_valid_arena_auth_token(t) 
@@ -615,6 +621,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
     config = _m().get_config()
     cf_clearance = config.get("cf_clearance", "")
     recaptcha_sitekey, recaptcha_action = get_recaptcha_settings(config)
+    _m().debug_print(f"  🔑 Using sitekey: {recaptcha_sitekey[:20]}..., action: {recaptcha_action}")
     
     try:
         chrome_token = await _m().get_recaptcha_v3_token_with_chrome(config)

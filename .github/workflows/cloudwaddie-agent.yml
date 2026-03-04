@@ -196,6 +196,9 @@ jobs:
       - name: Setup OpenCode with oh-my-opencode
         env:
           OPENCODE_AUTH_JSON: ${{ secrets.OPENCODE_AUTH_JSON }}
+          CUSTOM_PROVIDER_BASE_URL: ${{ secrets.CUSTOM_PROVIDER_BASE_URL }}
+          CUSTOM_PROVIDER_API_KEY: ${{ secrets.CUSTOM_PROVIDER_API_KEY }}
+          CUSTOM_PROVIDER_MODEL: ${{ secrets.CUSTOM_PROVIDER_MODEL }}
         run: |
           export PATH="$HOME/.opencode/bin:$PATH"
 
@@ -253,6 +256,45 @@ jobs:
           if [[ -z "$OPENCODE_AUTH_JSON" ]]; then
             echo "No auth provided - using free OpenCode models"
             jq '.model = "opencode/big-pickle"' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
+          fi
+
+          # Configure custom provider if environment variables are set
+          if [[ -n "$CUSTOM_PROVIDER_BASE_URL" ]]; then
+            echo "Configuring custom provider: $CUSTOM_PROVIDER_BASE_URL"
+            
+            CUSTOM_MODEL="${CUSTOM_PROVIDER_MODEL:-free-max}"
+            
+            # 1. Register provider in opencode.json (REQUIRED)
+            jq --arg baseURL "$CUSTOM_PROVIDER_BASE_URL" \
+               --arg model "$CUSTOM_MODEL" \
+               '.provider."custom-provider" = {
+                 "npm": "@ai-sdk/openai-compatible",
+                 "name": "Custom Provider",
+                 "options": {
+                   "baseURL": $baseURL
+                 },
+                 "models": {
+                   ($model): {}
+                 }
+               }' "$OPENCODE_JSON" > /tmp/oc.json && mv /tmp/oc.json "$OPENCODE_JSON"
+            
+            # 2. Add API key to auth.json
+            mkdir -p ~/.local/share/opencode
+            if [[ ! -f ~/.local/share/opencode/auth.json ]]; then
+              echo '{}' > ~/.local/share/opencode/auth.json
+            fi
+            
+            jq --arg apiKey "${CUSTOM_PROVIDER_API_KEY:-}" \
+               '."custom-provider" = {
+                 "type": "api",
+                 "key": $apiKey
+               }' ~/.local/share/opencode/auth.json > /tmp/auth.json && mv /tmp/auth.json ~/.local/share/opencode/auth.json
+            chmod 600 ~/.local/share/opencode/auth.json
+            
+            # 3. Set as default model
+            jq --arg model "custom-provider/$CUSTOM_MODEL" '.model = $model' "$OPENCODE_JSON" > /tmp/oc2.json && mv /tmp/oc2.json "$OPENCODE_JSON"
+            
+            echo "Custom provider configured with model: custom-provider/$CUSTOM_MODEL"
           fi
 
           # Configure oh-my-opencode prompt_append with ultrawork mode

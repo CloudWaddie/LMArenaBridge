@@ -736,7 +736,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 _m().debug_print("❌ reCAPTCHA execute timed out.")
                 return None
             except Exception as e:
-                _m().debug_print(f"❌ reCAPTCHA execute failed: {{e}}")
+                _m().debug_print(f"❌ reCAPTCHA execute failed: {e}")
                 return None
             
             if token:

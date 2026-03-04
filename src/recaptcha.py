@@ -103,9 +103,15 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
         sitekey = _m().RECAPTCHA_SITEKEY
     
     if not action:
+        # Support both auth_tokens (list) and auth_token (legacy singular)
         auth_tokens = cfg.get("auth_tokens", []) if cfg else []
         if isinstance(auth_tokens, list):
             auth_tokens = [str(t or "").strip() for t in auth_tokens if str(t or "").strip()]
+        
+        # Also check legacy auth_token field
+        legacy_token = str(cfg.get("auth_token") or "").strip() if cfg else ""
+        if legacy_token and legacy_token not in auth_tokens:
+            auth_tokens.append(legacy_token)
         
         has_valid_token = any(
             _m().is_probably_valid_arena_auth_token(t) 
@@ -611,6 +617,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
     config = _m().get_config()
     cf_clearance = config.get("cf_clearance", "")
     recaptcha_sitekey, recaptcha_action = get_recaptcha_settings(config)
+    _m().debug_print(f"  🔑 Using sitekey: {recaptcha_sitekey[:20]}..., action: {recaptcha_action}")
     
     try:
         chrome_token = await _m().get_recaptcha_v3_token_with_chrome(config)
@@ -686,72 +693,43 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                     _m().debug_print("❌ reCAPTCHA library never loaded.")
                     return None
 
-            # 3. SETUP: Initialize our global result variable
-            # We use a unique name to avoid conflicts
-            await _m().safe_page_evaluate(page, "() => { (window.wrappedJSObject || window).__token_result = 'PENDING'; }")
-
-            # 4. TRIGGER: Execute reCAPTCHA and write to the variable
-            # We do NOT await the result here. We just fire the process.
+            # 3. TRIGGER: Execute reCAPTCHA using async/await for reliable Promise resolution
             _m().debug_print("  🚀 Triggering reCAPTCHA execution...")
             # Firefox Xray wrapper blocks inline objects - use new w.Object() pattern
-            trigger_script = f"""() => {{
+            trigger_script = f"""async () => {{
                 const w = window.wrappedJSObject || window;
                 try {{
                     // Pick the right grecaptcha (enterprise or regular)
                     const ent = w?.grecaptcha?.enterprise;
                     const g = (ent && typeof ent.execute === 'function') ? ent : w?.grecaptcha;
                     if (!g || typeof g.execute !== 'function') {{
-                        w.__token_result = 'SYNC_ERROR: No valid grecaptcha found';
-                        return;
+                        return 'SYNC_ERROR: No valid grecaptcha found';
                     }}
                     // Firefox Xray wrappers: build params in the page compartment.
                     const params = new w.Object();
                     params.action = '{recaptcha_action}';
-                    g.execute('{recaptcha_sitekey}', params)
-                    .then(token => {{
-                        w.__token_result = token;
-                    }})
-                    .catch(err => {{
-                        w.__token_result = 'ERROR: ' + err.toString();
-                    }});
+                    // Use await directly instead of .then() for more reliable Promise handling
+                    const token = await g.execute('{recaptcha_sitekey}', params);
+                    return String(token || '');
                 }} catch (e) {{
-                    w.__token_result = 'SYNC_ERROR: ' + e.toString();
+                    return 'SYNC_ERROR: ' + e.toString();
                 }}
             }}"""
             
-            await _m().safe_page_evaluate(page, trigger_script)
-
-            # 5. POLL: Watch the variable for changes
-            _m().debug_print("  👀 Polling for result...")
-            token = None
+            token = await _m().safe_page_evaluate(page, trigger_script)
             
-            for i in range(20): # Wait up to 20 seconds
-                # Read the global variable
-                result = await _m().safe_page_evaluate(page, "() => (window.wrappedJSObject || window).__token_result", retries=2)
-                
-                if result != 'PENDING':
-                    if result and result.startswith('ERROR'):
-                        _m().debug_print(f"❌ JS Execution Error: {result}")
-                        return None
-                    elif result and result.startswith('SYNC_ERROR'):
-                        _m().debug_print(f"❌ JS Sync Error: {result}")
-                        return None
-                    else:
-                        token = result
-                        _m().debug_print(f"✅ Token captured! ({len(token)} chars)")
-                        break
-                
-                if i % 2 == 0:
-                    _m().debug_print(f"    ... waiting ({i}s)")
-                await asyncio.sleep(1)
-
-            if token:
+            if token and not token.startswith('SYNC_ERROR'):
                 _m().RECAPTCHA_TOKEN = token
                 _m().RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
+                _m().debug_print(f"✅ Token captured! ({len(token)} chars)")
                 return token
+            
+            if token and token.startswith('SYNC_ERROR'):
+                _m().debug_print(f"❌ {token}")
             else:
-                _m().debug_print("❌ Timed out waiting for token variable to update.")
-                return None
+                _m().debug_print("❌ Failed to get token via direct evaluate (timed out or other error).")
+
+            return None
 
     except Exception as e:
         _m().debug_print(f"❌ Unexpected error: {e}")

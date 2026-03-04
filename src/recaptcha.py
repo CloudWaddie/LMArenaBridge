@@ -740,7 +740,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 return None
             
             if token:
-                _m().debug_print(f"✅ Token captured! ({{len(token)}} chars)")
+                _m().debug_print(f"✅ Token captured! ({len(token)} chars)")
                 _m().RECAPTCHA_TOKEN = token
                 _m().RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
                 return token

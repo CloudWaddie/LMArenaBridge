@@ -109,7 +109,7 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
             auth_tokens = [str(t or "").strip() for t in auth_tokens if str(t or "").strip()]
         
         # Also check legacy auth_token field
-        legacy_token = str(cfg.get("auth_token", "")).strip() if cfg else ""
+        legacy_token = str(cfg.get("auth_token") or "").strip() if cfg else ""
         if legacy_token and legacy_token not in auth_tokens:
             auth_tokens.append(legacy_token)
         

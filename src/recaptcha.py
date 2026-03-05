@@ -105,6 +105,10 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
     if not action:
         # Support both auth_tokens (list) and auth_token (legacy singular)
         auth_tokens = cfg.get("auth_tokens", []) if cfg else []
+        # Backward compatibility: also check for singular auth_token
+        singular_token = cfg.get("auth_token", "") if cfg else ""
+        if singular_token and isinstance(auth_tokens, list) and not auth_tokens:
+            auth_tokens = [singular_token]
         if isinstance(auth_tokens, list):
             auth_tokens = [str(t or "").strip() for t in auth_tokens if str(t or "").strip()]
         
@@ -693,43 +697,63 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                     _m().debug_print("❌ reCAPTCHA library never loaded.")
                     return None
 
-            # 3. TRIGGER: Execute reCAPTCHA using async/await for reliable Promise resolution
+            # 3. Execute reCAPTCHA using await (more reliable than Promise callbacks)
+            _m().debug_print(f"  🔑 Using sitekey: {recaptcha_sitekey[:20]}..., action: {recaptcha_action}")
             _m().debug_print("  🚀 Triggering reCAPTCHA execution...")
-            # Firefox Xray wrapper blocks inline objects - use new w.Object() pattern
-            trigger_script = f"""async () => {{
+            
+            mint_js = f"""async () => {{
                 const w = window.wrappedJSObject || window;
-                try {{
-                    // Pick the right grecaptcha (enterprise or regular)
+                const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+                
+                const pickG = () => {{
                     const ent = w?.grecaptcha?.enterprise;
-                    const g = (ent && typeof ent.execute === 'function') ? ent : w?.grecaptcha;
-                    if (!g || typeof g.execute !== 'function') {{
-                        return 'SYNC_ERROR: No valid grecaptcha found';
-                    }}
-                    // Firefox Xray wrappers: build params in the page compartment.
-                    const params = new w.Object();
-                    params.action = '{recaptcha_action}';
-                    // Use await directly instead of .then() for more reliable Promise handling
-                    const token = await g.execute('{recaptcha_sitekey}', params);
-                    return String(token || '');
-                }} catch (e) {{
-                    return 'SYNC_ERROR: ' + e.toString();
+                    if (ent && typeof ent.execute === 'function') return ent;
+                    const g = w?.grecaptcha;
+                    if (g && typeof g.execute === 'function') return g;
+                    return null;
+                }};
+                
+                const g = pickG();
+                if (!g || typeof g.execute !== 'function') {{
+                    throw new Error('No valid grecaptcha found');
                 }}
+                
+                // Wait for ready (with timeout)
+                try {{
+                    await Promise.race([
+                        new Promise((resolve) => {{ try {{ g.ready(resolve); }} catch(e) {{ resolve(true); }} }}),
+                        sleep(5000),
+                    ]);
+                }} catch(e) {{}}
+                
+                // Firefox Xray wrappers: build params in the page compartment
+                const params = new w.Object();
+                params.action = '{recaptcha_action}';
+                
+                const token = await g.execute('{recaptcha_sitekey}', params);
+                return String(token || '');
             }}"""
             
-            token = await _m().safe_page_evaluate(page, trigger_script)
+            try:
+                token = await asyncio.wait_for(
+                    page.evaluate(mint_js),
+                    timeout=70.0,
+                )
+            except asyncio.TimeoutError:
+                _m().debug_print("❌ reCAPTCHA execute timed out.")
+                return None
+            except Exception as e:
+                _m().debug_print(f"❌ reCAPTCHA execute failed: {e}")
+                return None
             
-            if token and not token.startswith('SYNC_ERROR'):
+            if token:
+                _m().debug_print(f"✅ Token captured! ({len(token)} chars)")
                 _m().RECAPTCHA_TOKEN = token
                 _m().RECAPTCHA_EXPIRY = datetime.now(timezone.utc) + timedelta(seconds=110)
-                _m().debug_print(f"✅ Token captured! ({len(token)} chars)")
                 return token
-            
-            if token and token.startswith('SYNC_ERROR'):
-                _m().debug_print(f"❌ {token}")
             else:
-                _m().debug_print("❌ Failed to get token via direct evaluate (timed out or other error).")
-
-            return None
+                _m().debug_print("❌ No token returned from reCAPTCHA.")
+                return None
 
     except Exception as e:
         _m().debug_print(f"❌ Unexpected error: {e}")

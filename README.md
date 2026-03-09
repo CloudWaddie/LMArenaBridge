@@ -11,7 +11,7 @@
 
 
 > [!WARNING]
-> MAJOR REFACTORS ARE HAPPENING.
+> Due to LMArena crackdowns, this project is very hard to maintain. LMArena has cloudflare checkpoints, captchas and ReCAPTCHA enterprise protections on it.
 
 ## Description
 

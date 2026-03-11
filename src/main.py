@@ -4283,7 +4283,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     debug_print("⚠️ Userscript Proxy returned None. Falling back...")
 
             if response is None:
-                if use_chrome_fetch_for_model:
+                if strict_chrome_fetch_model:
                     debug_print(f"🌐 Using Chrome fetch transport for non-streaming strict model ({model_public_name})...")
                     # Chrome fetch transport has its own internal reCAPTCHA retries, 
                     # but we add an outer loop here to handle token rotation (401) and rate limits (429).

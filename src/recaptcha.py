@@ -655,7 +655,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                         {
                             "name": "cf_clearance",
                             "value": cf_clearance,
-                            "domain": ".lmarena.ai",
+                            "domain": ".arena.ai",
                             "path": "/",
                         }
                     ]

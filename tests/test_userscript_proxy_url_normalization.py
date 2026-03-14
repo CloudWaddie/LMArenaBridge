@@ -6,7 +6,9 @@ from tests._stream_test_utils import BaseBridgeTest
 class TestUserscriptProxyUrlNormalization(BaseBridgeTest):
     def test_normalizes_lmarena_urls_to_paths(self) -> None:
         self.assertEqual(
-            self.main._normalize_userscript_proxy_url("https://lmarena.ai/nextjs-api/stream/create-evaluation"),
+            self.main._normalize_userscript_proxy_url(
+                "https://arena.ai/nextjs-api/stream/create-evaluation"
+            ),
             "/nextjs-api/stream/create-evaluation",
         )
         self.assertEqual(
@@ -31,7 +33,9 @@ class TestUserscriptProxyUrlNormalization(BaseBridgeTest):
         async def eval_side_effect(script, arg=None):  # noqa: ANN001
             if script == "() => navigator.userAgent":
                 return "ua"
-            if isinstance(script, str) and script.lstrip().startswith("async ({url, method, body, extraHeaders"):
+            if isinstance(script, str) and script.lstrip().startswith(
+                "async ({url, method, body, extraHeaders"
+            ):
                 fetch_urls.append((arg or {}).get("url"))
                 return {"status": 200, "headers": {}, "text": "ok"}
             raise AssertionError(f"Unexpected evaluate script: {str(script)[:120]}")
@@ -75,7 +79,9 @@ class TestUserscriptProxyUrlNormalization(BaseBridgeTest):
         async def eval_side_effect(script, arg=None):  # noqa: ANN001
             if script == "() => navigator.userAgent":
                 return "ua"
-            if isinstance(script, str) and script.lstrip().startswith("async ({url, method, body, extraHeaders"):
+            if isinstance(script, str) and script.lstrip().startswith(
+                "async ({url, method, body, extraHeaders"
+            ):
                 fetch_urls.append((arg or {}).get("url"))
                 return {"status": 200, "headers": {}, "text": "ok"}
             raise AssertionError(f"Unexpected evaluate script: {str(script)[:120]}")
@@ -108,4 +114,3 @@ class TestUserscriptProxyUrlNormalization(BaseBridgeTest):
 
         self.assertIsNotNone(resp)
         self.assertEqual(fetch_urls, ["https://example.com/foo?x=1"])
-

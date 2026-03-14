@@ -63,11 +63,12 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
             headers={},
             text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
             method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
+            url="https://arena.ai/nextjs-api/stream/create-evaluation",
         )
 
         # Browser transports return None on first call (to let proxy be tried), then succeed on retry.
         camoufox_calls: list[int] = [0]
+
         async def _camoufox_stream(*args, **kwargs):  # noqa: ANN001
             camoufox_calls[0] += 1
             if camoufox_calls[0] == 1:
@@ -84,7 +85,9 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
 
         with (
             patch.object(self.main, "get_models") as get_models_mock,
-            patch.object(self.main, "refresh_recaptcha_token", AsyncMock(return_value="recaptcha-token")),
+            patch.object(
+                self.main, "refresh_recaptcha_token", AsyncMock(return_value="recaptcha-token")
+            ),
             patch.object(self.main, "fetch_lmarena_stream_via_userscript_proxy", proxy_mock),
             patch.object(self.main, "fetch_lmarena_stream_via_chrome", chrome_mock),
             patch.object(self.main, "fetch_lmarena_stream_via_camoufox", camoufox_mock),
@@ -128,7 +131,9 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
             self.assertIn("Hello", response.text)
             self.assertIn("[DONE]", response.text)
             self.assertGreaterEqual(proxy_calls["count"], 1)
-            self.assertGreaterEqual(camoufox_calls[0], 2)  # First returns None, second returns response
+            self.assertGreaterEqual(
+                camoufox_calls[0], 2
+            )  # First returns None, second returns response
 
             # The timeout path must NOT keep the proxy marked active; otherwise strict-model requests keep routing
             # back into a dead proxy and stall streaming.
@@ -137,4 +142,3 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
 
 if __name__ == "__main__":
     unittest.main()
-

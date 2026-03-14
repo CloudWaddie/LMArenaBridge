@@ -19,27 +19,33 @@ class TestStrictModelsForceChromeFetch(BaseBridgeTest):
             headers={},
             text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
             method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
+            url="https://arena.ai/nextjs-api/stream/create-evaluation",
         )
         camoufox_fetch_mock = AsyncMock(return_value=camoufox_resp)
 
         def fail_if_httpx_stream_called(self, method, url, json=None, headers=None, timeout=None):  # noqa: ARG001
             raise AssertionError("httpx.AsyncClient.stream should not be called for strict models")
 
-        with patch.object(self.main, "get_models") as get_models_mock, patch.object(
-            self.main,
-            "refresh_recaptcha_token",
-            refresh_mock,
-        ), patch.object(
-            self.main,
-            "fetch_lmarena_stream_via_camoufox",
-            camoufox_fetch_mock,
-        ), patch.object(
-            httpx.AsyncClient,
-            "stream",
-            new=fail_if_httpx_stream_called,
-        ), patch(
-            "src.main.print",
+        with (
+            patch.object(self.main, "get_models") as get_models_mock,
+            patch.object(
+                self.main,
+                "refresh_recaptcha_token",
+                refresh_mock,
+            ),
+            patch.object(
+                self.main,
+                "fetch_lmarena_stream_via_camoufox",
+                camoufox_fetch_mock,
+            ),
+            patch.object(
+                httpx.AsyncClient,
+                "stream",
+                new=fail_if_httpx_stream_called,
+            ),
+            patch(
+                "src.main.print",
+            ),
         ):
             get_models_mock.return_value = [
                 {

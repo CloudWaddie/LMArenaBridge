@@ -24,7 +24,7 @@ class FakeStreamResponse:
 
     def raise_for_status(self) -> None:
         if int(self.status_code or 0) >= 400:
-            request = httpx.Request("POST", "https://lmarena.ai/nextjs-api/stream/create-evaluation")
+            request = httpx.Request("POST", "https://arena.ai/nextjs-api/stream/create-evaluation")
             response = httpx.Response(
                 int(self.status_code or 0),
                 request=request,

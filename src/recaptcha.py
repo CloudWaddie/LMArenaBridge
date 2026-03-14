@@ -25,6 +25,7 @@ from typing import Optional
 def _m():
     """Late import of main module so tests can patch main.X and it is reflected here."""
     from . import main
+
     return main
 
 
@@ -58,8 +59,8 @@ def extract_recaptcha_params_from_text(text: str) -> tuple[Optional[str], Option
     # 2) Discover sitekey from the enterprise.js/api.js render URL (common in HTML/JS chunks).
     # Example: https://www.google.com/recaptcha/enterprise.js?render=SITEKEY
     sitekey_patterns = [
-        r'recaptcha/(?:enterprise|api)\.js\?render=(?P<sitekey>[0-9A-Za-z_-]{8,200})',
-        r'(?:enterprise|api)\.js\?render=(?P<sitekey>[0-9A-Za-z_-]{8,200})',
+        r"recaptcha/(?:enterprise|api)\.js\?render=(?P<sitekey>[0-9A-Za-z_-]{8,200})",
+        r"(?:enterprise|api)\.js\?render=(?P<sitekey>[0-9A-Za-z_-]{8,200})",
     ]
     for pattern in sitekey_patterns:
         try:
@@ -101,7 +102,7 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
     action = str((cfg or {}).get("recaptcha_action") or "").strip()
     if not sitekey:
         sitekey = _m().RECAPTCHA_SITEKEY
-    
+
     if not action:
         # Support both auth_tokens (list) and auth_token (legacy singular)
         auth_tokens = cfg.get("auth_tokens", []) if cfg else []
@@ -111,19 +112,16 @@ def get_recaptcha_settings(config: Optional[dict] = None) -> tuple[str, str]:
             auth_tokens = [singular_token]
         if isinstance(auth_tokens, list):
             auth_tokens = [str(t or "").strip() for t in auth_tokens if str(t or "").strip()]
-        
+
         # Also check legacy auth_token field
         legacy_token = str(cfg.get("auth_token") or "").strip() if cfg else ""
         if legacy_token and legacy_token not in auth_tokens:
             auth_tokens.append(legacy_token)
-        
-        has_valid_token = any(
-            _m().is_probably_valid_arena_auth_token(t) 
-            for t in auth_tokens
-        )
-        
+
+        has_valid_token = any(_m().is_probably_valid_arena_auth_token(t) for t in auth_tokens)
+
         action = "chat_submit" if has_valid_token else "sign_up"
-    
+
     return sitekey, action
 
 
@@ -231,7 +229,9 @@ async def _mint_recaptcha_v3_token_in_page(
         _m().debug_print("reCAPTCHA v3 mint timed out in page.")
         tok = ""
     except Exception as e:
-        _m().debug_print(f"Unexpected error minting reCAPTCHA v3 token in page: {type(e).__name__}: {e}")
+        _m().debug_print(
+            f"Unexpected error minting reCAPTCHA v3 token in page: {type(e).__name__}: {e}"
+        )
         tok = ""
     return str(tok or "").strip()
 
@@ -296,7 +296,9 @@ async def _camoufox_proxy_signup_anonymous_user(
             timeout=20.0,
         )
     except Exception as e:
-        _m().debug_print(f"Unexpected error during anonymous signup evaluate: {type(e).__name__}: {e}")
+        _m().debug_print(
+            f"Unexpected error during anonymous signup evaluate: {type(e).__name__}: {e}"
+        )
         resp = None
     return resp if isinstance(resp, dict) else None
 
@@ -320,7 +322,9 @@ async def _set_provisional_user_id_in_browser(page, context, *, provisional_user
             # If the two disagree, upstream can reject /nextjs-api/sign-up with confusing errors.
             await context.add_cookies(_m()._provisional_user_id_cookie_specs(provisional_user_id))
     except Exception as e:
-        _m().debug_print(f"Failed to set provisional_user_id cookies in browser context: {type(e).__name__}: {e}")
+        _m().debug_print(
+            f"Failed to set provisional_user_id cookies in browser context: {type(e).__name__}: {e}"
+        )
 
     try:
         await page.evaluate(
@@ -332,7 +336,9 @@ async def _set_provisional_user_id_in_browser(page, context, *, provisional_user
             provisional_user_id,
         )
     except Exception as e:
-        _m().debug_print(f"Failed to set provisional_user_id in localStorage: {type(e).__name__}: {e}")
+        _m().debug_print(
+            f"Failed to set provisional_user_id in localStorage: {type(e).__name__}: {e}"
+        )
 
 
 async def _maybe_inject_arena_auth_cookie_from_localstorage(page, context) -> Optional[str]:
@@ -365,7 +371,7 @@ async def _maybe_inject_arena_auth_cookie_from_localstorage(page, context) -> Op
                 return {};
               }
             }"""
-    )
+        )
     except Exception:
         return None
 
@@ -394,8 +400,12 @@ async def _maybe_inject_arena_auth_cookie_from_localstorage(page, context) -> Op
             except Exception:
                 page_url = ""
             await context.add_cookies(_m()._arena_auth_cookie_specs(cookie, page_url=page_url))
-            _m()._capture_ephemeral_arena_auth_token_from_cookies([{"name": "arena-auth-prod-v1", "value": cookie}])
-            _m().debug_print("🦊 Camoufox proxy: injected arena-auth cookie from localStorage session.")
+            _m()._capture_ephemeral_arena_auth_token_from_cookies(
+                [{"name": "arena-auth-prod-v1", "value": cookie}]
+            )
+            _m().debug_print(
+                "🦊 Camoufox proxy: injected arena-auth cookie from localStorage session."
+            )
             return cookie
         except Exception:
             continue
@@ -491,11 +501,10 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
             ],
         )
         try:
-            # Small stealth tweak: reduces bot-detection surface for reCAPTCHA v3 scoring.
             try:
-                await context.add_init_script(
-                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
-                )
+                from . import stealth_patches
+
+                await stealth_patches.apply_stealth_patches(context, include_canvas_noise=True)
             except Exception:
                 pass
 
@@ -544,7 +553,9 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
                 marker="LMArenaBridge Chrome Fetch",
                 headless=False,
             )
-            await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+            await page.goto(
+                "https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000
+            )
 
             # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile.
             try:
@@ -564,18 +575,22 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
                 await asyncio.sleep(1)
                 await page.mouse.move(200, 300)
                 await page.mouse.wheel(0, 300)
-                await asyncio.sleep(3) # Increased "Human" pause
+                await asyncio.sleep(3)  # Increased "Human" pause
             except Exception:
                 pass
 
             # Persist updated cookies/UA from this real browser context (often refreshes arena-auth-prod-v1).
             try:
-                fresh_cookies = await _m()._get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
+                fresh_cookies = await _m()._get_arena_context_cookies(
+                    context, page_url=str(getattr(page, "url", "") or "")
+                )
                 try:
                     ua_now = await page.evaluate("() => navigator.userAgent")
                 except Exception:
                     ua_now = user_agent
-                if _m()._upsert_browser_session_into_config(config, fresh_cookies, user_agent=ua_now):
+                if _m()._upsert_browser_session_into_config(
+                    config, fresh_cookies, user_agent=ua_now
+                ):
                     _m().save_config(config)
             except Exception:
                 pass
@@ -613,16 +628,16 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
 async def get_recaptcha_v3_token() -> Optional[str]:
     """
     Retrieves reCAPTCHA v3 token using a 'Side-Channel' approach.
-    We write the token to a global window variable and poll for it, 
+    We write the token to a global window variable and poll for it,
     bypassing Promise serialization issues in the Main World bridge.
     """
     _m().debug_print("🔐 Starting reCAPTCHA v3 token retrieval (Side-Channel Mode)...")
-    
+
     config = _m().get_config()
     cf_clearance = config.get("cf_clearance", "")
     recaptcha_sitekey, recaptcha_action = get_recaptcha_settings(config)
     _m().debug_print(f"  🔑 Using sitekey: {recaptcha_sitekey[:20]}..., action: {recaptcha_action}")
-    
+
     try:
         chrome_token = await _m().get_recaptcha_v3_token_with_chrome(config)
         if chrome_token:
@@ -635,38 +650,48 @@ async def get_recaptcha_v3_token() -> Optional[str]:
         async with _m().AsyncCamoufox(headless=True, main_world_eval=True) as browser:
             context = await browser.new_context()
             if cf_clearance:
-                await context.add_cookies([{
-                    "name": "cf_clearance",
-                    "value": cf_clearance,
-                    "domain": ".lmarena.ai",
-                    "path": "/"
-                }])
+                await context.add_cookies(
+                    [
+                        {
+                            "name": "cf_clearance",
+                            "value": cf_clearance,
+                            "domain": ".lmarena.ai",
+                            "path": "/",
+                        }
+                    ]
+                )
 
             page = await context.new_page()
-            
-            _m().debug_print("  🌐 Navigating to lmarena.ai...")
-            await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
+
+            _m().debug_print("  🌐 Navigating to arena.ai...")
+            await page.goto("https://arena.ai/", wait_until="domcontentloaded")
 
             # --- NEW: Cloudflare/Turnstile Pass-Through ---
             _m().debug_print("  🛡️  Checking for Cloudflare Turnstile...")
-            
+
             # Allow time for the widget to render if it's going to
             try:
                 # Check for challenge title or widget presence
                 # click_turnstile() includes a 2-second wait after successful click
-                max_attempts = _m().constants.TURNSTILE_MAX_ATTEMPTS  # 15 attempts with 2s click_turnstile wait = 30s max
+                max_attempts = (
+                    _m().constants.TURNSTILE_MAX_ATTEMPTS
+                )  # 15 attempts with 2s click_turnstile wait = 30s max
                 for attempt in range(max_attempts):
                     title = await page.title()
                     if _m().CLOUDFLARE_CHALLENGE_TITLE not in title:
                         # Title changed - Turnstile likely completed
-                        _m().debug_print(f"  ✅ Turnstile challenge resolved (title: {title[:30]}...)")
+                        _m().debug_print(
+                            f"  ✅ Turnstile challenge resolved (title: {title[:30]}...)"
+                        )
                         break
-                    _m().debug_print(f"  🔒 Cloudflare challenge active (attempt {attempt + 1}/{max_attempts})...")
+                    _m().debug_print(
+                        f"  🔒 Cloudflare challenge active (attempt {attempt + 1}/{max_attempts})..."
+                    )
                     clicked = await _m().click_turnstile(page)
                     if clicked:
                         _m().debug_print("  🖱️  Clicked Turnstile.")
                     # Note: click_turnstile() already includes 2-second wait after successful click
-                
+
                 # Wait for the page to actually settle into the main app
                 await page.wait_for_load_state("domcontentloaded")
             except Exception as e:
@@ -677,7 +702,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
             _m().debug_print("  🖱️  Waking up page...")
             await page.mouse.move(100, 100)
             await page.mouse.wheel(0, 200)
-            await asyncio.sleep(2) # Vital "Human" pause
+            await asyncio.sleep(2)  # Vital "Human" pause
 
             # 2. Check for Library
             _m().debug_print("  ⏳ Checking for library...")
@@ -698,9 +723,11 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                     return None
 
             # 3. Execute reCAPTCHA using await (more reliable than Promise callbacks)
-            _m().debug_print(f"  🔑 Using sitekey: {recaptcha_sitekey[:20]}..., action: {recaptcha_action}")
+            _m().debug_print(
+                f"  🔑 Using sitekey: {recaptcha_sitekey[:20]}..., action: {recaptcha_action}"
+            )
             _m().debug_print("  🚀 Triggering reCAPTCHA execution...")
-            
+
             mint_js = f"""async () => {{
                 const w = window.wrappedJSObject || window;
                 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -733,7 +760,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 const token = await g.execute('{recaptcha_sitekey}', params);
                 return String(token || '');
             }}"""
-            
+
             try:
                 token = await asyncio.wait_for(
                     page.evaluate(mint_js),
@@ -745,7 +772,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
             except Exception as e:
                 _m().debug_print(f"❌ reCAPTCHA execute failed: {e}")
                 return None
-            
+
             if token:
                 _m().debug_print(f"✅ Token captured! ({len(token)} chars)")
                 _m().RECAPTCHA_TOKEN = token
@@ -762,7 +789,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
 
 async def refresh_recaptcha_token(force_new: bool = False):
     """Checks if the global reCAPTCHA token is expired and refreshes it if necessary."""
-    
+
     current_time = datetime.now(timezone.utc)
     if force_new:
         _m().RECAPTCHA_TOKEN = None
@@ -779,14 +806,16 @@ async def refresh_recaptcha_token(force_new: bool = False):
             _m().RECAPTCHA_TOKEN = new_token
             # reCAPTCHA v3 tokens typically last 120 seconds (2 minutes)
             _m().RECAPTCHA_EXPIRY = current_time + timedelta(seconds=120)
-            _m().debug_print(f"✅ Recaptcha token refreshed, expires at {_m().RECAPTCHA_EXPIRY.isoformat()}")
+            _m().debug_print(
+                f"✅ Recaptcha token refreshed, expires at {_m().RECAPTCHA_EXPIRY.isoformat()}"
+            )
             return new_token
         else:
             _m().debug_print("❌ Failed to refresh recaptcha token.")
             # Set a short retry delay if refresh fails
             _m().RECAPTCHA_EXPIRY = current_time + timedelta(seconds=10)
             return None
-    
+
     return _m().RECAPTCHA_TOKEN
 
 

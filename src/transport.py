@@ -28,6 +28,7 @@ HTTPStatus = _constants.HTTPStatus
 def _m():
     """Late import of main module so tests can patch main.X and it is reflected here."""
     from . import main
+
     return main
 
 
@@ -62,7 +63,7 @@ class BrowserFetchStreamResponse:
     @property
     def text(self) -> str:
         if self._lines_queue is not None and not self._text:
-            # This is a bit dangerous in a property because it's sync, 
+            # This is a bit dangerous in a property because it's sync,
             # but BrowserFetchStreamResponse is used in contexts where .text is expected.
             # However, in this codebase, we mostly use await aread() or aiter_lines().
             # Let's make it safe by NOT buffering here, but informing that it might be empty
@@ -79,7 +80,7 @@ class BrowserFetchStreamResponse:
                 try:
                     # Brief timeout to check done_event occasionally
                     line = await asyncio.wait_for(self._lines_queue.get(), timeout=1.0)
-                    if line is None: # Sentinel for EOF
+                    if line is None:  # Sentinel for EOF
                         break
                     yield line
                 except asyncio.TimeoutError:
@@ -102,11 +103,13 @@ class BrowserFetchStreamResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code == 0 or self.status_code >= 400:
-            request = httpx.Request(self._method, self._url or "https://lmarena.ai/")
-            response = httpx.Response(self.status_code or 502, request=request, content=self._text.encode("utf-8"))
-            raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=request, response=response)
-
-
+            request = httpx.Request(self._method, self._url or "https://arena.ai/")
+            response = httpx.Response(
+                self.status_code or 502, request=request, content=self._text.encode("utf-8")
+            )
+            raise httpx.HTTPStatusError(
+                f"HTTP {self.status_code}", request=request, response=response
+            )
 
 
 def _touch_userscript_poll(now: Optional[float] = None) -> None:
@@ -138,7 +141,10 @@ def _userscript_proxy_is_active(config: Optional[dict] = None) -> bool:
     active_window = max(10, min(poll_timeout + 10, 90))
     # Back-compat: some callers/tests still update the legacy `_m().last_userscript_poll` timestamp.
     try:
-        last = max(float(_m().USERSCRIPT_PROXY_LAST_POLL_AT or 0.0), float(_m().last_userscript_poll or 0.0))
+        last = max(
+            float(_m().USERSCRIPT_PROXY_LAST_POLL_AT or 0.0),
+            float(_m().last_userscript_poll or 0.0),
+        )
     except Exception:
         last = float(_m().USERSCRIPT_PROXY_LAST_POLL_AT or 0.0)
     try:
@@ -202,7 +208,9 @@ def _mark_userscript_proxy_inactive() -> None:
     _m().last_userscript_poll = 0.0
 
 
-async def _finalize_userscript_proxy_job(job_id: str, *, error: Optional[str] = None, remove: bool = False) -> None:
+async def _finalize_userscript_proxy_job(
+    job_id: str, *, error: Optional[str] = None, remove: bool = False
+) -> None:
     """
     Finalize a userscript-proxy job without touching proxy "last seen" timestamps.
 
@@ -255,7 +263,7 @@ class UserscriptProxyStreamResponse:
         self._headers: dict = {}
         self._timeout_seconds = int(timeout_seconds or 120)
         self._method = "POST"
-        self._url = "https://lmarena.ai/"
+        self._url = "https://arena.ai/"
 
     @property
     def status_code(self) -> int:
@@ -389,8 +397,12 @@ class UserscriptProxyStreamResponse:
         job = _m()._USERSCRIPT_PROXY_JOBS.get(self.job_id)
         if isinstance(job, dict) and job.get("error"):
             request = httpx.Request(self._method, self._url)
-            response = httpx.Response(503, request=request, content=str(job.get("error")).encode("utf-8"))
-            raise httpx.HTTPStatusError("Userscript proxy error", request=request, response=response)
+            response = httpx.Response(
+                503, request=request, content=str(job.get("error")).encode("utf-8")
+            )
+            raise httpx.HTTPStatusError(
+                "Userscript proxy error", request=request, response=response
+            )
         status = int(self.status_code or 0)
         if status == 0 or status >= 400:
             request = httpx.Request(self._method, self._url)
@@ -398,22 +410,23 @@ class UserscriptProxyStreamResponse:
             raise httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
 
 
-_LMARENA_ORIGIN = "https://lmarena.ai"
+_LMARENA_ORIGIN = "https://arena.ai"
 _ARENA_ORIGIN = "https://arena.ai"
+_LMARENA_LEGACY_ORIGIN = "https://lmarena.ai"
 _ARENA_HOST_TO_ORIGIN = {
-    "lmarena.ai": _LMARENA_ORIGIN,
-    "www.lmarena.ai": _LMARENA_ORIGIN,
     "arena.ai": _ARENA_ORIGIN,
     "www.arena.ai": _ARENA_ORIGIN,
+    "lmarena.ai": _LMARENA_ORIGIN,
+    "www.lmarena.ai": _LMARENA_ORIGIN,
 }
 
 
 def _detect_arena_origin(url: Optional[str] = None) -> str:
     """
-    Return the canonical origin (https://lmarena.ai or https://arena.ai) for a URL-like string.
+    Return the canonical origin (https://arena.ai or https://lmarena.ai) for a URL-like string.
 
-    LMArena has historically used both domains. Browser automation can land on `arena.ai` even when the backend
-    constructs `https://lmarena.ai/...` URLs, so cookie ops must follow the actual origin.
+       LMArena has historically used both domains. Browser automation can land on `arena.ai` even when the backend
+       constructs `https://arena.ai/...` URLs, so cookie ops must follow the actual origin.
     """
     text = str(url or "").strip()
     if not text:
@@ -434,7 +447,7 @@ def _detect_arena_origin(url: Optional[str] = None) -> str:
 def _arena_origin_candidates(url: Optional[str] = None) -> list[str]:
     """Return `[primary, secondary]` origins, preferring the detected origin but always including both."""
     primary = _detect_arena_origin(url)
-    secondary = _ARENA_ORIGIN if primary == _LMARENA_ORIGIN else _LMARENA_ORIGIN
+    secondary = _LMARENA_LEGACY_ORIGIN if primary == _LMARENA_ORIGIN else _LMARENA_ORIGIN
     return [primary, secondary]
 
 
@@ -453,7 +466,9 @@ def _arena_auth_cookie_specs(token: str, *, page_url: Optional[str] = None) -> l
     return specs
 
 
-def _provisional_user_id_cookie_specs(provisional_user_id: str, *, page_url: Optional[str] = None) -> list[dict]:
+def _provisional_user_id_cookie_specs(
+    provisional_user_id: str, *, page_url: Optional[str] = None
+) -> list[dict]:
     """
     Build `provisional_user_id` cookie specs for both origins.
 
@@ -466,8 +481,8 @@ def _provisional_user_id_cookie_specs(provisional_user_id: str, *, page_url: Opt
     for origin in _arena_origin_candidates(page_url):
         specs.append({"name": "provisional_user_id", "value": value, "url": origin, "path": "/"})
     for domain in (".lmarena.ai", ".arena.ai"):
-        # When using domain, do NOT include path - they're mutually exclusive in Playwright
         specs.append({"name": "provisional_user_id", "value": value, "domain": domain})
+    return specs
 
 
 async def _get_arena_context_cookies(context, *, page_url: Optional[str] = None) -> list[dict]:
@@ -510,7 +525,7 @@ def _normalize_userscript_proxy_url(url: str) -> str:
     """
     Convert LMArena absolute URLs into same-origin paths for in-page fetch.
 
-    The Camoufox proxy page can land on `arena.ai` while the backend constructs `https://lmarena.ai/...` URLs.
+    The Camoufox proxy page can land on `arena.ai` while the backend constructs `https://arena.ai/...` URLs.
     Absolute cross-origin URLs can cause browser fetch to reject with a generic NetworkError (CORS).
     """
     text = str(url or "").strip()
@@ -596,7 +611,7 @@ async def fetch_lmarena_stream_via_chrome(
     payload: dict,
     auth_token: str,
     timeout_seconds: int = 120,
-    headless: bool = False, # Default to Headful for better reliability
+    headless: bool = False,  # Default to Headful for better reliability
     max_recaptcha_attempts: int = 3,
 ) -> Optional[BrowserFetchStreamResponse]:
     """
@@ -629,13 +644,17 @@ async def fetch_lmarena_stream_via_chrome(
     cf_clearance = str(config.get("cf_clearance") or cookie_map.get("cf_clearance") or "").strip()
     cf_bm = str(config.get("cf_bm") or cookie_map.get("__cf_bm") or "").strip()
     cfuvid = str(config.get("cfuvid") or cookie_map.get("_cfuvid") or "").strip()
-    provisional_user_id = str(config.get("provisional_user_id") or cookie_map.get("provisional_user_id") or "").strip()
+    provisional_user_id = str(
+        config.get("provisional_user_id") or cookie_map.get("provisional_user_id") or ""
+    ).strip()
     grecaptcha_cookie = str(cookie_map.get("_GRECAPTCHA") or "").strip()
 
     desired_cookies: list[dict] = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+        desired_cookies.append(
+            {"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"}
+        )
     if cf_bm:
         desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
     if cfuvid:
@@ -645,7 +664,9 @@ async def fetch_lmarena_stream_via_chrome(
             {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
         )
     if grecaptcha_cookie:
-        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
+        desired_cookies.append(
+            {"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"}
+        )
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
 
@@ -680,11 +701,10 @@ async def fetch_lmarena_stream_via_chrome(
             ],
         )
         try:
-            # Small stealth tweak: reduces bot-detection surface for reCAPTCHA v3 scoring.
             try:
-                await context.add_init_script(
-                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
-                )
+                from . import stealth_patches
+
+                await stealth_patches.apply_stealth_patches(context, include_canvas_noise=True)
             except Exception:
                 pass
 
@@ -733,15 +753,25 @@ async def fetch_lmarena_stream_via_chrome(
                 marker="LMArenaBridge Chrome Fetch",
                 headless=bool(headless),
             )
-            await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+            await page.goto(
+                "https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000
+            )
+
+            from . import browser_warmup
+
+            warmup_success = await browser_warmup.warmup_browser_session(page, config)
+            if not warmup_success:
+                _m().debug_print("⚠️ Browser warmup failed, continuing anyway...")
 
             # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile before minting tokens.
             try:
-                for i in range(10): # Up to 30 seconds
+                for i in range(10):  # Up to 30 seconds
                     title = await page.title()
                     if "Just a moment" not in title:
                         break
-                    _m().debug_print(f"  ⏳ Waiting for Cloudflare challenge in Chrome... (attempt {i+1}/10)")
+                    _m().debug_print(
+                        f"  ⏳ Waiting for Cloudflare challenge in Chrome... (attempt {i + 1}/10)"
+                    )
                     await _m().click_turnstile(page)
                     await asyncio.sleep(3)
                 try:
@@ -753,26 +783,32 @@ async def fetch_lmarena_stream_via_chrome(
 
             # Light warm-up (often improves reCAPTCHA v3 score vs firing immediately).
             try:
+                from . import browser_warmup
+
                 await page.mouse.move(100, 100)
-                await asyncio.sleep(0.5)
+                await browser_warmup.random_delay(0.3, 0.7)
                 await page.mouse.wheel(0, 200)
-                await asyncio.sleep(1)
+                await browser_warmup.random_delay(0.8, 1.5)
                 await page.mouse.move(200, 300)
-                await asyncio.sleep(0.5)
+                await browser_warmup.random_delay(0.3, 0.7)
                 await page.mouse.wheel(0, 300)
-                await asyncio.sleep(2) # Reduced "Human" pause for faster response
+                await browser_warmup.random_delay(1.5, 2.5)
             except Exception:
                 pass
 
             # Persist updated cookies/UA from this browser context (helps keep auth + cf cookies fresh).
             try:
-                fresh_cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
+                fresh_cookies = await _get_arena_context_cookies(
+                    context, page_url=str(getattr(page, "url", "") or "")
+                )
                 _m()._capture_ephemeral_arena_auth_token_from_cookies(fresh_cookies)
                 try:
                     ua_now = await page.evaluate("() => navigator.userAgent")
                 except Exception:
                     ua_now = user_agent
-                if _m()._upsert_browser_session_into_config(config, fresh_cookies, user_agent=ua_now):
+                if _m()._upsert_browser_session_into_config(
+                    config, fresh_cookies, user_agent=ua_now
+                ):
                     _m().save_config(config)
             except Exception:
                 pass
@@ -928,7 +964,7 @@ async def fetch_lmarena_stream_via_chrome(
                 # Mint a new token if not already present or if it's empty
                 has_v2 = isinstance(payload, dict) and bool(payload.get("recaptchaV2Token"))
                 has_v3 = isinstance(payload, dict) and bool(payload.get("recaptchaV3Token"))
-                
+
                 if isinstance(payload, dict) and not has_v2 and (attempt > 0 or not has_v3):
                     current_recaptcha_token = await _mint_recaptcha_v3_token()
                     if current_recaptcha_token:
@@ -943,18 +979,20 @@ async def fetch_lmarena_stream_via_chrome(
                     extra_headers["X-Recaptcha-Action"] = recaptcha_action
 
                 body = json.dumps(payload) if payload is not None else ""
-                
+
                 # Start fetch task
-                fetch_task = asyncio.create_task(page.evaluate(
-                    fetch_script,
-                    {
-                        "url": fetch_url,
-                        "method": http_method,
-                        "body": body,
-                        "extraHeaders": extra_headers,
-                        "timeoutMs": int(timeout_seconds * 1000),
-                    },
-                ))
+                fetch_task = asyncio.create_task(
+                    page.evaluate(
+                        fetch_script,
+                        {
+                            "url": fetch_url,
+                            "method": http_method,
+                            "body": body,
+                            "extraHeaders": extra_headers,
+                            "timeoutMs": int(timeout_seconds * 1000),
+                        },
+                    )
+                )
 
                 # Wait for initial meta (status/headers) OR task completion
                 meta = None
@@ -976,50 +1014,68 @@ async def fetch_lmarena_stream_via_chrome(
                                 break
                     except asyncio.TimeoutError:
                         continue
-                
+
                 if fetch_task.done() and meta is None:
                     try:
                         res = fetch_task.result()
                         if isinstance(res, dict) and not res.get("__streaming"):
                             result = res
                         else:
-                            result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
+                            _m().debug_print(
+                                f"⚠️ Chrome fetch completed without meta. Task result: {res}"
+                            )
+                            result = {
+                                "status": 502,
+                                "text": f"FETCH_DONE_WITHOUT_META (result: {res})",
+                            }
                     except Exception as e:
+                        _m().debug_print(f"⚠️ Chrome fetch exception: {e}")
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
                 elif meta:
                     result = meta
-                
+
                 status_code = int(result.get("status") or 0)
 
                 # If upstream rate limits us, wait and retry inside the same browser session to avoid hammering.
-                if status_code == HTTPStatus.TOO_MANY_REQUESTS and attempt < max_recaptcha_attempts - 1:
+                if (
+                    status_code == HTTPStatus.TOO_MANY_REQUESTS
+                    and attempt < max_recaptcha_attempts - 1
+                ):
                     retry_after = None
                     if isinstance(result, dict) and isinstance(result.get("headers"), dict):
                         headers_map = result.get("headers") or {}
-                        retry_after = headers_map.get("retry-after") or headers_map.get("Retry-After")
+                        retry_after = headers_map.get("retry-after") or headers_map.get(
+                            "Retry-After"
+                        )
                     sleep_seconds = _m().get_rate_limit_sleep_seconds(
                         str(retry_after) if retry_after is not None else None,
                         attempt,
                     )
                     await _m()._cancel_background_task(fetch_task)
-                    await asyncio.sleep(sleep_seconds)
+                    from . import browser_warmup
+
+                    await browser_warmup.random_delay(sleep_seconds * 0.9, sleep_seconds * 1.1)
                     continue
 
                 if not _is_recaptcha_validation_failed(status_code, result.get("text")):
-                    # Success or non-recaptcha error. 
+                    # Success or non-recaptcha error.
                     # If success, start a task to wait for fetch_task to finish and set done_event.
                     if status_code < 400:
                         # If the in-page script returned a buffered body (e.g. in unit tests/mocks where
                         # `reportChunk` isn't exercised), fall back to a plain buffered response.
                         body_text = ""
                         try:
-                            candidate_body = result.get("text") if isinstance(result, dict) else None
+                            candidate_body = (
+                                result.get("text") if isinstance(result, dict) else None
+                            )
                         except Exception:
                             candidate_body = None
                         if isinstance(candidate_body, str) and candidate_body:
                             return BrowserFetchStreamResponse(
                                 status_code=status_code,
-                                headers=result.get("headers", {}) if isinstance(result, dict) else {},
+                                headers=result.get("headers", {})
+                                if isinstance(result, dict)
+                                else {},
                                 text=candidate_body,
                                 method=http_method,
                                 url=url,
@@ -1036,14 +1092,14 @@ async def fetch_lmarena_stream_via_chrome(
                             fetch_task.add_done_callback(_on_fetch_task_done)
                         except Exception:
                             pass
-                        
+
                         return BrowserFetchStreamResponse(
                             status_code=status_code,
                             headers=result.get("headers", {}),
                             method=http_method,
                             url=url,
                             lines_queue=lines_queue,
-                            done_event=done_event
+                            done_event=done_event,
                         )
                     await _m()._cancel_background_task(fetch_task)
                     break
@@ -1102,10 +1158,10 @@ async def fetch_lmarena_stream_via_camoufox(
     Uses 'window.wrappedJSObject' for reCAPTCHA access when Chrome is blocked.
     """
     _m().debug_print("🦊 Attempting Camoufox fetch transport...")
-    
+
     config = _m().get_config()
     recaptcha_sitekey, recaptcha_action = _m().get_recaptcha_settings(config)
-    
+
     cookie_store = config.get("browser_cookies")
     cookie_map: dict[str, str] = {}
     if isinstance(cookie_store, dict):
@@ -1117,13 +1173,17 @@ async def fetch_lmarena_stream_via_camoufox(
     cf_clearance = str(config.get("cf_clearance") or cookie_map.get("cf_clearance") or "").strip()
     cf_bm = str(config.get("cf_bm") or cookie_map.get("__cf_bm") or "").strip()
     cfuvid = str(config.get("cfuvid") or cookie_map.get("_cfuvid") or "").strip()
-    provisional_user_id = str(config.get("provisional_user_id") or cookie_map.get("provisional_user_id") or "").strip()
+    provisional_user_id = str(
+        config.get("provisional_user_id") or cookie_map.get("provisional_user_id") or ""
+    ).strip()
     grecaptcha_cookie = str(cookie_map.get("_GRECAPTCHA") or "").strip()
 
     desired_cookies: list[dict] = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+        desired_cookies.append(
+            {"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"}
+        )
     if cf_bm:
         desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
     if cfuvid:
@@ -1133,7 +1193,9 @@ async def fetch_lmarena_stream_via_camoufox(
             {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
         )
     if grecaptcha_cookie:
-        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
+        desired_cookies.append(
+            {"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"}
+        )
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))
@@ -1161,11 +1223,10 @@ async def fetch_lmarena_stream_via_camoufox(
 
         async with _m().AsyncCamoufox(headless=headless, main_world_eval=True) as browser:
             context = await browser.new_context(user_agent=user_agent or None)
-            # Small stealth tweak: reduces bot-detection surface for reCAPTCHA v3 scoring.
             try:
-                await context.add_init_script(
-                    "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
-                )
+                from . import stealth_patches
+
+                await stealth_patches.apply_stealth_patches(context, include_canvas_noise=True)
             except Exception:
                 pass
             if desired_cookies:
@@ -1182,15 +1243,25 @@ async def fetch_lmarena_stream_via_camoufox(
                 marker="LMArenaBridge Camoufox Fetch",
                 headless=headless,
             )
-              
-            _m().debug_print(f"  🦊 Navigating to lmarena.ai...")
+
+            _m().debug_print(f"  🦊 Navigating to arena.ai...")
             try:
                 await asyncio.wait_for(
-                    page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=60000),
+                    page.goto(
+                        "https://arena.ai/?mode=direct",
+                        wait_until="domcontentloaded",
+                        timeout=60000,
+                    ),
                     timeout=70.0,
                 )
             except Exception:
                 pass
+
+            from . import browser_warmup
+
+            warmup_success = await browser_warmup.warmup_browser_session(page, config)
+            if not warmup_success:
+                _m().debug_print("⚠️ Browser warmup failed, continuing anyway...")
 
             # Try to handle Cloudflare Turnstile if present
             try:
@@ -1202,16 +1273,20 @@ async def fetch_lmarena_stream_via_camoufox(
                     await asyncio.sleep(2)
             except Exception:
                 pass
-            
+
             # Persist cookies
             try:
-                fresh_cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
+                fresh_cookies = await _get_arena_context_cookies(
+                    context, page_url=str(getattr(page, "url", "") or "")
+                )
                 _m()._capture_ephemeral_arena_auth_token_from_cookies(fresh_cookies)
                 try:
                     ua_now = await page.evaluate("() => navigator.userAgent")
                 except Exception:
                     ua_now = user_agent
-                if _m()._upsert_browser_session_into_config(config, fresh_cookies, user_agent=ua_now):
+                if _m()._upsert_browser_session_into_config(
+                    config, fresh_cookies, user_agent=ua_now
+                ):
                     _m().save_config(config)
             except Exception:
                 pass
@@ -1225,7 +1300,9 @@ async def fetch_lmarena_stream_via_camoufox(
 
                 # SIDE-CHANNEL MINTING:
                 # 1. Setup result variable
-                await _m().safe_page_evaluate(page, "() => { (window.wrappedJSObject || window).__token_result = 'PENDING'; }")
+                await _m().safe_page_evaluate(
+                    page, "() => { (window.wrappedJSObject || window).__token_result = 'PENDING'; }"
+                )
 
                 # 2. Trigger execution (fire and forget from Python's perspective)
                 trigger_script = f"""() => {{
@@ -1268,15 +1345,19 @@ async def fetch_lmarena_stream_via_camoufox(
                 await _m().safe_page_evaluate(page, trigger_script)
 
                 # 3. Poll for result
-                for _ in range(40): # 20 seconds max (0.5s interval)
-                    val = await _m().safe_page_evaluate(page, "() => (window.wrappedJSObject || window).__token_result")
-                    if val != 'PENDING':
-                        if isinstance(val, str) and (val.startswith('ERROR') or val.startswith('SYNC_ERROR')):
+                for _ in range(40):  # 20 seconds max (0.5s interval)
+                    val = await _m().safe_page_evaluate(
+                        page, "() => (window.wrappedJSObject || window).__token_result"
+                    )
+                    if val != "PENDING":
+                        if isinstance(val, str) and (
+                            val.startswith("ERROR") or val.startswith("SYNC_ERROR")
+                        ):
                             _m().debug_print(f"  ⚠️ Camoufox token mint error: {val}")
                             return None
                         return val
                     await asyncio.sleep(0.5)
-                
+
                 _m().debug_print("  ⚠️ Camoufox token mint timed out.")
                 return None
 
@@ -1400,7 +1481,7 @@ async def fetch_lmarena_stream_via_camoufox(
                 current_recaptcha_token = ""
                 has_v2 = isinstance(payload, dict) and bool(payload.get("recaptchaV2Token"))
                 has_v3 = isinstance(payload, dict) and bool(payload.get("recaptchaV3Token"))
-                
+
                 if isinstance(payload, dict) and not has_v2 and (attempt > 0 or not has_v3):
                     try:
                         current_recaptcha_token = await _mint_recaptcha_v3_token()
@@ -1418,18 +1499,20 @@ async def fetch_lmarena_stream_via_camoufox(
                     extra_headers["X-Recaptcha-Action"] = recaptcha_action
 
                 body = json.dumps(payload) if payload is not None else ""
-                
+
                 # Execute fetch
-                fetch_task = asyncio.create_task(page.evaluate(
-                    fetch_script,
-                    {
-                        "url": fetch_url,
-                        "method": http_method,
-                        "body": body,
-                        "extraHeaders": extra_headers,
-                        "timeoutMs": int(timeout_seconds * 1000),
-                    },
-                ))
+                fetch_task = asyncio.create_task(
+                    page.evaluate(
+                        fetch_script,
+                        {
+                            "url": fetch_url,
+                            "method": http_method,
+                            "body": body,
+                            "extraHeaders": extra_headers,
+                            "timeoutMs": int(timeout_seconds * 1000),
+                        },
+                    )
+                )
 
                 # Wait for initial meta (status/headers) OR task completion
                 meta = None
@@ -1446,28 +1529,41 @@ async def fetch_lmarena_stream_via_camoufox(
                                 break
                     except asyncio.TimeoutError:
                         continue
-                
+
                 if fetch_task.done() and meta is None:
                     try:
                         res = fetch_task.result()
                         if isinstance(res, dict) and not res.get("__streaming"):
                             result = res
                         else:
-                            result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
+                            _m().debug_print(
+                                f"⚠️ Camoufox fetch completed without meta. Task result: {res}"
+                            )
+                            result = {
+                                "status": 502,
+                                "text": f"FETCH_DONE_WITHOUT_META (result: {res})",
+                            }
                     except Exception as e:
+                        _m().debug_print(f"⚠️ Camoufox fetch exception: {e}")
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
                 elif meta:
                     result = meta
 
                 status_code = int(result.get("status") or 0)
 
-                if status_code == HTTPStatus.TOO_MANY_REQUESTS and attempt < max_recaptcha_attempts - 1:
+                if (
+                    status_code == HTTPStatus.TOO_MANY_REQUESTS
+                    and attempt < max_recaptcha_attempts - 1
+                ):
                     await _m()._cancel_background_task(fetch_task)
-                    await asyncio.sleep(5)
+                    from . import browser_warmup
+
+                    await browser_warmup.random_delay(4.0, 6.0)
                     continue
 
                 if not _is_recaptcha_validation_failed(status_code, result.get("text")):
                     if status_code < 400:
+
                         def _on_fetch_task_done(task: "asyncio.Task") -> None:
                             _m()._consume_background_task_exception(task)
                             try:
@@ -1479,20 +1575,24 @@ async def fetch_lmarena_stream_via_camoufox(
                             fetch_task.add_done_callback(_on_fetch_task_done)
                         except Exception:
                             pass
-                        
+
                         return BrowserFetchStreamResponse(
                             status_code=status_code,
                             headers=result.get("headers", {}),
                             method=http_method,
                             url=url,
                             lines_queue=lines_queue,
-                            done_event=done_event
+                            done_event=done_event,
                         )
                     await _m()._cancel_background_task(fetch_task)
                     break
 
                 await _m()._cancel_background_task(fetch_task)
-                if attempt < max_recaptcha_attempts - 1 and isinstance(payload, dict) and not bool(payload.get("recaptchaV2Token")):
+                if (
+                    attempt < max_recaptcha_attempts - 1
+                    and isinstance(payload, dict)
+                    and not bool(payload.get("recaptchaV2Token"))
+                ):
                     try:
                         v2_token = await _mint_recaptcha_v2_token()
                     except Exception:
@@ -1502,7 +1602,7 @@ async def fetch_lmarena_stream_via_camoufox(
                         payload.pop("recaptchaV3Token", None)
                         await asyncio.sleep(0.5)
                         continue
-                
+
                 await asyncio.sleep(2)
 
             return BrowserFetchStreamResponse(
@@ -1560,13 +1660,15 @@ async def fetch_via_proxy_queue(
     proxy_pending_tasks[task_id] = future
 
     # Add to queue
-    proxy_task_queue.append({
-        "id": task_id,
-        "url": url,
-        "method": http_method,
-        "body": json.dumps(payload) if payload else ""
-    })
-    
+    proxy_task_queue.append(
+        {
+            "id": task_id,
+            "url": url,
+            "method": http_method,
+            "body": json.dumps(payload) if payload else "",
+        }
+    )
+
     _m().debug_print(f"📫 Added task {task_id} to Proxy Queue. Waiting for Userscript...")
 
     try:
@@ -1576,28 +1678,28 @@ async def fetch_via_proxy_queue(
         # But wait, the userscript sends chunks via POST.
         # We need a way to feed those chunks into a generator.
         # For this MVP, let's assume the userscript sends the FULL response or we handle it via a shared buffer.
-        
+
         # ACTUALLY: The `BrowserFetchStreamResponse` expects a full text or an iterator.
         # If we want true streaming via proxy, we need a Queue, not a Future.
-        
+
         # Let's upgrade `proxy_pending_tasks` to hold an asyncio.Queue for this task_id
-        # But `proxy_pending_tasks` type definition above was Future. 
+        # But `proxy_pending_tasks` type definition above was Future.
         # For this step, let's implement a simple non-streaming wait (or buffered stream) to keep it KISS as requested.
-        # If the userscript sends chunks, we can accumulate them? 
+        # If the userscript sends chunks, we can accumulate them?
         # No, "stream: True" needs real-time chunks.
-        
+
         # Revised approach for `fetch_via_proxy_queue`:
         # We will wait for the userscript to signal "start" or provide content.
         # Since `BrowserFetchStreamResponse` is designed to wrap a completed text OR an async iterator,
         # let's make it wrap an async iterator that pulls from a Queue.
-        
+
         # We'll need to change `proxy_pending_tasks` value type to `asyncio.Queue` dynamically.
         # But the endpoint `post_proxy_result` expects to set_result on a Future.
-        
+
         # Let's stick to the Future for the *initial connection* / *first byte*.
         result = await asyncio.wait_for(future, timeout=timeout_seconds)
-        
-        # If result contains "chunk", it's a stream part. 
+
+        # If result contains "chunk", it's a stream part.
         # This simple implementation assumes the userscript might send the full text for now OR we accept that
         # we only support non-streaming or buffered-streaming via this simple Future mechanism for the MVP.
         #
@@ -1605,39 +1707,40 @@ async def fetch_via_proxy_queue(
         # We would need a dedicated WebSocket or a polling mechanism for the *response* too.
         # Given "minimal code changes", let's assume the Userscript gathers the response and sends it back.
         # This might delay the "first token" but ensures reliability.
-        
+
         if isinstance(result, dict):
             if "error" in result:
                 _m().debug_print(f"❌ Proxy Task Error: {result['error']}")
                 return None
-            
+
             text = result.get("text", "")
             # If the userscript sent "chunk", we might have missed subsequent chunks if we only waited for one Future.
-            # So for this MVP, the userscript should buffer and send the full text, 
+            # So for this MVP, the userscript should buffer and send the full text,
             # OR we need a more complex "Queue" based mechanism.
-            
+
             # Let's return a response with the text we got.
             return BrowserFetchStreamResponse(
                 status_code=result.get("status", 200),
                 headers=result.get("headers", {}),
                 text=text,
                 method=http_method,
-                url=url
+                url=url,
             )
-            
+
     except asyncio.TimeoutError:
         _m().debug_print(f"❌ Proxy Task {task_id} timed out. Is the Userscript running?")
         if task_id in proxy_pending_tasks:
             del proxy_pending_tasks[task_id]
-        if task_id in [t['id'] for t in proxy_task_queue]:
+        if task_id in [t["id"] for t in proxy_task_queue]:
             # Remove from queue if not picked up
-            proxy_task_queue[:] = [t for t in proxy_task_queue if t['id'] != task_id]
+            proxy_task_queue[:] = [t for t in proxy_task_queue if t["id"] != task_id]
         return None
     except Exception as e:
         _m().debug_print(f"❌ Proxy Task Exception: {e}")
         return None
 
     return None
+
 
 async def push_proxy_chunk(jid, d) -> None:
     _touch_userscript_poll()
@@ -1666,7 +1769,9 @@ async def push_proxy_chunk(jid, d) -> None:
                 status_event.set()
             if not job.get("_proxy_status_logged"):
                 job["_proxy_status_logged"] = True
-                _m().debug_print(f"🦊 Camoufox proxy job {job_id[:8]} upstream status: {int(status)}")
+                _m().debug_print(
+                    f"🦊 Camoufox proxy job {job_id[:8]} upstream status: {int(status)}"
+                )
         headers = d.get("headers")
         if isinstance(headers, dict):
             job["headers"] = headers
@@ -1739,13 +1844,13 @@ async def camoufox_proxy_worker():
     proxy_recaptcha_sitekey = _m().RECAPTCHA_SITEKEY
     proxy_recaptcha_action = _m().RECAPTCHA_ACTION
     last_signup_attempt_at: float = 0.0
-    
+
     queue = _get_userscript_proxy_queue()
 
     while True:
         try:
             _touch_userscript_poll()
-            
+
             # --- 1. HEALTH CHECK & LAUNCH ---
             needs_launch = False
             if browser is None or context is None or page is None:
@@ -1778,7 +1883,7 @@ async def camoufox_proxy_worker():
                 proxy_recaptcha_sitekey = recaptcha_sitekey
                 proxy_recaptcha_action = recaptcha_action
                 user_agent = _m().normalize_user_agent_value(cfg.get("user_agent"))
-                
+
                 headless_value = cfg.get("camoufox_proxy_headless", None)
                 headless = bool(headless_value) if headless_value is not None else True
                 launch_timeout = float(cfg.get("camoufox_proxy_launch_timeout_seconds", 90))
@@ -1801,7 +1906,7 @@ async def camoufox_proxy_worker():
 
                 persistent_pref = cfg.get("camoufox_proxy_persistent_context", None)
                 want_persistent = bool(persistent_pref) if persistent_pref is not None else False
-                
+
                 persistent_context_enabled = False
                 if want_persistent and isinstance(profile_dir, Path) and profile_dir.exists():
                     persistent_context_enabled = True
@@ -1815,7 +1920,9 @@ async def camoufox_proxy_worker():
                     browser_cm = _m().AsyncCamoufox(headless=headless, main_world_eval=True)
 
                 try:
-                    browser = await asyncio.wait_for(browser_cm.__aenter__(), timeout=launch_timeout)
+                    browser = await asyncio.wait_for(
+                        browser_cm.__aenter__(), timeout=launch_timeout
+                    )
                 except Exception as e:
                     _m().debug_print(f"⚠️ Camoufox launch failed ({type(e).__name__}): {e}")
                     if persistent_context_enabled:
@@ -1826,7 +1933,9 @@ async def camoufox_proxy_worker():
                             pass
                         persistent_context_enabled = False
                         browser_cm = _m().AsyncCamoufox(headless=headless, main_world_eval=True)
-                        browser = await asyncio.wait_for(browser_cm.__aenter__(), timeout=launch_timeout)
+                        browser = await asyncio.wait_for(
+                            browser_cm.__aenter__(), timeout=launch_timeout
+                        )
                     else:
                         raise
 
@@ -1834,9 +1943,11 @@ async def camoufox_proxy_worker():
                     context = browser
                 else:
                     context = await browser.new_context(user_agent=user_agent or None)
-                
+
                 try:
-                    await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined});")
+                    from . import stealth_patches
+
+                    await stealth_patches.apply_stealth_patches(context, include_canvas_noise=True)
                 except Exception:
                     pass
 
@@ -1849,22 +1960,36 @@ async def camoufox_proxy_worker():
                             continue
                         cookie_map[str(name)] = str(value)
 
-                cf_clearance = str(cfg.get("cf_clearance") or cookie_map.get("cf_clearance") or "").strip()
+                cf_clearance = str(
+                    cfg.get("cf_clearance") or cookie_map.get("cf_clearance") or ""
+                ).strip()
                 cf_bm = str(cfg.get("cf_bm") or cookie_map.get("__cf_bm") or "").strip()
                 cfuvid = str(cfg.get("cfuvid") or cookie_map.get("_cfuvid") or "").strip()
-                provisional_user_id = str(cfg.get("provisional_user_id") or cookie_map.get("provisional_user_id") or "").strip()
+                provisional_user_id = str(
+                    cfg.get("provisional_user_id") or cookie_map.get("provisional_user_id") or ""
+                ).strip()
 
                 desired_cookies: list[dict] = []
                 # When using domain, do NOT include path - they're mutually exclusive in Playwright
                 if cf_clearance:
-                    desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+                    desired_cookies.append(
+                        {"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"}
+                    )
                 if cf_bm:
-                    desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
+                    desired_cookies.append(
+                        {"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"}
+                    )
                 if cfuvid:
-                    desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
+                    desired_cookies.append(
+                        {"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"}
+                    )
                 if provisional_user_id:
                     desired_cookies.append(
-                        {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
+                        {
+                            "name": "provisional_user_id",
+                            "value": provisional_user_id,
+                            "domain": ".lmarena.ai",
+                        }
                     )
                 if desired_cookies:
                     try:
@@ -1890,7 +2015,7 @@ async def camoufox_proxy_worker():
                             await context.add_cookies(cookies_to_add)
                     except Exception:
                         pass
-                
+
                 # Best-effort: seed the browser context with a usable `arena-auth-prod-v1` session cookie.
                 # Prefer a non-expired base64 session from config, and avoid clobbering a fresh browser-managed cookie.
                 try:
@@ -1909,20 +2034,25 @@ async def camoufox_proxy_worker():
                     has_fresh_existing = False
                     if existing_auth:
                         try:
-                            has_fresh_existing = not _m().is_arena_auth_token_expired(existing_auth, skew_seconds=0)
+                            has_fresh_existing = not _m().is_arena_auth_token_expired(
+                                existing_auth, skew_seconds=0
+                            )
                         except Exception:
                             has_fresh_existing = True
-                    
+
                     if not has_fresh_existing:
                         candidate = ""
                         try:
-                            if _m().EPHEMERAL_ARENA_AUTH_TOKEN and not _m().is_arena_auth_token_expired(
-                                _m().EPHEMERAL_ARENA_AUTH_TOKEN, skew_seconds=0
+                            if (
+                                _m().EPHEMERAL_ARENA_AUTH_TOKEN
+                                and not _m().is_arena_auth_token_expired(
+                                    _m().EPHEMERAL_ARENA_AUTH_TOKEN, skew_seconds=0
+                                )
                             ):
                                 candidate = str(_m().EPHEMERAL_ARENA_AUTH_TOKEN).strip()
                         except Exception:
                             candidate = ""
-                        
+
                         if not candidate:
                             cfg_tokens = cfg.get("auth_tokens", [])
                             if not isinstance(cfg_tokens, list):
@@ -1933,9 +2063,9 @@ async def camoufox_proxy_worker():
                                 if not t:
                                     continue
                                 try:
-                                    if _m().is_probably_valid_arena_auth_token(t) and not _m().is_arena_auth_token_expired(
-                                        t, skew_seconds=0
-                                    ):
+                                    if _m().is_probably_valid_arena_auth_token(
+                                        t
+                                    ) and not _m().is_arena_auth_token_expired(t, skew_seconds=0):
                                         candidate = t
                                         break
                                 except Exception:
@@ -1947,7 +2077,7 @@ async def camoufox_proxy_worker():
                                     if t.startswith("base64-"):
                                         candidate = t
                                         break
-                        
+
                         if candidate:
                             await context.add_cookies(_arena_auth_cookie_specs(candidate))
                 except Exception:
@@ -1963,8 +2093,14 @@ async def camoufox_proxy_worker():
                 )
 
                 try:
-                    _m().debug_print("🦊 Camoufox proxy: navigating to https://lmarena.ai/?mode=direct ...")
-                    await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+                    _m().debug_print(
+                        "🦊 Camoufox proxy: navigating to https://arena.ai/?mode=direct ..."
+                    )
+                    await page.goto(
+                        "https://arena.ai/?mode=direct",
+                        wait_until="domcontentloaded",
+                        timeout=120000,
+                    )
                     _m().debug_print("🦊 Camoufox proxy: navigation complete.")
                 except Exception as e:
                     _m().debug_print(f"⚠️ Navigation warning: {e}")
@@ -1992,12 +2128,12 @@ async def camoufox_proxy_worker():
                         asyncio.create_task(push_proxy_chunk(str(jid), payload))
                     except Exception:
                         return
-                
+
                 try:
                     page.on("console", _on_console)
                 except Exception:
                     pass
-                
+
                 # Check for "Just a moment" (Cloudflare) and click if needed
                 try:
                     title = await page.title()
@@ -2016,7 +2152,9 @@ async def camoufox_proxy_worker():
 
                 # Capture initial cookies and persist to config.json
                 try:
-                    fresh_cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
+                    fresh_cookies = await _get_arena_context_cookies(
+                        context, page_url=str(getattr(page, "url", "") or "")
+                    )
                     _m()._capture_ephemeral_arena_auth_token_from_cookies(fresh_cookies)
                     _cfg = _m().get_config()
                     if _m()._upsert_browser_session_into_config(_cfg, fresh_cookies):
@@ -2030,7 +2168,9 @@ async def camoufox_proxy_worker():
                 if context is None:
                     return ""
                 try:
-                    cookies = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
+                    cookies = await _get_arena_context_cookies(
+                        context, page_url=str(getattr(page, "url", "") or "")
+                    )
                 except Exception:
                     return ""
                 try:
@@ -2093,8 +2233,12 @@ async def camoufox_proxy_worker():
 
                 # If the cookie is missing but an auth session is still present in localStorage, recover it now.
                 try:
-                    recovered = await _m()._maybe_inject_arena_auth_cookie_from_localstorage(page, context)
-                    if recovered and not _m().is_arena_auth_token_expired(recovered, skew_seconds=0):
+                    recovered = await _m()._maybe_inject_arena_auth_cookie_from_localstorage(
+                        page, context
+                    )
+                    if recovered and not _m().is_arena_auth_token_expired(
+                        recovered, skew_seconds=0
+                    ):
                         return
                 except Exception:
                     pass
@@ -2144,7 +2288,11 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
                 try:
-                    await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+                    await page.goto(
+                        "https://arena.ai/?mode=direct",
+                        wait_until="domcontentloaded",
+                        timeout=120000,
+                    )
                 except Exception:
                     pass
                 try:
@@ -2291,7 +2439,9 @@ async def camoufox_proxy_worker():
                     except Exception:
                         err = ""
                 if widget_id is None:
-                    _m().debug_print(f"⚠️ Camoufox proxy: Turnstile render failed (stage={stage} err={err[:120]})")
+                    _m().debug_print(
+                        f"⚠️ Camoufox proxy: Turnstile render failed (stage={stage} err={err[:120]})"
+                    )
                     return
 
                 started = _m().time.monotonic()
@@ -2347,18 +2497,24 @@ async def camoufox_proxy_worker():
                 # Some sign-up responses return the Supabase session JSON in the body instead of setting a cookie.
                 # When that happens, encode it into the `arena-auth-prod-v1` cookie format and inject it.
                 try:
-                    body_text = str((resp or {}).get("body") or "") if isinstance(resp, dict) else ""
+                    body_text = (
+                        str((resp or {}).get("body") or "") if isinstance(resp, dict) else ""
+                    )
                 except Exception:
                     body_text = ""
                 if status >= 400 and body_text:
-                    _m().debug_print(f"🦊 Camoufox proxy: /nextjs-api/sign-up body (trunc): {body_text[:200]}")
+                    _m().debug_print(
+                        f"🦊 Camoufox proxy: /nextjs-api/sign-up body (trunc): {body_text[:200]}"
+                    )
                 if status == 400 and "User already exists" in body_text:
                     try:
                         await _m()._maybe_inject_arena_auth_cookie_from_localstorage(page, context)
                     except Exception:
                         pass
                 try:
-                    derived_cookie = _m().maybe_build_arena_auth_cookie_from_signup_response_body(body_text)
+                    derived_cookie = _m().maybe_build_arena_auth_cookie_from_signup_response_body(
+                        body_text
+                    )
                 except Exception:
                     derived_cookie = None
                 if derived_cookie:
@@ -2373,7 +2529,9 @@ async def camoufox_proxy_worker():
                             _m()._capture_ephemeral_arena_auth_token_from_cookies(
                                 [{"name": "arena-auth-prod-v1", "value": derived_cookie}]
                             )
-                            _m().debug_print("🦊 Camoufox proxy: injected arena-auth cookie from sign-up response body.")
+                            _m().debug_print(
+                                "🦊 Camoufox proxy: injected arena-auth cookie from sign-up response body."
+                            )
                     except Exception:
                         pass
 
@@ -2388,7 +2546,7 @@ async def camoufox_proxy_worker():
                             wait_loops = 40
                             try:
                                 await page.goto(
-                                    "https://lmarena.ai/?mode=direct",
+                                    "https://arena.ai/?mode=direct",
                                     wait_until="domcontentloaded",
                                     timeout=120000,
                                 )
@@ -2400,7 +2558,9 @@ async def camoufox_proxy_worker():
                     for _ in range(int(wait_loops)):
                         cur = await _get_auth_cookie_value()
                         if cur and not _m().is_arena_auth_token_expired(cur, skew_seconds=0):
-                            _m().debug_print("🦊 Camoufox proxy: acquired arena-auth-prod-v1 cookie (anonymous user).")
+                            _m().debug_print(
+                                "🦊 Camoufox proxy: acquired arena-auth-prod-v1 cookie (anonymous user)."
+                            )
                             break
                         await asyncio.sleep(0.5)
                 except Exception:
@@ -2411,12 +2571,12 @@ async def camoufox_proxy_worker():
                 job_id = await asyncio.wait_for(queue.get(), timeout=1.0)
             except asyncio.TimeoutError:
                 continue
-            
+
             job_id = str(job_id or "").strip()
             job = _m()._USERSCRIPT_PROXY_JOBS.get(job_id)
             if not isinstance(job, dict):
                 continue
-            
+
             # Signal that a proxy worker picked up this job (used to avoid long hangs when no worker is running).
             try:
                 picked = job.get("picked_up_event")
@@ -2428,7 +2588,7 @@ async def camoufox_proxy_worker():
                     job["phase"] = "picked_up"
             except Exception:
                 pass
-             
+
             # In-page fetch script (streams newline-delimited chunks back through console.log).
             # Mints reCAPTCHA v3 tokens on demand when the request body includes `recaptchaV3Token`.
             fetch_script = """async ({ jid, payload, sitekey, action, sitekeyV2, grecaptchaTimeoutMs, grecaptchaPollMs, timeoutMs, debug }) => {
@@ -2669,7 +2829,7 @@ async def camoufox_proxy_worker():
             }"""
 
             _m().debug_print(f"🦊 Camoufox proxy: running job {job_id[:8]}...")
-            
+
             try:
                 # Use existing browser cookie if valid, to avoid clobbering fresh anonymous sessions
                 browser_auth_cookie = ""
@@ -2677,9 +2837,9 @@ async def camoufox_proxy_worker():
                     browser_auth_cookie = await _get_auth_cookie_value()
                 except Exception:
                     pass
-                
+
                 auth_token = str(job.get("arena_auth_token") or "").strip()
-                
+
                 use_job_token = False
                 if auth_token:
                     # Only use the job's token if we don't have a valid one, or if the job's token is explicitly fresher (hard to tell, so prefer browser's if valid).
@@ -2687,11 +2847,13 @@ async def camoufox_proxy_worker():
                         use_job_token = True
                     else:
                         try:
-                            if _m().is_arena_auth_token_expired(browser_auth_cookie, skew_seconds=60):
+                            if _m().is_arena_auth_token_expired(
+                                browser_auth_cookie, skew_seconds=60
+                            ):
                                 use_job_token = True
                         except Exception:
                             use_job_token = True
-                
+
                 if use_job_token:
                     await context.add_cookies(
                         _arena_auth_cookie_specs(
@@ -2700,7 +2862,9 @@ async def camoufox_proxy_worker():
                         )
                     )
                 elif browser_auth_cookie and not use_job_token:
-                    _m().debug_print("🦊 Camoufox proxy: using valid browser auth cookie (job token is empty or invalid).")
+                    _m().debug_print(
+                        "🦊 Camoufox proxy: using valid browser auth cookie (job token is empty or invalid)."
+                    )
             except Exception:
                 pass
 
@@ -2714,11 +2878,15 @@ async def camoufox_proxy_worker():
                     expired = _m().is_arena_auth_token_expired(current_cookie, skew_seconds=0)
                 except Exception:
                     expired = False
-                _m().debug_print(f"🦊 Camoufox proxy: arena-auth cookie present (len={len(current_cookie)} expired={expired})")
+                _m().debug_print(
+                    f"🦊 Camoufox proxy: arena-auth cookie present (len={len(current_cookie)} expired={expired})"
+                )
             else:
                 _m().debug_print("🦊 Camoufox proxy: arena-auth cookie missing")
             try:
-                needs_signup = (not current_cookie) or _m().is_arena_auth_token_expired(current_cookie, skew_seconds=0)
+                needs_signup = (not current_cookie) or _m().is_arena_auth_token_expired(
+                    current_cookie, skew_seconds=0
+                )
             except Exception:
                 needs_signup = not bool(current_cookie)
             # Unit tests stub out the browser; avoid slow/interactive signup flows there.
@@ -2728,7 +2896,7 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
                 await _attempt_anonymous_signup(min_interval_seconds=20.0)
-             
+
             try:
                 try:
                     job["phase"] = "fetch"
@@ -2749,12 +2917,14 @@ async def camoufox_proxy_worker():
                             "grecaptchaPollMs": 250,
                             "timeoutMs": 180000,
                             "debug": bool(os.environ.get("LM_BRIDGE_PROXY_DEBUG")),
-                        }
+                        },
                     ),
-                    timeout=200.0
+                    timeout=200.0,
                 )
             except asyncio.TimeoutError:
-                await push_proxy_chunk(job_id, {"error": "camoufox proxy evaluate timeout", "done": True})
+                await push_proxy_chunk(
+                    job_id, {"error": "camoufox proxy evaluate timeout", "done": True}
+                )
             except Exception as e:
                 await push_proxy_chunk(job_id, {"error": str(e), "done": True})
 

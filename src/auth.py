@@ -29,7 +29,9 @@ from fastapi import HTTPException
 def _m():
     """Late import of main module so tests can patch main.X and it is reflected here."""
     from . import main
+
     return main
+
 
 def _combine_split_arena_auth_cookies(cookies: list[dict]) -> Optional[str]:
     """
@@ -76,7 +78,6 @@ def _capture_ephemeral_arena_auth_token_from_cookies(cookies: list[dict]) -> Non
                 _m().EPHEMERAL_ARENA_AUTH_TOKEN = combined
                 return
 
-
         for cookie in cookies or []:
             if str(cookie.get("name") or "") != "arena-auth-prod-v1":
                 continue
@@ -101,7 +102,9 @@ def _capture_ephemeral_arena_auth_token_from_cookies(cookies: list[dict]) -> Non
         return None
 
 
-def _upsert_browser_session_into_config(config: dict, cookies: list[dict], user_agent: str | None = None) -> bool:
+def _upsert_browser_session_into_config(
+    config: dict, cookies: list[dict], user_agent: str | None = None
+) -> bool:
     """
     Persist useful browser session identity (cookies + UA) into config.json.
     This helps keep Cloudflare + LMArena auth aligned with reCAPTCHA/browser fetch flows.
@@ -205,14 +208,14 @@ def get_request_headers_with_token(token: str, recaptcha_v3_token: Optional[str]
     headers: dict[str, str] = {
         "Content-Type": "text/plain;charset=UTF-8",
         "Cookie": "; ".join(cookie_parts),
-        "Origin": "https://lmarena.ai",
-        "Referer": "https://lmarena.ai/?mode=direct",
+        "Origin": "https://arena.ai",
+        "Referer": "https://arena.ai/?mode=direct",
     }
 
     user_agent = normalize_user_agent_value(config.get("user_agent"))
     if user_agent:
         headers["User-Agent"] = user_agent
-    
+
     if recaptcha_v3_token:
         headers["X-Recaptcha-Token"] = recaptcha_v3_token
         _, recaptcha_action = _m().get_recaptcha_settings(config)
@@ -471,7 +474,9 @@ def is_probably_valid_arena_auth_token(token: str) -> bool:
 ARENA_AUTH_REFRESH_LOCK: asyncio.Lock = asyncio.Lock()
 
 
-async def refresh_arena_auth_token_via_lmarena_http(old_token: str, config: Optional[dict] = None) -> Optional[str]:
+async def refresh_arena_auth_token_via_lmarena_http(
+    old_token: str, config: Optional[dict] = None
+) -> Optional[str]:
     """
     Best-effort refresh for `arena-auth-prod-v1` using LMArena itself.
 
@@ -520,11 +525,16 @@ async def refresh_arena_auth_token_via_lmarena_http(old_token: str, config: Opti
 
     try:
         import cloudscraper as _cs
+
         def _cs_get():
             scraper = _cs.create_scraper()
             scraper.headers.update({"User-Agent": ua})
-            return scraper.get("https://lmarena.ai/", cookies=cookies, timeout=30, allow_redirects=True)
+            return scraper.get(
+                "https://arena.ai/", cookies=cookies, timeout=30, allow_redirects=True
+            )
+
         import asyncio as _aio
+
         resp = await _aio.to_thread(_cs_get)
     except (cloudscraper.exceptions.CloudflareException, requests.exceptions.RequestException):
         return None
@@ -548,13 +558,17 @@ async def refresh_arena_auth_token_via_lmarena_http(old_token: str, config: Opti
             continue
         # Accept even if identical (some servers still refresh internal tokens while keeping value stable),
         # but prefer a clearly-valid, non-expired cookie.
-        if is_probably_valid_arena_auth_token(new_value) and not is_arena_auth_token_expired(new_value, skew_seconds=0):
+        if is_probably_valid_arena_auth_token(new_value) and not is_arena_auth_token_expired(
+            new_value, skew_seconds=0
+        ):
             return new_value
 
     return None
 
 
-async def refresh_arena_auth_token_via_supabase(old_token: str, *, anon_key: Optional[str] = None) -> Optional[str]:
+async def refresh_arena_auth_token_via_supabase(
+    old_token: str, *, anon_key: Optional[str] = None
+) -> Optional[str]:
     """
     Refresh an expired `arena-auth-prod-v1` base64 session directly via Supabase using the embedded refresh_token.
 
@@ -654,7 +668,9 @@ async def refresh_arena_auth_token_via_supabase(old_token: str, *, anon_key: Opt
         return None
 
 
-async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Optional[set] = None) -> Optional[str]:
+async def maybe_refresh_expired_auth_tokens_via_lmarena_http(
+    exclude_tokens: Optional[set] = None,
+) -> Optional[str]:
     """
     If the on-disk auth token list only contains expired base64 sessions, try to refresh one via LMArena and return it.
 
@@ -762,14 +778,14 @@ async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None
 
 def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback: bool = True):
     """Get next auth token using round-robin selection
-     
+
     Args:
         exclude_tokens: Set of tokens to exclude from selection (e.g., already tried tokens)
         allow_ephemeral_fallback: If True, may fall back to an in-memory `_m().EPHEMERAL_ARENA_AUTH_TOKEN` when all
             configured tokens are excluded.
     """
     config = _m().get_config()
-    
+
     # Get all available tokens
     auth_tokens = config.get("auth_tokens", [])
     if not isinstance(auth_tokens, list):
@@ -851,7 +867,11 @@ def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback:
         single_token = str(config.get("auth_token") or "").strip()
         if single_token and not is_arena_auth_token_expired(single_token):
             auth_tokens = [single_token]
-    if not auth_tokens and _m().EPHEMERAL_ARENA_AUTH_TOKEN and not is_arena_auth_token_expired(_m().EPHEMERAL_ARENA_AUTH_TOKEN):
+    if (
+        not auth_tokens
+        and _m().EPHEMERAL_ARENA_AUTH_TOKEN
+        and not is_arena_auth_token_expired(_m().EPHEMERAL_ARENA_AUTH_TOKEN)
+    ):
         # Use an in-memory token captured from the browser session as a fallback (do not override configured tokens).
         auth_tokens = [_m().EPHEMERAL_ARENA_AUTH_TOKEN]
     if not auth_tokens:
@@ -864,7 +884,7 @@ def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback:
                 auth_tokens = config.get("auth_tokens", [])
         if not auth_tokens:
             raise HTTPException(status_code=500, detail="No auth tokens configured")
-    
+
     # Filter out excluded tokens
     if exclude_tokens:
         available_tokens = [t for t in auth_tokens if t not in exclude_tokens]
@@ -886,7 +906,7 @@ def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback:
             raise HTTPException(status_code=500, detail="No more auth tokens available to try")
     else:
         available_tokens = auth_tokens
-    
+
     # Round-robin selection from available tokens
     token = available_tokens[_m().current_token_index % len(available_tokens)]
     _m().current_token_index = (_m().current_token_index + 1) % len(auth_tokens)
@@ -912,9 +932,11 @@ def remove_auth_token(token: str, force: bool = False):
     try:
         config = _m().get_config()
         prune_enabled = config.get("prune_invalid_tokens", False)
-        
+
         if not prune_enabled and not force:
-            _m().debug_print(f"🔒 Token failed but pruning is disabled. Keep in config: {token[:20]}...")
+            _m().debug_print(
+                f"🔒 Token failed but pruning is disabled. Keep in config: {token[:20]}..."
+            )
             return
 
         auth_tokens = config.get("auth_tokens", [])

@@ -1,4 +1,4 @@
-﻿from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch
 
 from tests._stream_test_utils import BaseBridgeTest
 
@@ -26,6 +26,7 @@ class TestChromeFetchWindowMode(BaseBridgeTest):
         with (
             patch("playwright.async_api.async_playwright", return_value=mock_playwright),
             patch.object(self.main, "find_chrome_executable", return_value="C:/chrome.exe"),
+            patch.object(self.main, "get_config", return_value={"browser_warmup_enabled": False}),
             patch.object(self.main, "get_recaptcha_settings", return_value=("key", "action")),
             patch.object(self.main, "click_turnstile", AsyncMock(return_value=True)),
             patch.object(self.main.asyncio, "sleep", AsyncMock()),
@@ -33,7 +34,7 @@ class TestChromeFetchWindowMode(BaseBridgeTest):
         ):
             resp = await self.main.fetch_lmarena_stream_via_chrome(
                 "POST",
-                "https://lmarena.ai/api",
+                "https://arena.ai/api",
                 {"p": 1},
                 "token",
             )
@@ -41,7 +42,9 @@ class TestChromeFetchWindowMode(BaseBridgeTest):
         self.assertIsNotNone(resp)
         self.assertEqual(resp.status_code, 200)
         window_mode_mock.assert_awaited()
-        self.assertEqual(window_mode_mock.await_args.kwargs.get("mode_key"), "chrome_fetch_window_mode")
+        self.assertEqual(
+            window_mode_mock.await_args.kwargs.get("mode_key"), "chrome_fetch_window_mode"
+        )
 
 
 if __name__ == "__main__":

@@ -21,7 +21,9 @@ class TestProvisionalUserIdSync(BaseBridgeTest):
         page = _FakePage()
         context = _FakeContext()
 
-        await self.main._set_provisional_user_id_in_browser(page, context, provisional_user_id="prov-1")
+        await self.main._set_provisional_user_id_in_browser(
+            page, context, provisional_user_id="prov-1"
+        )
 
         self.assertIsInstance(context.added, list)
         self.assertTrue(context.added)
@@ -48,7 +50,9 @@ class TestProvisionalUserIdSync(BaseBridgeTest):
         context = _FakeContext()
 
         with patch.object(self.main, "debug_print") as debug_print_mock:
-            await self.main._set_provisional_user_id_in_browser(page, context, provisional_user_id="prov-1")
+            await self.main._set_provisional_user_id_in_browser(
+                page, context, provisional_user_id="prov-1"
+            )
 
         self.assertIsInstance(context.added, list)
         self.assertTrue(context.added)

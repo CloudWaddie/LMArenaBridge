@@ -32,6 +32,10 @@ SUPABASE_ANON_KEY: Optional[str] = None
 RECAPTCHA_TOKEN: Optional[str] = None
 RECAPTCHA_EXPIRY: Any = None  # Will be set on init
 
+# Browser context persistence (for anti-detection)
+persistent_browser_contexts: Dict[str, Any] = {}
+context_last_used: Dict[str, float] = {}
+
 
 def get_model_usage_stats() -> defaultdict:
     return model_usage_stats
@@ -56,3 +60,25 @@ def increment_token_index(length: int) -> int:
     if length > 0:
         current_token_index = (current_token_index + 1) % length
     return current_token_index
+
+
+def get_persistent_context(key: str) -> Optional[Any]:
+    """Get a persistent browser context by key."""
+    return persistent_browser_contexts.get(key)
+
+
+def set_persistent_context(key: str, context: Any) -> None:
+    """Store a persistent browser context."""
+    persistent_browser_contexts[key] = context
+    context_last_used[key] = time.time()
+
+
+def cleanup_stale_contexts(max_age_seconds: int = 1800) -> None:
+    """Remove browser contexts that haven't been used in max_age_seconds."""
+    now = time.time()
+    stale_keys = [
+        key for key, last_used in context_last_used.items() if now - last_used > max_age_seconds
+    ]
+    for key in stale_keys:
+        persistent_browser_contexts.pop(key, None)
+        context_last_used.pop(key, None)

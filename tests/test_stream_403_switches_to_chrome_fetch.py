@@ -20,7 +20,9 @@ class TestStream403SwitchesToChromeFetch(BaseBridgeTest):
                 )
             )
 
-        refresh_mock = AsyncMock(side_effect=["recaptcha-1", "recaptcha-2", "recaptcha-3", "recaptcha-4"])
+        refresh_mock = AsyncMock(
+            side_effect=["recaptcha-1", "recaptcha-2", "recaptcha-3", "recaptcha-4"]
+        )
         sleep_mock = AsyncMock()
 
         chrome_resp = self.main.BrowserFetchStreamResponse(
@@ -28,27 +30,34 @@ class TestStream403SwitchesToChromeFetch(BaseBridgeTest):
             headers={},
             text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
             method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
+            url="https://arena.ai/nextjs-api/stream/create-evaluation",
         )
         chrome_fetch_mock = AsyncMock(return_value=chrome_resp)
 
-        with patch.object(self.main, "get_models") as get_models_mock, patch.object(
-            self.main,
-            "refresh_recaptcha_token",
-            refresh_mock,
-        ), patch.object(
-            self.main,
-            "fetch_lmarena_stream_via_chrome",
-            chrome_fetch_mock,
-        ), patch.object(
-            httpx.AsyncClient,
-            "stream",
-            new=fake_stream,
-        ), patch(
-            "src.main.print",
-        ), patch(
-            "src.main.asyncio.sleep",
-            sleep_mock,
+        with (
+            patch.object(self.main, "get_models") as get_models_mock,
+            patch.object(
+                self.main,
+                "refresh_recaptcha_token",
+                refresh_mock,
+            ),
+            patch.object(
+                self.main,
+                "fetch_lmarena_stream_via_chrome",
+                chrome_fetch_mock,
+            ),
+            patch.object(
+                httpx.AsyncClient,
+                "stream",
+                new=fake_stream,
+            ),
+            patch(
+                "src.main.print",
+            ),
+            patch(
+                "src.main.asyncio.sleep",
+                sleep_mock,
+            ),
         ):
             get_models_mock.return_value = [
                 {

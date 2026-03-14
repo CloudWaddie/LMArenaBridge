@@ -35,12 +35,16 @@ class TestStreamTaskExceptionSilenced(unittest.IsolatedAsyncioTestCase):
             async def _evaluate(script, arg=None):  # noqa: ANN001
                 if script == "() => navigator.userAgent":
                     return "user-agent"
-                if isinstance(script, str) and script.lstrip().startswith("async ({url, method, body, extraHeaders"):
+                if isinstance(script, str) and script.lstrip().startswith(
+                    "async ({url, method, body, extraHeaders"
+                ):
                     assert report_cb is not None
                     await report_cb(None, '{"__type":"meta","status":200,"headers":{}}')
                     await report_cb(None, "data: hi")
                     await allow_finish.wait()
-                    raise RuntimeError("Page.evaluate: Target page, context or browser has been closed")
+                    raise RuntimeError(
+                        "Page.evaluate: Target page, context or browser has been closed"
+                    )
                 raise AssertionError(f"Unexpected evaluate script: {str(script)[:80]}")
 
             mock_page.evaluate.side_effect = _evaluate
@@ -63,7 +67,7 @@ class TestStreamTaskExceptionSilenced(unittest.IsolatedAsyncioTestCase):
             ):
                 resp = await main.fetch_lmarena_stream_via_chrome(
                     "POST",
-                    "https://lmarena.ai/api",
+                    "https://arena.ai/api",
                     {"recaptchaV3Token": "payload-token"},
                     "token",
                     timeout_seconds=2,
@@ -79,7 +83,11 @@ class TestStreamTaskExceptionSilenced(unittest.IsolatedAsyncioTestCase):
             gc.collect()
             await asyncio.sleep(0)
 
-            leaked = [c for c in seen if "Task exception was never retrieved" in str(c.get("message") or "")]
+            leaked = [
+                c
+                for c in seen
+                if "Task exception was never retrieved" in str(c.get("message") or "")
+            ]
             self.assertEqual(leaked, [])
         finally:
             loop.set_exception_handler(old_handler)
@@ -87,4 +95,3 @@ class TestStreamTaskExceptionSilenced(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

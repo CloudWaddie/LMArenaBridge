@@ -32,7 +32,7 @@ class TestLocalStorageArenaAuthRecovery(BaseBridgeTest):
         self.assertEqual(len(context.added), 2)
         urls = {str(c.get("url") or "") for c in context.added if c.get("url")}
         self.assertIn("https://arena.ai", urls)
-        self.assertIn("https://arena.ai", urls)
+        self.assertIn("https://lmarena.ai", urls)
         for cookie in context.added:
             self.assertEqual(cookie.get("name"), "arena-auth-prod-v1")
             self.assertEqual(cookie.get("value"), injected)

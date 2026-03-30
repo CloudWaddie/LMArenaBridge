@@ -562,7 +562,7 @@ app = FastAPI(lifespan=lifespan)
 # Add CORS middleware to handle preflight requests and avoid 405 errors
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origin_regex=r"https?://.*",  # WARNING: For development only. Restrict to specific origins in production.
     allow_credentials=True,
     allow_methods=["*"],  # This includes GET, POST, PUT, DELETE, OPTIONS, etc.
     allow_headers=["*"],

@@ -25,6 +25,7 @@ from starlette.responses import HTMLResponse, RedirectResponse, StreamingRespons
 from fastapi.security import APIKeyHeader
 
 import httpx
+import requests
 
 # Import from modularized modules
 from . import constants
@@ -326,33 +327,34 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         try:
             response = await asyncio.to_thread(_cs_upload)
             response.raise_for_status()
-        except (cloudscraper.exceptions.CloudflareException, requests.exceptions.RequestException) as e:
+        except (_cs.exceptions.CloudflareException, requests.exceptions.RequestException) as e:
             debug_print(f"❌ Error while requesting upload URL: {e}")
             return None
+        
+        # Parse response - format: 0:{...}\n1:{...}\n
+        try:
+            lines = response.text.strip().split('\n')
+            upload_data = None
+            for line in lines:
+                if line.startswith('1:'):
+                    upload_data = json.loads(line[2:])
+                    break
             
-            # Parse response - format: 0:{...}\n1:{...}\n
-            try:
-                lines = response.text.strip().split('\n')
-                upload_data = None
-                for line in lines:
-                    if line.startswith('1:'):
-                        upload_data = json.loads(line[2:])
-                        break
-                
-                if not upload_data or not upload_data.get('success'):
-                    debug_print(f"❌ Failed to get upload URL: {response.text[:200]}")
-                    return None
-                
-                upload_url = upload_data['data']['uploadUrl']
-                key = upload_data['data']['key']
-                debug_print(f"✅ Got upload URL and key: {key}")
-            except (json.JSONDecodeError, KeyError, IndexError) as e:
-                debug_print(f"❌ Failed to parse upload URL response: {e}")
+            if not upload_data or not upload_data.get('success'):
+                debug_print(f"❌ Failed to get upload URL: {response.text[:200]}")
                 return None
             
-            # Step 2: Upload image to R2 storage
-            debug_print(f"📤 Step 2: Uploading image to R2 storage ({len(image_data)} bytes)")
-            try:
+            upload_url = upload_data['data']['uploadUrl']
+            key = upload_data['data']['key']
+            debug_print(f"✅ Got upload URL and key: {key}")
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            debug_print(f"❌ Failed to parse upload URL response: {e}")
+            return None
+        
+        # Step 2: Upload image to R2 storage
+        debug_print(f"📤 Step 2: Uploading image to R2 storage ({len(image_data)} bytes)")
+        try:
+            async with httpx.AsyncClient() as client:
                 response = await client.put(
                     upload_url,
                     content=image_data,
@@ -361,19 +363,20 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
                 )
                 response.raise_for_status()
                 debug_print(f"✅ Image uploaded successfully")
-            except httpx.TimeoutException:
-                debug_print("❌ Timeout while uploading image to R2 storage")
-                return None
-            except httpx.HTTPError as e:
-                debug_print(f"❌ HTTP error while uploading image: {e}")
-                return None
-            
-            # Step 3: Get signed download URL (uses different Next-Action)
-            debug_print(f"📤 Step 3: Requesting signed download URL")
-            request_headers_step3 = request_headers.copy()
-            request_headers_step3["Next-Action"] = signed_url_action_id
-            
-            try:
+        except httpx.TimeoutException:
+            debug_print("❌ Timeout while uploading image to R2 storage")
+            return None
+        except httpx.HTTPError as e:
+            debug_print(f"❌ HTTP error while uploading image: {e}")
+            return None
+        
+        # Step 3: Get signed download URL (uses different Next-Action)
+        debug_print(f"📤 Step 3: Requesting signed download URL")
+        request_headers_step3 = request_headers.copy()
+        request_headers_step3["Next-Action"] = signed_url_action_id
+        
+        try:
+            async with httpx.AsyncClient() as client:
                 response = await client.post(
                     "https://lmarena.ai/?mode=direct",
                     headers=request_headers_step3,
@@ -381,32 +384,32 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
                     timeout=30.0
                 )
                 response.raise_for_status()
-            except httpx.TimeoutException:
-                debug_print("❌ Timeout while requesting download URL")
-                return None
-            except httpx.HTTPError as e:
-                debug_print(f"❌ HTTP error while requesting download URL: {e}")
+        except httpx.TimeoutException:
+            debug_print("❌ Timeout while requesting download URL")
+            return None
+        except httpx.HTTPError as e:
+            debug_print(f"❌ HTTP error while requesting download URL: {e}")
+            return None
+        
+        # Parse response
+        try:
+            lines = response.text.strip().split('\n')
+            download_data = None
+            for line in lines:
+                if line.startswith('1:'):
+                    download_data = json.loads(line[2:])
+                    break
+            
+            if not download_data or not download_data.get('success'):
+                debug_print(f"❌ Failed to get download URL: {response.text[:200]}")
                 return None
             
-            # Parse response
-            try:
-                lines = response.text.strip().split('\n')
-                download_data = None
-                for line in lines:
-                    if line.startswith('1:'):
-                        download_data = json.loads(line[2:])
-                        break
-                
-                if not download_data or not download_data.get('success'):
-                    debug_print(f"❌ Failed to get download URL: {response.text[:200]}")
-                    return None
-                
-                download_url = download_data['data']['url']
-                debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
-                return (key, download_url)
-            except (json.JSONDecodeError, KeyError, IndexError) as e:
-                debug_print(f"❌ Failed to parse download URL response: {e}")
-                return None
+            download_url = download_data['data']['url']
+            debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
+            return (key, download_url)
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            debug_print(f"❌ Failed to parse download URL response: {e}")
+            return None
             
     except Exception as e:
         debug_print(f"❌ Unexpected error uploading image: {type(e).__name__}: {e}")

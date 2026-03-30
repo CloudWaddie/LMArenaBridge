@@ -978,12 +978,29 @@ async def fetch_lmarena_stream_via_chrome(
                         continue
                 
                 if fetch_task.done() and meta is None:
+                    # Give a brief moment for meta chunk to arrive in the queue (race condition)
                     try:
-                        res = fetch_task.result()
-                        if isinstance(res, dict) and not res.get("__streaming"):
-                            result = res
+                        # Check if there's anything in the queue that might be the meta chunk
+                        try:
+                            item = lines_queue.get_nowait()
+                            if isinstance(item, str) and item.startswith('{"__type":"meta"'):
+                                meta = json.loads(item)
+                            else:
+                                # Put it back and use default meta
+                                await lines_queue.put(item)
+                                meta = {"status": 200, "headers": {}}
+                        except asyncio.QueueEmpty:
+                            # No items in queue, use default successful response
+                            meta = {"status": 200, "headers": {}}
+                        
+                        if meta:
+                            result = meta
                         else:
-                            result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
+                            res = fetch_task.result()
+                            if isinstance(res, dict) and not res.get("__streaming"):
+                                result = res
+                            else:
+                                result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
                     except Exception as e:
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
                 elif meta:
@@ -1448,12 +1465,29 @@ async def fetch_lmarena_stream_via_camoufox(
                         continue
                 
                 if fetch_task.done() and meta is None:
+                    # Give a brief moment for meta chunk to arrive in the queue (race condition)
                     try:
-                        res = fetch_task.result()
-                        if isinstance(res, dict) and not res.get("__streaming"):
-                            result = res
+                        # Check if there's anything in the queue that might be the meta chunk
+                        try:
+                            item = lines_queue.get_nowait()
+                            if isinstance(item, str) and item.startswith('{"__type":"meta"'):
+                                meta = json.loads(item)
+                            else:
+                                # Put it back and use default meta
+                                await lines_queue.put(item)
+                                meta = {"status": 200, "headers": {}}
+                        except asyncio.QueueEmpty:
+                            # No items in queue, use default successful response
+                            meta = {"status": 200, "headers": {}}
+                        
+                        if meta:
+                            result = meta
                         else:
-                            result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
+                            res = fetch_task.result()
+                            if isinstance(res, dict) and not res.get("__streaming"):
+                                result = res
+                            else:
+                                result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
                     except Exception as e:
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
                 elif meta:

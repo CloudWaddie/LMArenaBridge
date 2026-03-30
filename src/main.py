@@ -20,6 +20,7 @@ from urllib.parse import urlsplit
 import uvicorn
 from camoufox.async_api import AsyncCamoufox
 from fastapi import FastAPI, HTTPException, Depends, status, Form, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.security import APIKeyHeader
 
@@ -557,6 +558,15 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+# Add CORS middleware to handle preflight requests and avoid 405 errors
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"https?://.*",  # WARNING: For development only. Restrict to specific origins in production.
+    allow_credentials=True,
+    allow_methods=["*"],  # This includes GET, POST, PUT, DELETE, OPTIONS, etc.
+    allow_headers=["*"],
+)
 
 # --- Constants & Global State ---
 CONFIG_FILE = constants.CONFIG_FILE

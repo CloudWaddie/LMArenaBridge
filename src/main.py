@@ -109,145 +109,6 @@ from .transport import (
     camoufox_proxy_worker,
 )
 
-# ---------------- Anthropic Messages API Models (new) ----------------
-
-class AnthropicContentBlock(BaseModel):
-    type: str  # e.g., "text", "image"
-    text: Optional[str] = None
-    content: Optional[str] = None
-    url: Optional[str] = None  # for image blocks
-
-class AnthropicMessageBlock(BaseModel):
-    role: str  # "user" or "assistant"
-    content: List[AnthropicContentBlock]
-
-class AnthropicMessageRequest(BaseModel):
-    model: str
-    messages: List[AnthropicMessageBlock]
-    max_tokens: int
-    system: Optional[str] = None  # top-level system prompt
-    stream: Optional[bool] = False
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    stop: Optional[List[str]] = None
-
-class AnthropicUsage(BaseModel):
-    input_tokens: int
-    output_tokens: int
-
-class AnthropicContentBlockResponse(BaseModel):
-    type: str
-    text: Optional[str] = None
-    url: Optional[str] = None
-
-class AnthropicMessageResponse(BaseModel):
-    id: str
-    type: str
-    role: str
-    content: List[AnthropicContentBlockResponse]
-    model: str
-    stop_reason: Optional[str] = None
-    usage: AnthropicUsage
-
-def _anthropic_block_to_text(blocks: List[AnthropicContentBlock]) -> str:
-    texts: List[str] = []
-    for b in blocks:
-        if b.type == "text":
-            if b.text:
-                texts.append(str(b.text))
-            elif b.content:
-                texts.append(str(b.content))
-        elif b.type == "image":
-            if b.url:
-                texts.append(f"[image: {b.url}]")
-            else:
-                texts.append("[image]")
-        else:
-            # Fallback to raw content if unknown
-            if b.text:
-                texts.append(str(b.text))
-            if b.content:
-                texts.append(str(b.content))
-    return "\n".join(texts).strip()
-
-def anthropic_to_openai_messages(anthropic_body: dict) -> tuple[str, List[Dict[str, Any]], Optional[str]]:
-    """Translate Anthropic request into OpenAI-style messages.
-
-    Returns a tuple: (model, messages_openai, system_text)
-    """
-    # Accept both parsed Pydantic model and raw dict
-    if isinstance(anthropic_body, AnthropicMessageRequest):
-        payload = anthropic_body.dict(by_alias=True)
-    else:
-        payload = anthropic_body
-
-    model = payload.get("model") if isinstance(payload, dict) else None
-    system_text = payload.get("system") if isinstance(payload, dict) else None
-    messages = payload.get("messages", []) if isinstance(payload, dict) else []
-
-    openai_messages: List[Dict[str, Any]] = []
-    # Anthropic uses a top-level system prompt; translate to a system message for OpenAI
-    if system_text:
-        openai_messages.append({"role": "system", "content": system_text})
-
-    for m in messages:
-        role = m.get("role") if isinstance(m, dict) else None
-        blocks_raw = m.get("content", []) if isinstance(m, dict) else []
-        # Normalize content blocks
-        if isinstance(blocks_raw, list):
-            blocks = [AnthropicContentBlock(**blk) if isinstance(blk, dict) else AnthropicContentBlock(type="text", text=str(blk)) for blk in blocks_raw]
-            text_content = _anthropic_block_to_text(blocks)
-        else:
-            text_content = str(blocks_raw)
-        if role in {"user", "assistant"} and text_content is not None:
-            openai_messages.append({"role": role, "content": text_content})
-
-    max_tokens = int(payload.get("max_tokens", 0)) if isinstance(payload, dict) else 0
-    return model or "gpt-3.5-turbo", openai_messages, system_text
-
-def openai_to_anthropic_response(openai_result: dict, model: str, system_text: Optional[str], stream: bool) -> dict:
-    """Convert a normal OpenAI-style response into Anthropic-like response payload."""
-    # Extract final text from openai_result
-    content_text = ""
-    usage = openai_result.get("usage", {}) if isinstance(openai_result, dict) else {}
-    if openai_result:
-        choices = openai_result.get("choices", [])
-        for ch in choices:
-            msg = ch.get("message", {})
-            delta = ch.get("delta", {})
-            if isinstance(msg, dict) and not content_text:
-                content_text = msg.get("content", "") or delta.get("content", "")
-            else:
-                content_text += (msg.get("content", "") or delta.get("content", ""))
-
-    # Build a single text block for Anthropic content
-    block = {
-        "type": "text",
-        "text": content_text.strip()
-    }
-    content_blocks = [AnthropicContentBlock(**block)]  # type: ignore[arg-type]
-
-    # Build usage fields
-    input_tokens = int(usage.get("prompt_tokens", 0))
-    output_tokens = int(usage.get("completion_tokens", 0))
-    anthropic_usage = AnthropicUsage(input_tokens=input_tokens, output_tokens=output_tokens)
-
-    resp = AnthropicMessageResponse(
-        id="anthropic-bridge-response",
-        type="chat.completion",
-        role="assistant",
-        content=content_blocks,
-        model=model,
-        stop_reason=openai_result.get("choices", [{}])[0].get("finish_reason") if openai_result.get("choices") else None,
-        usage=anthropic_usage,
-    )
-    return resp.dict()
-
-def _strip_data_prefix(line: str) -> str:
-    if line.startswith("data: "):
-        return line[6:]
-    return line
-
 DEBUG = constants.DEBUG
 PORT = constants.PORT
 HTTPStatus = constants.HTTPStatus
@@ -4879,8 +4740,11 @@ class AnthropicMessageRequest(BaseModel):
     model: str
     messages: List[AnthropicMessageParam]
     max_tokens: int
-    system: Optional[str] = None
+    system: Optional[Union[str, List[AnthropicContentBlock]]] = None
     temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    top_k: Optional[int] = None
+    stop_sequences: Optional[List[str]] = None
     stream: Optional[bool] = False
 
 
@@ -4911,25 +4775,20 @@ def convert_anthropic_messages_to_openai(messages: List[AnthropicMessageParam]) 
         if isinstance(msg.content, str):
             openai_messages.append({"role": msg.role, "content": msg.content})
         else:
-            # Handle content blocks
             content_parts = []
             for block in msg.content:
                 if block.type == "text" and block.text:
-                    content_parts.append(block.text)
+                    content_parts.append({"type": "text", "text": block.text})
                 elif block.type == "image" and block.source:
-                    # Convert image to OpenAI format
                     content_parts.append({
                         "type": "image_url",
                         "image_url": {"url": f"data:{block.source.get('media_type', 'image/png')};base64,{block.source.get('data', '')}"}
                     })
-            if len(content_parts) == 1 and isinstance(content_parts[0], str):
-                openai_messages.append({"role": msg.role, "content": content_parts[0]})
-            else:
-                openai_messages.append({"role": msg.role, "content": content_parts})
+            openai_messages.append({"role": msg.role, "content": content_parts})
     return openai_messages
 
 
-def convert_openai_response_to_anthropic(openai_response: Dict[str, Any], model: str) -> Dict[str, Any]:
+def convert_openai_response_to_anthropic(openai_response: Dict[str, Any], model: str) -> AnthropicMessageResponse:
     """Convert OpenAI response to Anthropic format."""
     if "error" in openai_response:
         raise HTTPException(status_code=400, detail=openai_response["error"].get("message", "Unknown error"))
@@ -4948,22 +4807,19 @@ def convert_openai_response_to_anthropic(openai_response: Dict[str, Any], model:
 
     content_blocks = []
     if reasoning_content:
-        content_blocks.append({"type": "text", "text": f"<thinking>{reasoning_content}</thinking>\n\n"})
+        content_blocks.append(AnthropicContentResponse(type="text", text=f"<thinking>{reasoning_content}</thinking>\n\n"))
     if content:
-        content_blocks.append({"type": "text", "text": content})
+        content_blocks.append(AnthropicContentResponse(type="text", text=content))
 
-    return {
-        "id": openai_response.get("id", f"msg_{uuid.uuid4()}"),
-        "type": "message",
-        "role": "assistant",
-        "content": content_blocks,
-        "model": model,
-        "stop_reason": "end_turn",
-        "usage": {
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens
-        }
-    }
+    return AnthropicMessageResponse(
+        id=openai_response.get("id", f"msg_{uuid.uuid4()}"),
+        type="message",
+        role="assistant",
+        content=content_blocks,
+        model=model,
+        stop_reason="end_turn",
+        usage=AnthropicUsage(input_tokens=input_tokens, output_tokens=output_tokens)
+    )
 
 
 @app.post("/v1/messages")
@@ -5020,64 +4876,73 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
             output_tokens = 0
             accumulated_text = ""
             accumulated_reasoning = ""
-            citations = []
+            content_block_started = False
+
+            # Send message_start event first
+            message_start = {
+                "type": "message_start",
+                "message": {
+                    "id": message_id,
+                    "type": "message",
+                    "role": "assistant",
+                    "content": [],
+                    "model": request.model,
+                    "stop_reason": None,
+                    "usage": {"input_tokens": 0, "output_tokens": 0}
+                }
+            }
+            yield f"event: message_start\ndata: {json.dumps(message_start)}\n\n"
+
+            # Send content_block_start event
+            content_block_start = {
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {"type": "text", "text": ""}
+            }
+            yield f"event: content_block_start\ndata: {json.dumps(content_block_start)}\n\n"
 
             try:
-                async for line in api_chat_completions(mock_request, api_key):
-                    if isinstance(line, StreamingResponse):
-                        # Handle the streaming response
-                        async for chunk in line.body_iterator:
-                            chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
-                            for line_part in chunk_str.strip().split('\n'):
-                                if not line_part.startswith('data: '):
-                                    continue
-                                data = line_part[6:]
-                                if data == '[DONE]':
-                                    # Send message_stop event
-                                    stop_event = {
-                                        "type": "message_stop",
-                                        "message": {
-                                            "id": message_id,
-                                            "type": "message",
-                                            "role": "assistant",
-                                            "content": [{"type": "text", "text": accumulated_text}],
-                                            "model": request.model,
-                                            "stop_reason": "end_turn",
-                                            "usage": {
-                                                "input_tokens": input_tokens,
-                                                "output_tokens": output_tokens
-                                            }
-                                        }
+                # Call api_chat_completions and await the result first
+                result = await api_chat_completions(mock_request, api_key)
+
+                if isinstance(result, StreamingResponse):
+                    # Handle the streaming response
+                    async for chunk in result.body_iterator:
+                        chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
+                        for line_part in chunk_str.strip().split('\n'):
+                            if not line_part.startswith('data: '):
+                                continue
+                            data = line_part[6:]
+                            if data == '[DONE]':
+                                break
+
+                            try:
+                                chunk_data = json.loads(data)
+                                if "error" in chunk_data:
+                                    error_event = {
+                                        "type": "error",
+                                        "error": chunk_data["error"]
                                     }
-                                    yield f"event: message_stop\ndata: {json.dumps(stop_event)}\n\n"
+                                    yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
                                     return
 
-                                try:
-                                    chunk_data = json.loads(data)
-                                    if "error" in chunk_data:
-                                        error_event = {
-                                            "type": "error",
-                                            "error": chunk_data["error"]
-                                        }
-                                        yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
-                                        return
+                                delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                                if "content" in delta:
+                                    content = delta["content"]
+                                    accumulated_text += content
+                                    content_block = {
+                                        "type": "content_block_delta",
+                                        "index": 0,
+                                        "delta": {"type": "text_delta", "text": content}
+                                    }
+                                    yield f"event: content_block_delta\ndata: {json.dumps(content_block)}\n\n"
 
-                                    delta = chunk_data.get("choices", [{}])[0].get("delta", {})
-                                    if "content" in delta:
-                                        content = delta["content"]
-                                        accumulated_text += content
-                                        content_block = {
-                                            "type": "content_block_delta",
-                                            "delta": {"type": "text_delta", "text": content}
-                                        }
-                                        yield f"event: content_block_delta\ndata: {json.dumps(content_block)}\n\n"
+                                if "reasoning_content" in delta:
+                                    reasoning = delta["reasoning_content"]
+                                    accumulated_reasoning += reasoning
 
-                                    if "reasoning_content" in delta:
-                                        reasoning = delta["reasoning_content"]
-                                        accumulated_reasoning += reasoning
-
-                                except json.JSONDecodeError:
-                                    continue
+                            except json.JSONDecodeError:
+                                continue
 
             except Exception as e:
                 error_event = {
@@ -5085,6 +4950,30 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
                     "error": {"message": str(e), "type": "internal_error"}
                 }
                 yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+                return
+
+            # Send content_block_stop event
+            content_block_stop = {
+                "type": "content_block_stop",
+                "index": 0
+            }
+            yield f"event: content_block_stop\ndata: {json.dumps(content_block_stop)}\n\n"
+
+            # Send message_delta event with usage
+            message_delta = {
+                "type": "message_delta",
+                "delta": {
+                    "stop_reason": "end_turn"
+                },
+                "usage": {
+                    "output_tokens": len(accumulated_text.split())
+                }
+            }
+            yield f"event: message_delta\ndata: {json.dumps(message_delta)}\n\n"
+
+            # Send message_stop event (simplified format)
+            message_stop = {"type": "message_stop"}
+            yield f"event: message_stop\ndata: {json.dumps(message_stop)}\n\n"
 
         return StreamingResponse(
             anthropic_stream_generator(),

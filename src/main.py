@@ -13,9 +13,13 @@ import mimetypes
 from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 from datetime import datetime, timezone, timedelta
 from urllib.parse import urlsplit
+
+# Pydantic models for Anthropic API
+from pydantic import BaseModel, Field
+from typing import Literal
 
 import uvicorn
 from camoufox.async_api import AsyncCamoufox
@@ -25,6 +29,8 @@ from starlette.responses import HTMLResponse, RedirectResponse, StreamingRespons
 from fastapi.security import APIKeyHeader
 
 import httpx
+from typing import Any, Dict, List, Optional, Union
+from pydantic import BaseModel
 import requests
 
 # Import from modularized modules
@@ -103,7 +109,145 @@ from .transport import (
     camoufox_proxy_worker,
 )
 
-# Aliases for backward compatibility
+# ---------------- Anthropic Messages API Models (new) ----------------
+
+class AnthropicContentBlock(BaseModel):
+    type: str  # e.g., "text", "image"
+    text: Optional[str] = None
+    content: Optional[str] = None
+    url: Optional[str] = None  # for image blocks
+
+class AnthropicMessageBlock(BaseModel):
+    role: str  # "user" or "assistant"
+    content: List[AnthropicContentBlock]
+
+class AnthropicMessageRequest(BaseModel):
+    model: str
+    messages: List[AnthropicMessageBlock]
+    max_tokens: int
+    system: Optional[str] = None  # top-level system prompt
+    stream: Optional[bool] = False
+    temperature: Optional[float] = None
+    top_p: Optional[float] = None
+    stop: Optional[List[str]] = None
+
+class AnthropicUsage(BaseModel):
+    input_tokens: int
+    output_tokens: int
+
+class AnthropicContentBlockResponse(BaseModel):
+    type: str
+    text: Optional[str] = None
+    url: Optional[str] = None
+
+class AnthropicMessageResponse(BaseModel):
+    id: str
+    type: str
+    role: str
+    content: List[AnthropicContentBlockResponse]
+    model: str
+    stop_reason: Optional[str] = None
+    usage: AnthropicUsage
+
+def _anthropic_block_to_text(blocks: List[AnthropicContentBlock]) -> str:
+    texts: List[str] = []
+    for b in blocks:
+        if b.type == "text":
+            if b.text:
+                texts.append(str(b.text))
+            elif b.content:
+                texts.append(str(b.content))
+        elif b.type == "image":
+            if b.url:
+                texts.append(f"[image: {b.url}]")
+            else:
+                texts.append("[image]")
+        else:
+            # Fallback to raw content if unknown
+            if b.text:
+                texts.append(str(b.text))
+            if b.content:
+                texts.append(str(b.content))
+    return "\n".join(texts).strip()
+
+def anthropic_to_openai_messages(anthropic_body: dict) -> tuple[str, List[Dict[str, Any]], Optional[str]]:
+    """Translate Anthropic request into OpenAI-style messages.
+
+    Returns a tuple: (model, messages_openai, system_text)
+    """
+    # Accept both parsed Pydantic model and raw dict
+    if isinstance(anthropic_body, AnthropicMessageRequest):
+        payload = anthropic_body.dict(by_alias=True)
+    else:
+        payload = anthropic_body
+
+    model = payload.get("model") if isinstance(payload, dict) else None
+    system_text = payload.get("system") if isinstance(payload, dict) else None
+    messages = payload.get("messages", []) if isinstance(payload, dict) else []
+
+    openai_messages: List[Dict[str, Any]] = []
+    # Anthropic uses a top-level system prompt; translate to a system message for OpenAI
+    if system_text:
+        openai_messages.append({"role": "system", "content": system_text})
+
+    for m in messages:
+        role = m.get("role") if isinstance(m, dict) else None
+        blocks_raw = m.get("content", []) if isinstance(m, dict) else []
+        # Normalize content blocks
+        if isinstance(blocks_raw, list):
+            blocks = [AnthropicContentBlock(**blk) if isinstance(blk, dict) else AnthropicContentBlock(type="text", text=str(blk)) for blk in blocks_raw]
+            text_content = _anthropic_block_to_text(blocks)
+        else:
+            text_content = str(blocks_raw)
+        if role in {"user", "assistant"} and text_content is not None:
+            openai_messages.append({"role": role, "content": text_content})
+
+    max_tokens = int(payload.get("max_tokens", 0)) if isinstance(payload, dict) else 0
+    return model or "gpt-3.5-turbo", openai_messages, system_text
+
+def openai_to_anthropic_response(openai_result: dict, model: str, system_text: Optional[str], stream: bool) -> dict:
+    """Convert a normal OpenAI-style response into Anthropic-like response payload."""
+    # Extract final text from openai_result
+    content_text = ""
+    usage = openai_result.get("usage", {}) if isinstance(openai_result, dict) else {}
+    if openai_result:
+        choices = openai_result.get("choices", [])
+        for ch in choices:
+            msg = ch.get("message", {})
+            delta = ch.get("delta", {})
+            if isinstance(msg, dict) and not content_text:
+                content_text = msg.get("content", "") or delta.get("content", "")
+            else:
+                content_text += (msg.get("content", "") or delta.get("content", ""))
+
+    # Build a single text block for Anthropic content
+    block = {
+        "type": "text",
+        "text": content_text.strip()
+    }
+    content_blocks = [AnthropicContentBlock(**block)]  # type: ignore[arg-type]
+
+    # Build usage fields
+    input_tokens = int(usage.get("prompt_tokens", 0))
+    output_tokens = int(usage.get("completion_tokens", 0))
+    anthropic_usage = AnthropicUsage(input_tokens=input_tokens, output_tokens=output_tokens)
+
+    resp = AnthropicMessageResponse(
+        id="anthropic-bridge-response",
+        type="chat.completion",
+        role="assistant",
+        content=content_blocks,
+        model=model,
+        stop_reason=openai_result.get("choices", [{}])[0].get("finish_reason") if openai_result.get("choices") else None,
+        usage=anthropic_usage,
+    )
+    return resp.dict()
+
+def _strip_data_prefix(line: str) -> str:
+    if line.startswith("data: "):
+        return line[6:]
+    return line
+
 DEBUG = constants.DEBUG
 PORT = constants.PORT
 HTTPStatus = constants.HTTPStatus
@@ -4717,6 +4861,278 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         print(f"📛 Error message: {str(e)}")
         print("="*80 + "\n")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# Anthropic API Models
+class AnthropicContentBlock(BaseModel):
+    type: Literal["text", "image", "tool_use", "tool_result"]
+    text: Optional[str] = None
+    source: Optional[Dict[str, Any]] = None
+
+
+class AnthropicMessageParam(BaseModel):
+    role: Literal["user", "assistant"]
+    content: Union[str, List[AnthropicContentBlock]]
+
+
+class AnthropicMessageRequest(BaseModel):
+    model: str
+    messages: List[AnthropicMessageParam]
+    max_tokens: int
+    system: Optional[str] = None
+    temperature: Optional[float] = None
+    stream: Optional[bool] = False
+
+
+class AnthropicUsage(BaseModel):
+    input_tokens: int
+    output_tokens: int
+
+
+class AnthropicContentResponse(BaseModel):
+    type: Literal["text"]
+    text: str
+
+
+class AnthropicMessageResponse(BaseModel):
+    id: str
+    type: Literal["message"]
+    role: Literal["assistant"]
+    content: List[AnthropicContentResponse]
+    model: str
+    stop_reason: Optional[str] = None
+    usage: AnthropicUsage
+
+
+def convert_anthropic_messages_to_openai(messages: List[AnthropicMessageParam]) -> List[Dict[str, Any]]:
+    """Convert Anthropic messages to OpenAI format."""
+    openai_messages = []
+    for msg in messages:
+        if isinstance(msg.content, str):
+            openai_messages.append({"role": msg.role, "content": msg.content})
+        else:
+            # Handle content blocks
+            content_parts = []
+            for block in msg.content:
+                if block.type == "text" and block.text:
+                    content_parts.append(block.text)
+                elif block.type == "image" and block.source:
+                    # Convert image to OpenAI format
+                    content_parts.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{block.source.get('media_type', 'image/png')};base64,{block.source.get('data', '')}"}
+                    })
+            if len(content_parts) == 1 and isinstance(content_parts[0], str):
+                openai_messages.append({"role": msg.role, "content": content_parts[0]})
+            else:
+                openai_messages.append({"role": msg.role, "content": content_parts})
+    return openai_messages
+
+
+def convert_openai_response_to_anthropic(openai_response: Dict[str, Any], model: str) -> Dict[str, Any]:
+    """Convert OpenAI response to Anthropic format."""
+    if "error" in openai_response:
+        raise HTTPException(status_code=400, detail=openai_response["error"].get("message", "Unknown error"))
+
+    choices = openai_response.get("choices", [])
+    if not choices:
+        raise HTTPException(status_code=500, detail="Empty response from model")
+
+    message = choices[0].get("message", {})
+    content = message.get("content", "")
+    reasoning_content = message.get("reasoning_content", "")
+
+    usage = openai_response.get("usage", {})
+    input_tokens = usage.get("prompt_tokens", 0)
+    output_tokens = usage.get("completion_tokens", 0)
+
+    content_blocks = []
+    if reasoning_content:
+        content_blocks.append({"type": "text", "text": f"<thinking>{reasoning_content}</thinking>\n\n"})
+    if content:
+        content_blocks.append({"type": "text", "text": content})
+
+    return {
+        "id": openai_response.get("id", f"msg_{uuid.uuid4()}"),
+        "type": "message",
+        "role": "assistant",
+        "content": content_blocks,
+        "model": model,
+        "stop_reason": "end_turn",
+        "usage": {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens
+        }
+    }
+
+
+@app.post("/v1/messages")
+async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Request, api_key: dict = Depends(rate_limit_api_key)):
+    """
+    Anthropic Messages API endpoint.
+    Translates Anthropic-style requests to OpenAI-style and processes through LMArena.
+    """
+    debug_print("\n" + "="*80)
+    debug_print("🟣 ANTHROPIC MESSAGES REQUEST RECEIVED")
+    debug_print("="*80)
+    debug_print(f"🤖 Model: {request.model}")
+    debug_print(f"💬 Messages: {len(request.messages)}")
+    debug_print(f"🌊 Stream: {request.stream}")
+
+    # Convert Anthropic messages to OpenAI format
+    openai_messages = convert_anthropic_messages_to_openai(request.messages)
+
+    # Add system message if present
+    if request.system:
+        openai_messages.insert(0, {"role": "system", "content": request.system})
+
+    # Build OpenAI-style request body
+    openai_body = {
+        "model": request.model,
+        "messages": openai_messages,
+        "max_tokens": request.max_tokens,
+        "stream": request.stream,
+    }
+    if request.temperature is not None:
+        openai_body["temperature"] = request.temperature
+
+    debug_print(f"📦 Converted to OpenAI format")
+
+    # Create a mock request object for the chat completions handler
+    class MockRequest:
+        def __init__(self, body):
+            self._body = body
+
+        async def json(self):
+            return self._body
+
+        async def is_disconnected(self):
+            return await raw_request.is_disconnected()
+
+    mock_request = MockRequest(openai_body)
+
+    if request.stream:
+        # Streaming response
+        async def anthropic_stream_generator():
+            """Generate Anthropic-formatted SSE stream from OpenAI stream."""
+            message_id = f"msg_{uuid.uuid4()}"
+            input_tokens = 0
+            output_tokens = 0
+            accumulated_text = ""
+            accumulated_reasoning = ""
+            citations = []
+
+            try:
+                async for line in api_chat_completions(mock_request, api_key):
+                    if isinstance(line, StreamingResponse):
+                        # Handle the streaming response
+                        async for chunk in line.body_iterator:
+                            chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
+                            for line_part in chunk_str.strip().split('\n'):
+                                if not line_part.startswith('data: '):
+                                    continue
+                                data = line_part[6:]
+                                if data == '[DONE]':
+                                    # Send message_stop event
+                                    stop_event = {
+                                        "type": "message_stop",
+                                        "message": {
+                                            "id": message_id,
+                                            "type": "message",
+                                            "role": "assistant",
+                                            "content": [{"type": "text", "text": accumulated_text}],
+                                            "model": request.model,
+                                            "stop_reason": "end_turn",
+                                            "usage": {
+                                                "input_tokens": input_tokens,
+                                                "output_tokens": output_tokens
+                                            }
+                                        }
+                                    }
+                                    yield f"event: message_stop\ndata: {json.dumps(stop_event)}\n\n"
+                                    return
+
+                                try:
+                                    chunk_data = json.loads(data)
+                                    if "error" in chunk_data:
+                                        error_event = {
+                                            "type": "error",
+                                            "error": chunk_data["error"]
+                                        }
+                                        yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+                                        return
+
+                                    delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                                    if "content" in delta:
+                                        content = delta["content"]
+                                        accumulated_text += content
+                                        content_block = {
+                                            "type": "content_block_delta",
+                                            "delta": {"type": "text_delta", "text": content}
+                                        }
+                                        yield f"event: content_block_delta\ndata: {json.dumps(content_block)}\n\n"
+
+                                    if "reasoning_content" in delta:
+                                        reasoning = delta["reasoning_content"]
+                                        accumulated_reasoning += reasoning
+
+                                except json.JSONDecodeError:
+                                    continue
+
+            except Exception as e:
+                error_event = {
+                    "type": "error",
+                    "error": {"message": str(e), "type": "internal_error"}
+                }
+                yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+
+        return StreamingResponse(
+            anthropic_stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    else:
+        # Non-streaming response
+        result = await api_chat_completions(mock_request, api_key)
+
+        if isinstance(result, StreamingResponse):
+            # If we got a streaming response but weren't expecting one,
+            # read it and convert
+            full_response_text = ""
+            async for chunk in result.body_iterator:
+                chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
+                for line in chunk_str.strip().split('\n'):
+                    if line.startswith('data: '):
+                        data = line[6:]
+                        if data == '[DONE]':
+                            break
+                        try:
+                            chunk_data = json.loads(data)
+                            delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                            if "content" in delta:
+                                full_response_text += delta["content"]
+                        except json.JSONDecodeError:
+                            continue
+
+            return {
+                "id": f"msg_{uuid.uuid4()}",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": full_response_text}],
+                "model": request.model,
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 0, "output_tokens": 0}
+            }
+
+        if isinstance(result, dict) and "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"].get("message", "Unknown error"))
+
+        return convert_openai_response_to_anthropic(result, request.model)
+
 
 if __name__ == "__main__":
     # Avoid crashes on Windows consoles with non-UTF8 code pages (e.g., GBK) when printing emojis.

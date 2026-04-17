@@ -4966,7 +4966,7 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
                     "stop_reason": "end_turn"
                 },
                 "usage": {
-                    "output_tokens": len(accumulated_text.split())
+                    "output_tokens": len(accumulated_text)
                 }
             }
             yield f"event: message_delta\ndata: {json.dumps(message_delta)}\n\n"

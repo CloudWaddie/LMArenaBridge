@@ -4888,7 +4888,7 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
                     "content": [],
                     "model": request.model,
                     "stop_reason": None,
-                    "usage": {"input_tokens": 0, "output_tokens": 0}
+                    "usage": {"input_tokens": sum(len(str(m.get("content", ""))) for m in openai_messages), "output_tokens": 0}
                 }
             }
             yield f"event: message_start\ndata: {json.dumps(message_start)}\n\n"

@@ -4922,8 +4922,47 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
                     # Handle the streaming response
                     async for chunk in result.body_iterator:
                         chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
-                        for line_part in chunk_str.strip().split('\n'):
-                            if not line_part.startswith('data: '):
+            # Handle the streaming response
+            buffer = ""
+            async for chunk in result.body_iterator:
+                chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
+                buffer += chunk_str
+                while '\n' in buffer:
+                    line, buffer = buffer.split('\n', 1)
+                    line = line.strip()
+                    if not line.startswith('data: '):
+                        continue
+                    data = line[6:]
+                    if data == '[DONE]':
+                        break
+
+                    try:
+                        chunk_data = json.loads(data)
+                        if "error" in chunk_data:
+                            error_event = {
+                                "type": "error",
+                                "error": chunk_data["error"]
+                            }
+                            yield f"event: error\ndata: {json.dumps(error_event)}\n\n"
+                            return
+
+                        delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                        if "content" in delta:
+                            content = delta["content"]
+                            accumulated_text += content
+                            content_block = {
+                                "type": "content_block_delta",
+                                "index": 0,
+                                "delta": {"type": "text_delta", "text": content}
+                            }
+                            yield f"event: content_block_delta\ndata: {json.dumps(content_block)}\n\n"
+
+                        if "reasoning_content" in delta:
+                            reasoning = delta["reasoning_content"]
+                            accumulated_reasoning += reasoning
+
+                    except json.JSONDecodeError:
+                        continue
                                 continue
                             data = line_part[6:]
                             if data == '[DONE]':

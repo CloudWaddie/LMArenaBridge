@@ -1320,9 +1320,10 @@ async def dashboard(session: str = Depends(get_current_session)):
     else:
         stats_html = "<tr><td colspan='2' class='no-data'>No usage data yet</td></tr>"
 
-    # Check token status
-    token_status = "✅ Configured" if config.get("auth_token") else "❌ Not Set"
-    token_class = "status-good" if config.get("auth_token") else "status-bad"
+    # Check token status - check both legacy auth_token and new auth_tokens list
+    has_auth_token = bool(config.get("auth_token")) or bool(config.get("auth_tokens"))
+    token_status = "✅ Configured" if has_auth_token else "❌ Not Set"
+    token_class = "status-good" if has_auth_token else "status-bad"
     
     cf_status = "✅ Configured" if config.get("cf_clearance") else "❌ Not Set"
     cf_class = "status-good" if config.get("cf_clearance") else "status-bad"

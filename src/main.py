@@ -4905,7 +4905,20 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
                 # Call api_chat_completions and await the result first
                 result = await api_chat_completions(mock_request, api_key)
 
-                if isinstance(result, StreamingResponse):
+                # Call api_chat_completions and await the result first
+                result = await api_chat_completions(mock_request, api_key)
+
+                if not isinstance(result, StreamingResponse):
+                    # Handle non-streaming result or error
+                    if isinstance(result, dict) and "error" in result:
+                        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': result['error']})}\n\n"
+                    else:
+                        # Handle unexpected non-streaming success as an error or convert if needed
+                        yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': {'message': 'Unexpected non-streaming response'}})}\n\n"
+                    return
+
+                # Handle the streaming response
+                async for chunk in result.body_iterator:
                     # Handle the streaming response
                     async for chunk in result.body_iterator:
                         chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)

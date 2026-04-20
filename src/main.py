@@ -4722,7 +4722,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
 # Anthropic API Models
 from pydantic import BaseModel
-from typing import Literal
+from typing import Any
 
 class AnthropicMessageRequest(BaseModel):
     model: str

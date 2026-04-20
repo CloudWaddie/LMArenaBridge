@@ -4719,6 +4719,183 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         print("="*80 + "\n")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+
+# Anthropic API Models
+from pydantic import BaseModel
+from typing import Any
+
+class AnthropicMessageRequest(BaseModel):
+    model: str
+    messages: List[Dict[str, Any]]
+    max_tokens: int
+    system: Optional[str] = None
+    temperature: Optional[float] = None
+    stream: Optional[bool] = False
+
+
+@app.post("/api/v1/messages")
+async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Request, api_key: dict = Depends(rate_limit_api_key)):
+    """
+    Anthropic Messages API endpoint.
+    Translates Anthropic-style requests to OpenAI-style and processes through LMArena.
+    """
+    debug_print("\n" + "="*80)
+    debug_print("🟣 ANTHROPIC MESSAGES REQUEST RECEIVED")
+    debug_print("="*80)
+    debug_print(f"🤖 Model: {request.model}")
+    debug_print(f"💬 Messages: {len(request.messages)}")
+    debug_print(f"🌊 Stream: {request.stream}")
+
+    # Convert Anthropic messages to OpenAI format
+    openai_messages = []
+    for msg in request.messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            # Handle content blocks
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+            content = "\n".join(text_parts)
+        openai_messages.append({"role": role, "content": content})
+
+    # Add system message if present
+    if request.system:
+        openai_messages.insert(0, {"role": "system", "content": request.system})
+
+    # Build OpenAI-style request body
+    openai_body = {
+        "model": request.model,
+        "messages": openai_messages,
+        "max_tokens": request.max_tokens,
+        "stream": request.stream,
+    }
+    if request.temperature is not None:
+        openai_body["temperature"] = request.temperature
+
+    debug_print(f"📦 Converted to OpenAI format")
+
+    # Create a mock request object for the chat completions handler
+    class MockRequest:
+        def __init__(self, body):
+            self._body = body
+
+        async def json(self):
+            return self._body
+
+        async def is_disconnected(self):
+            return await raw_request.is_disconnected()
+
+    mock_request = MockRequest(openai_body)
+
+    if request.stream:
+        # Streaming response - convert OpenAI SSE to Anthropic format
+        async def anthropic_stream_generator():
+            message_id = f"msg_{uuid.uuid4()}"
+            accumulated_text = ""
+
+            # Send message_start
+            yield f"event: message_start\ndata: {json.dumps({'type': 'message_start', 'message': {'id': message_id, 'type': 'message', 'role': 'assistant', 'content': [], 'model': request.model, 'stop_reason': None, 'usage': {'input_tokens': sum(len(str(m.get('content', ''))) for m in openai_messages), 'output_tokens': 0}}})}\n\n"
+
+            # Send content_block_start
+            yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': ''}})}\n\n"
+
+            try:
+                result = await api_chat_completions(mock_request, api_key)
+
+                if isinstance(result, StreamingResponse):
+                    async for chunk in result.body_iterator:
+                        chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
+                        for line in chunk_str.strip().split('\n'):
+                            if line.startswith('data: '):
+                                data = line[6:]
+                                if data == '[DONE]':
+                                    break
+                                try:
+                                    chunk_data = json.loads(data)
+                                    delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                                    if "content" in delta:
+                                        content = delta["content"]
+                                        accumulated_text += content
+                                        yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': content}})}\n\n"
+                                except json.JSONDecodeError:
+                                    continue
+
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': {'message': str(e), 'type': 'internal_error'}})}\n\n"
+                return
+
+            # Send content_block_stop
+            yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': 0})}\n\n"
+
+            # Send message_delta
+            yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn'}, 'usage': {'output_tokens': len(accumulated_text)}})}\n\n"
+
+            # Send message_stop
+            yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"
+
+        return StreamingResponse(
+            anthropic_stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    else:
+        # Non-streaming response
+        result = await api_chat_completions(mock_request, api_key)
+
+        if isinstance(result, StreamingResponse):
+            # Read streaming response
+            full_text = ""
+            async for chunk in result.body_iterator:
+                chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
+                for line in chunk_str.strip().split('\n'):
+                    if line.startswith('data: '):
+                        data = line[6:]
+                        if data == '[DONE]':
+                            break
+                        try:
+                            chunk_data = json.loads(data)
+                            delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                            if "content" in delta:
+                                full_text += delta["content"]
+                        except json.JSONDecodeError:
+                            continue
+
+            return {
+                "id": f"msg_{uuid.uuid4()}",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": full_text}],
+                "model": request.model,
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 0, "output_tokens": len(full_text.split())}
+            }
+
+        if isinstance(result, dict) and "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"].get("message", "Unknown error"))
+
+        # Convert OpenAI response to Anthropic format
+        choices = result.get("choices", [])
+        content = ""
+        if choices:
+            content = choices[0].get("message", {}).get("content", "")
+
+        return {
+            "id": result.get("id", f"msg_{uuid.uuid4()}"),
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": content}],
+            "model": request.model,
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": result.get("usage", {}).get("prompt_tokens", 0), "output_tokens": result.get("usage", {}).get("completion_tokens", len(content))}
+        }
+
+
 if __name__ == "__main__":
     # Avoid crashes on Windows consoles with non-UTF8 code pages (e.g., GBK) when printing emojis.
     try:

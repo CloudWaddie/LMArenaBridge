@@ -4830,7 +4830,7 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
             yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': 0})}\n\n"
 
             # Send message_delta
-            yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn'}, 'usage': {'output_tokens': len(accumulated_text.split())}})}\n\n"
+            yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn'}, 'usage': {'output_tokens': len(accumulated_text)}})}\n\n"
 
             # Send message_stop
             yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"

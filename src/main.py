@@ -4892,7 +4892,7 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
             "content": [{"type": "text", "text": content}],
             "model": request.model,
             "stop_reason": "end_turn",
-            "usage": result.get("usage", {"input_tokens": 0, "output_tokens": len(content.split())})
+            "usage": {"input_tokens": result.get("usage", {}).get("prompt_tokens", 0), "output_tokens": result.get("usage", {}).get("completion_tokens", len(content))}
         }
 
 

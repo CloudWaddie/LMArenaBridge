@@ -526,7 +526,7 @@ async def refresh_arena_auth_token_via_lmarena_http(old_token: str, config: Opti
             return scraper.get("https://lmarena.ai/", cookies=cookies, timeout=30, allow_redirects=True)
         import asyncio as _aio
         resp = await _aio.to_thread(_cs_get)
-    except (cloudscraper.exceptions.CloudflareException, requests.exceptions.RequestException):
+    except (_cs.exceptions.CloudflareException, requests.exceptions.RequestException):
         return None
 
     try:

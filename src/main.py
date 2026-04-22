@@ -2642,7 +2642,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     response.raise_for_status()
                     return response
 
-                except (requests.exceptions.HTTPError, cloudscraper.exceptions.CloudflareException) as e:
+                except (requests.exceptions.HTTPError, _cs.exceptions.CloudflareException) as e:
                     # Handle HTTP errors from cloudscraper (requests-based)
                     status_code = getattr(getattr(e, 'response', None), 'status_code', None)
                     if status_code and status_code not in [429, 401]:

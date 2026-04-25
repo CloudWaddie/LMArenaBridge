@@ -32,9 +32,9 @@ class TestProvisionalUserIdSync(BaseBridgeTest):
         self.assertEqual(names, {"provisional_user_id"})
         urls = {str(c.get("url") or "") for c in context.added if c.get("url")}
         domains = {str(c.get("domain") or "") for c in context.added if c.get("domain")}
-        self.assertIn("https://lmarena.ai", urls)
         self.assertIn("https://arena.ai", urls)
-        self.assertIn(".lmarena.ai", domains)
+        self.assertIn("https://arena.ai", urls)
+        self.assertIn(".arena.ai", domains)
         self.assertIn(".arena.ai", domains)
 
         page.evaluate.assert_awaited()

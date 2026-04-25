@@ -205,8 +205,8 @@ def get_request_headers_with_token(token: str, recaptcha_v3_token: Optional[str]
     headers: dict[str, str] = {
         "Content-Type": "text/plain;charset=UTF-8",
         "Cookie": "; ".join(cookie_parts),
-        "Origin": "https://lmarena.ai",
-        "Referer": "https://lmarena.ai/?mode=direct",
+        "Origin": "https://arena.ai",
+        "Referer": "https://arena.ai/?mode=direct",
     }
 
     user_agent = normalize_user_agent_value(config.get("user_agent"))
@@ -523,7 +523,7 @@ async def refresh_arena_auth_token_via_lmarena_http(old_token: str, config: Opti
         def _cs_get():
             scraper = _cs.create_scraper()
             scraper.headers.update({"User-Agent": ua})
-            return scraper.get("https://lmarena.ai/", cookies=cookies, timeout=30, allow_redirects=True)
+            return scraper.get("https://arena.ai/", cookies=cookies, timeout=30, allow_redirects=True)
         import asyncio as _aio
         resp = await _aio.to_thread(_cs_get)
     except (_cs.exceptions.CloudflareException, requests.exceptions.RequestException):

@@ -25,7 +25,7 @@ Python version: **3.12** (see `.python-version`).
 
 ## Architecture
 
-This is an OpenAI-compatible API bridge to LM Arena (`lmarena.ai`). It exposes `POST /api/v1/chat/completions` and proxies requests through LMArena's internal API using browser automation to handle Cloudflare/reCAPTCHA challenges.
+This is an OpenAI-compatible API bridge to LM Arena (`arena.ai`). It exposes `POST /api/v1/chat/completions` and proxies requests through LMArena's internal API using browser automation to handle Cloudflare/reCAPTCHA challenges.
 
 ### Module structure (`src/`)
 

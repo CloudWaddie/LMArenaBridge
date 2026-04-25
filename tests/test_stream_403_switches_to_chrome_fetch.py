@@ -28,7 +28,7 @@ class TestStream403SwitchesToChromeFetch(BaseBridgeTest):
             headers={},
             text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
             method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
+            url="https://arena.ai/nextjs-api/stream/create-evaluation",
         )
         chrome_fetch_mock = AsyncMock(return_value=chrome_resp)
 

@@ -312,14 +312,14 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             "Accept": "text/x-component",
             "Content-Type": "text/plain;charset=UTF-8",
             "Next-Action": upload_action_id,
-            "Referer": "https://lmarena.ai/?mode=direct",
+            "Referer": "https://arena.ai/?mode=direct",
         })
         
         import cloudscraper as _cs
         def _cs_upload():
             scraper = _cs.create_scraper()
             return scraper.post(
-                "https://lmarena.ai/?mode=direct",
+                "https://arena.ai/?mode=direct",
                 headers=request_headers,
                 data=json.dumps([filename, mime_type]),
                 timeout=30.0,
@@ -378,7 +378,7 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    "https://lmarena.ai/?mode=direct",
+                    "https://arena.ai/?mode=direct",
                     headers=request_headers_step3,
                     content=json.dumps([key]),
                     timeout=30.0
@@ -784,8 +784,8 @@ async def get_initial_data():
             # Register the route interceptor
             await page.route('**/*', capture_js_route)
             
-            debug_print("Navigating to lmarena.ai...")
-            await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
+            debug_print("Navigating to arena.ai...")
+            await page.goto("https://arena.ai/", wait_until="domcontentloaded")
 
             debug_print("Waiting for Cloudflare challenge to complete...")
             challenge_passed = False
@@ -2429,7 +2429,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             # Use LMArena's retry endpoint
             # Format: PUT /nextjs-api/stream/retry-evaluation-session-message/{sessionId}/messages/{messageId}
             payload = {}
-            url = f"https://lmarena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
+            url = f"https://arena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Using PUT method for retry")
             http_method = "PUT"
@@ -2461,7 +2461,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = f"https://lmarena.ai{STREAM_CREATE_EVALUATION_PATH}"
+            url = f"https://arena.ai{STREAM_CREATE_EVALUATION_PATH}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
@@ -2490,7 +2490,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = f"https://lmarena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
+            url = f"https://arena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
@@ -3303,7 +3303,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 log_http_status(response.status_code, "LMArena API Stream")
 
                                 # Redirects break SSE streaming and usually indicate an origin change (arena.ai vs
-                                # lmarena.ai) or bot-mitigation. Switch to browser transports (userscript proxy when
+                                # arena.ai) or bot-mitigation. Switch to browser transports (userscript proxy when
                                 # active) and retry instead of trying to parse the redirect body as stream data.
                                 try:
                                     status_int = int(getattr(response, "status_code", 0) or 0)

@@ -102,7 +102,7 @@ class BrowserFetchStreamResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code == 0 or self.status_code >= 400:
-            request = httpx.Request(self._method, self._url or "https://lmarena.ai/")
+            request = httpx.Request(self._method, self._url or "https://arena.ai/")
             response = httpx.Response(self.status_code or 502, request=request, content=self._text.encode("utf-8"))
             raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=request, response=response)
 
@@ -255,7 +255,7 @@ class UserscriptProxyStreamResponse:
         self._headers: dict = {}
         self._timeout_seconds = int(timeout_seconds or 120)
         self._method = "POST"
-        self._url = "https://lmarena.ai/"
+        self._url = "https://arena.ai/"
 
     @property
     def status_code(self) -> int:
@@ -398,11 +398,11 @@ class UserscriptProxyStreamResponse:
             raise httpx.HTTPStatusError(f"HTTP {status}", request=request, response=response)
 
 
-_LMARENA_ORIGIN = "https://lmarena.ai"
+_LMARENA_ORIGIN = "https://arena.ai"
 _ARENA_ORIGIN = "https://arena.ai"
 _ARENA_HOST_TO_ORIGIN = {
-    "lmarena.ai": _LMARENA_ORIGIN,
-    "www.lmarena.ai": _LMARENA_ORIGIN,
+    "arena.ai": _LMARENA_ORIGIN,
+    "arena.ai": _LMARENA_ORIGIN,
     "arena.ai": _ARENA_ORIGIN,
     "www.arena.ai": _ARENA_ORIGIN,
 }
@@ -410,10 +410,10 @@ _ARENA_HOST_TO_ORIGIN = {
 
 def _detect_arena_origin(url: Optional[str] = None) -> str:
     """
-    Return the canonical origin (https://lmarena.ai or https://arena.ai) for a URL-like string.
+    Return the canonical origin (https://arena.ai or https://arena.ai) for a URL-like string.
 
     LMArena has historically used both domains. Browser automation can land on `arena.ai` even when the backend
-    constructs `https://lmarena.ai/...` URLs, so cookie ops must follow the actual origin.
+    constructs `https://arena.ai/...` URLs, so cookie ops must follow the actual origin.
     """
     text = str(url or "").strip()
     if not text:
@@ -440,7 +440,7 @@ def _arena_origin_candidates(url: Optional[str] = None) -> list[str]:
 
 def _arena_auth_cookie_specs(token: str, *, page_url: Optional[str] = None) -> list[dict]:
     """
-    Build host-only `arena-auth-prod-v1` cookie specs for both arena.ai and lmarena.ai.
+    Build host-only `arena-auth-prod-v1` cookie specs for both arena.ai and arena.ai.
 
     Using `url` (instead of `domain`) more closely matches how the site stores this cookie (host-only).
     """
@@ -465,14 +465,14 @@ def _provisional_user_id_cookie_specs(provisional_user_id: str, *, page_url: Opt
     specs: list[dict] = []
     for origin in _arena_origin_candidates(page_url):
         specs.append({"name": "provisional_user_id", "value": value, "url": origin, "path": "/"})
-    for domain in (".lmarena.ai", ".arena.ai"):
+    for domain in (".arena.ai", ".arena.ai"):
         # When using domain, do NOT include path - they're mutually exclusive in Playwright
         specs.append({"name": "provisional_user_id", "value": value, "domain": domain})
 
 
 async def _get_arena_context_cookies(context, *, page_url: Optional[str] = None) -> list[dict]:
     """
-    Fetch cookies for both arena.ai and lmarena.ai from a Playwright/Camoufox browser context.
+    Fetch cookies for both arena.ai and arena.ai from a Playwright/Camoufox browser context.
     """
     urls = _arena_origin_candidates(page_url)
     try:
@@ -510,7 +510,7 @@ def _normalize_userscript_proxy_url(url: str) -> str:
     """
     Convert LMArena absolute URLs into same-origin paths for in-page fetch.
 
-    The Camoufox proxy page can land on `arena.ai` while the backend constructs `https://lmarena.ai/...` URLs.
+    The Camoufox proxy page can land on `arena.ai` while the backend constructs `https://arena.ai/...` URLs.
     Absolute cross-origin URLs can cause browser fetch to reject with a generic NetworkError (CORS).
     """
     text = str(url or "").strip()
@@ -525,7 +525,7 @@ def _normalize_userscript_proxy_url(url: str) -> str:
     if not parts.scheme or not parts.netloc:
         return text
     host = str(parts.netloc or "").split("@")[-1].split(":")[0].lower()
-    if host not in {"lmarena.ai", "www.lmarena.ai", "arena.ai", "www.arena.ai"}:
+    if host not in {"arena.ai", "arena.ai", "arena.ai", "www.arena.ai"}:
         return text
     path = parts.path or "/"
     if parts.query:
@@ -635,17 +635,17 @@ async def fetch_lmarena_stream_via_chrome(
     desired_cookies: list[dict] = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".arena.ai"})
     if cf_bm:
-        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
+        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".arena.ai"})
     if cfuvid:
-        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
+        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".arena.ai"})
     if provisional_user_id:
         desired_cookies.append(
-            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
+            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".arena.ai"}
         )
     if grecaptcha_cookie:
-        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
+        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".arena.ai"})
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
 
@@ -733,7 +733,7 @@ async def fetch_lmarena_stream_via_chrome(
                 marker="LMArenaBridge Chrome Fetch",
                 headless=bool(headless),
             )
-            await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+            await page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
 
             # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile before minting tokens.
             try:
@@ -1140,17 +1140,17 @@ async def fetch_lmarena_stream_via_camoufox(
     desired_cookies: list[dict] = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".arena.ai"})
     if cf_bm:
-        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
+        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".arena.ai"})
     if cfuvid:
-        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
+        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".arena.ai"})
     if provisional_user_id:
         desired_cookies.append(
-            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
+            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".arena.ai"}
         )
     if grecaptcha_cookie:
-        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
+        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".arena.ai"})
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))
@@ -1200,10 +1200,10 @@ async def fetch_lmarena_stream_via_camoufox(
                 headless=headless,
             )
               
-            _m().debug_print(f"  🦊 Navigating to lmarena.ai...")
+            _m().debug_print(f"  🦊 Navigating to arena.ai...")
             try:
                 await asyncio.wait_for(
-                    page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=60000),
+                    page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=60000),
                     timeout=70.0,
                 )
             except Exception:
@@ -1891,14 +1891,14 @@ async def camoufox_proxy_worker():
                 desired_cookies: list[dict] = []
                 # When using domain, do NOT include path - they're mutually exclusive in Playwright
                 if cf_clearance:
-                    desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+                    desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".arena.ai"})
                 if cf_bm:
-                    desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
+                    desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".arena.ai"})
                 if cfuvid:
-                    desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
+                    desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".arena.ai"})
                 if provisional_user_id:
                     desired_cookies.append(
-                        {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
+                        {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".arena.ai"}
                     )
                 if desired_cookies:
                     try:
@@ -1997,8 +1997,8 @@ async def camoufox_proxy_worker():
                 )
 
                 try:
-                    _m().debug_print("🦊 Camoufox proxy: navigating to https://lmarena.ai/?mode=direct ...")
-                    await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+                    _m().debug_print("🦊 Camoufox proxy: navigating to https://arena.ai/?mode=direct ...")
+                    await page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
                     _m().debug_print("🦊 Camoufox proxy: navigation complete.")
                 except Exception as e:
                     _m().debug_print(f"⚠️ Navigation warning: {e}")
@@ -2178,7 +2178,7 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
                 try:
-                    await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+                    await page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
                 except Exception:
                     pass
                 try:
@@ -2422,7 +2422,7 @@ async def camoufox_proxy_worker():
                             wait_loops = 40
                             try:
                                 await page.goto(
-                                    "https://lmarena.ai/?mode=direct",
+                                    "https://arena.ai/?mode=direct",
                                     wait_until="domcontentloaded",
                                     timeout=120000,
                                 )

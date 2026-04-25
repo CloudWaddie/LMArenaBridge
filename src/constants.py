@@ -172,12 +172,12 @@ TURNSTILE_SITEKEY = "0x4AAAAAAA65vWDmG-O_lPtT"
 # ARENA ORIGINS
 # ============================================================
 
-LMARENA_ORIGIN = "https://lmarena.ai"
+LMARENA_ORIGIN = "https://arena.ai"
 ARENA_ORIGIN = "https://arena.ai"
 
 ARENA_HOST_TO_ORIGIN = {
-    "lmarena.ai": LMARENA_ORIGIN,
-    "www.lmarena.ai": LMARENA_ORIGIN,
+    "arena.ai": LMARENA_ORIGIN,
+    "arena.ai": LMARENA_ORIGIN,
     "arena.ai": ARENA_ORIGIN,
     "www.arena.ai": ARENA_ORIGIN,
 }
@@ -306,13 +306,13 @@ ARENA_AUTH_COOKIE = "arena-auth-prod-v1"
 GRECAPTCHA_COOKIE = "_GRECAPTCHA"
 
 # Cookie domains
-ARENA_COOKIE_DOMAINS = (".lmarena.ai", ".arena.ai")
+ARENA_COOKIE_DOMAINS = (".arena.ai", ".arena.ai")
 
 # ============================================================
 # API ENDPOINTS
 # ============================================================
 
-ARENA_DIRECT_MODE_URL = "https://lmarena.ai/?mode=direct"
+ARENA_DIRECT_MODE_URL = "https://arena.ai/?mode=direct"
 NEXTJS_API_SIGNUP = "/nextjs-api/sign-up"
 
 # ============================================================
@@ -344,8 +344,8 @@ TURNSTILE_INNER_SELECTORS = [
 # HTTP HEADERS
 # ============================================================
 
-ARENA_ORIGIN_HEADER = "https://lmarena.ai"
-ARENA_REFERER_HEADER = "https://lmarena.ai/?mode=direct"
+ARENA_ORIGIN_HEADER = "https://arena.ai"
+ARENA_REFERER_HEADER = "https://arena.ai/?mode=direct"
 
 # ============================================================
 # SUPABASE

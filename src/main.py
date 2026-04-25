@@ -2509,19 +2509,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         try:
             current_token = get_next_auth_token(exclude_tokens=failed_tokens)
         except HTTPException:
-            # Stream mode: when no auth token is configured, fall back to browser-backed transports
-            # (Userscript proxy / Chrome/Camoufox fetch). This matches strict-model behavior and avoids a hard 500.
-            if stream:
-                debug_print("⚠️ No auth token configured for streaming; enabling browser/proxy transports.")
-                current_token = ""
-                force_browser_transports_in_stream = True
-            # Non-streaming strict models can still proceed via browser fetch transports, which may have a valid
-            # arena-auth cookie already stored in the persistent profile.
-            elif strict_chrome_fetch_model:
-                debug_print("⚠️ No auth token configured; proceeding with browser-only transports.")
-                current_token = ""
-            else:
-                raise
+            debug_print("⚠️ No auth token configured; enabling browser/proxy transports.")
+            current_token = ""
+            force_browser_transports_in_stream = True
 
         # Strict models: if round-robin picked a placeholder/invalid-looking token but there is a better token
         # available, switch to the first plausible token without mutating user config.
@@ -2563,11 +2553,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         else:
             debug_print("🔑 No auth token configured (will rely on browser session cookies).")
         
-        # Retry logic wrapper
         async def make_request_with_retry(url, payload, http_method, max_retries=3):
-            """Make request with automatic retry on 429/401 errors"""
             nonlocal current_token, headers, failed_tokens, recaptcha_token
-            
+
             for attempt in range(max_retries):
                 try:
                     import cloudscraper as _cs
@@ -2579,10 +2567,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             return scraper.post(url, json=payload, headers=headers, timeout=120)
                     response = await asyncio.to_thread(_cs_request)
 
-                    # Log status with human-readable message
                     log_http_status(response.status_code, "LMArena API")
 
-                    # Check for retry-able errors
                     if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
                         debug_print(f"⏱️  Attempt {attempt + 1}/{max_retries} - Rate limit with token {current_token[:20]}...")
                         retry_after = response.headers.get("Retry-After")
@@ -2591,7 +2577,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                         if attempt < max_retries - 1:
                             try:
-                                # Try with next token (excluding failed ones)
                                 current_token = get_next_auth_token(exclude_tokens=failed_tokens)
                                 headers = get_request_headers_with_token(current_token, recaptcha_token)
                                 debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
@@ -2621,40 +2606,32 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                     elif response.status_code == HTTPStatus.UNAUTHORIZED:
                         debug_print(f"🔒 Attempt {attempt + 1}/{max_retries} - Auth failed with token {current_token[:20]}...")
-                        # Add current token to failed set
                         failed_tokens.add(current_token)
-                        # (Pruning disabled)
                         debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
 
                         if attempt < max_retries - 1:
                             try:
-                                # Try with next available token (excluding failed ones)
                                 current_token = get_next_auth_token(exclude_tokens=failed_tokens)
                                 headers = get_request_headers_with_token(current_token, recaptcha_token)
                                 debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
-                                await asyncio.sleep(1)  # Brief delay
+                                await asyncio.sleep(1)
                                 continue
                             except HTTPException as e:
                                 debug_print(f"❌ No more tokens available: {e.detail}")
                                 break
 
-                    # If we get here, return the response (success or non-retryable error)
                     response.raise_for_status()
                     return response
 
                 except (requests.exceptions.HTTPError, _cs.exceptions.CloudflareException) as e:
-                    # Handle HTTP errors from cloudscraper (requests-based)
                     status_code = getattr(getattr(e, 'response', None), 'status_code', None)
                     if status_code and status_code not in [429, 401]:
                         raise
-                    # If last attempt, raise the error
                     if attempt == max_retries - 1:
                         raise
-            
-            # Should not reach here, but just in case
+
             raise HTTPException(status_code=503, detail="Max retries exceeded")
-        
-        # Handle streaming mode
+
         if stream:
             async def generate_stream():
                 nonlocal current_token, headers, failed_tokens, recaptcha_token
@@ -4297,7 +4274,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     debug_print("⚠️ Userscript Proxy returned None. Falling back...")
 
             if response is None:
-                if strict_chrome_fetch_model:
+                if strict_chrome_fetch_model or force_browser_transports_in_stream:
                     debug_print(f"🌐 Using Chrome fetch transport for non-streaming strict model ({model_public_name})...")
                     # Chrome fetch transport has its own internal reCAPTCHA retries, 
                     # but we add an outer loop here to handle token rotation (401) and rate limits (429).

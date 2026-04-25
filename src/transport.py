@@ -2435,8 +2435,23 @@ async def camoufox_proxy_worker():
                         cur = await _get_auth_cookie_value()
                         if cur and not _m().is_arena_auth_token_expired(cur, skew_seconds=0):
                             _m().debug_print("🦊 Camoufox proxy: acquired arena-auth-prod-v1 cookie (anonymous user).")
-                            break
-                        await asyncio.sleep(0.5)
+                        # Save to browser_cookies so plain HTTP requests can use it without browser transport
+                        try:
+                            cfg = _m().get_config()
+                            if _m()._upsert_browser_session_into_config(cfg, [{"name": "arena-auth-prod-v1", "value": cur}]):
+                                _m().save_config(cfg)
+                                _m().debug_print("🦊 Camoufox proxy: saved arena-auth to browser_cookies for HTTP fallback.")
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+                
+                
+                try:
+                    cfg = _m().get_config()
+                    if _m()._upsert_browser_session_into_config(cfg, [{"name": "arena-auth-prod-v1", "value": cur}]):
+                        _m().save_config(cfg)
+                        _m().debug_print("🦊 Camoufox proxy: saved arena-auth to browser_cookies for HTTP fallback.")
                 except Exception:
                     pass
 

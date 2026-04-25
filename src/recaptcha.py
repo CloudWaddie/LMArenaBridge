@@ -686,20 +686,64 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 page,
                 "() => { const w = window.wrappedJSObject || window; return !!(w.grecaptcha && w.grecaptcha.enterprise); }",
             )
+            _m().debug_print(f"  📦 Library ready: {lib_ready}")
             if not lib_ready:
-                _m().debug_print("  ⚠️ Library not found immediately. Waiting...")
-                await asyncio.sleep(3)
+                _m().debug_print("  ⚠️ Library not found. Checking basic grecaptcha...")
+                lib_ready = await _m().safe_page_evaluate(
+                    page,
+                    "() => { const w = window.wrappedJSObject || window; return !!(w.grecaptcha); }",
+                )
+                _m().debug_print(f"  📦 Basic grecaptcha ready: {lib_ready}")
+            if not lib_ready:
+                _m().debug_print("  ⚠️ Library not found. Injecting reCAPTCHA scripts...")
+                # Inject reCAPTCHA scripts since LMArena may not have them loaded
+                await _m().safe_page_evaluate(
+                    page,
+                    """() => {
+                        const w = window.wrappedJSObject || window;
+                        if (w.__LM_BRIDGE_RECAPTCHA_INJECTED) return true;
+                        w.__LM_BRIDGE_RECAPTCHA_INJECTED = true;
+                        const h = w.document?.head;
+                        if (!h) return false;
+                        const urls = [
+                            'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(recaptcha_sitekey),
+                            'https://www.google.com/recaptcha/api.js?render=' + encodeURIComponent(recaptcha_sitekey),
+                        ];
+                        for (const u of urls) {
+                            const s = w.document.createElement('script');
+                            s.src = u;
+                            s.async = true;
+                            s.defer = true;
+                            h.appendChild(s);
+                        }
+                        return true;
+                    }""",
+                    recaptcha_sitekey=recaptcha_sitekey,
+                )
+                # Wait for scripts to load
+                await asyncio.sleep(5)
                 lib_ready = await _m().safe_page_evaluate(
                     page,
                     "() => { const w = window.wrappedJSObject || window; return !!(w.grecaptcha && w.grecaptcha.enterprise); }",
                 )
                 if not lib_ready:
-                    _m().debug_print("❌ reCAPTCHA library never loaded.")
+                    _m().debug_print("❌ reCAPTCHA library still not loaded after injection.")
                     return None
 
             # 3. Execute reCAPTCHA using await (more reliable than Promise callbacks)
             _m().debug_print(f"  🔑 Using sitekey: {recaptcha_sitekey[:20]}..., action: {recaptcha_action}")
             _m().debug_print("  🚀 Triggering reCAPTCHA execution...")
+            
+            # Wait for page to stabilize before executing reCAPTCHA
+            # SPA navigation can destroy the execution context mid-evaluation
+            try:
+                await page.wait_for_load_state("networkidle", timeout=10000)
+            except Exception:
+                try:
+                    await page.wait_for_load_state("domcontentloaded")
+                except Exception:
+                    pass
+            await asyncio.sleep(1)
             
             mint_js = f"""async () => {{
                 const w = window.wrappedJSObject || window;

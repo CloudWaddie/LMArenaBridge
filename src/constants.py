@@ -172,12 +172,12 @@ TURNSTILE_SITEKEY = "0x4AAAAAAA65vWDmG-O_lPtT"
 # ARENA ORIGINS
 # ============================================================
 
-LMARENA_ORIGIN = "https://arena.ai"
+LMARENA_ORIGIN = "https://lmarena.ai"
 ARENA_ORIGIN = "https://arena.ai"
 
 ARENA_HOST_TO_ORIGIN = {
-    "arena.ai": LMARENA_ORIGIN,
-    "arena.ai": LMARENA_ORIGIN,
+    "lmarena.ai": LMARENA_ORIGIN,
+    "www.lmarena.ai": LMARENA_ORIGIN,
     "arena.ai": ARENA_ORIGIN,
     "www.arena.ai": ARENA_ORIGIN,
 }
@@ -207,9 +207,9 @@ GRECAPTCHA_POLL_MS = 250
 TURNSTILE_MAX_ATTEMPTS = 15
 
 # Token expiry margins (seconds)
-TOKEN_EXPIRY_SKEW_SECONDS = 30
+TOKEN_EXPIRY_SKEW_SECONDS = 300
 RECAPTCHA_TOKEN_EXPIRY_SECONDS = 110
-RECAPTCHA_V3_TOKEN_LIFETIME_SECONDS = 120
+RECAPTCHA_V3_TOKEN_LIFETIME_SECONDS = 110
 
 # Background refresh interval (seconds)
 PERIODIC_REFRESH_INTERVAL_SECONDS = 1800  # 30 minutes
@@ -306,7 +306,7 @@ ARENA_AUTH_COOKIE = "arena-auth-prod-v1"
 GRECAPTCHA_COOKIE = "_GRECAPTCHA"
 
 # Cookie domains
-ARENA_COOKIE_DOMAINS = (".arena.ai", ".arena.ai")
+ARENA_COOKIE_DOMAINS = (".lmarena.ai", ".arena.ai")
 
 # ============================================================
 # API ENDPOINTS

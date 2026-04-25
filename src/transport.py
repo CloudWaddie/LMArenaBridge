@@ -637,17 +637,20 @@ async def fetch_lmarena_stream_via_chrome(
     desired_cookies: list[dict] = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": _domain})
     if cf_bm:
-        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": _domain})
     if cfuvid:
-        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": _domain})
     if provisional_user_id:
-        desired_cookies.append(
-            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
-        )
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "provisional_user_id", "value": provisional_user_id, "domain": _domain})
     if grecaptcha_cookie:
-        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": _domain})
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
 
@@ -1142,17 +1145,20 @@ async def fetch_lmarena_stream_via_camoufox(
     desired_cookies: list[dict] = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": _domain})
     if cf_bm:
-        desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": _domain})
     if cfuvid:
-        desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": _domain})
     if provisional_user_id:
-        desired_cookies.append(
-            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
-        )
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "provisional_user_id", "value": provisional_user_id, "domain": _domain})
     if grecaptcha_cookie:
-        desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": ".lmarena.ai"})
+        for _domain in (".lmarena.ai", ".arena.ai"):
+            desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": _domain})
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))

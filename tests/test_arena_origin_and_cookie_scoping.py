@@ -13,18 +13,18 @@ class TestArenaOriginAndCookieScoping(BaseBridgeTest):
     def test_arena_origin_candidates(self) -> None:
         self.assertEqual(
             self.main._arena_origin_candidates("https://arena.ai/nextjs-api/sign-up"),
-            ["https://arena.ai", "https://arena.ai"],
+            ["https://arena.ai", "https://lmarena.ai"],
         )
         self.assertEqual(
-            self.main._arena_origin_candidates("https://arena.ai/nextjs-api/stream/create-evaluation"),
-            ["https://arena.ai", "https://arena.ai"],
+            self.main._arena_origin_candidates("https://lmarena.ai/nextjs-api/stream/create-evaluation"),
+            ["https://lmarena.ai", "https://arena.ai"],
         )
 
     def test_arena_auth_cookie_specs_scope_to_both_origins(self) -> None:
         specs = self.main._arena_auth_cookie_specs("base64-token-1", page_url="https://arena.ai/?mode=direct")
         self.assertEqual(len(specs), 2)
         urls = [str(c.get("url") or "") for c in specs]
-        self.assertEqual(urls, ["https://arena.ai", "https://arena.ai"])
+        self.assertEqual(urls, ["https://arena.ai", "https://lmarena.ai"])
         for cookie in specs:
             self.assertEqual(cookie.get("name"), "arena-auth-prod-v1")
             self.assertEqual(cookie.get("value"), "base64-token-1")
@@ -35,8 +35,8 @@ class TestArenaOriginAndCookieScoping(BaseBridgeTest):
         self.assertEqual(len(specs), 4)
         urls = {str(c.get("url") or "") for c in specs if c.get("url")}
         domains = {str(c.get("domain") or "") for c in specs if c.get("domain")}
-        self.assertEqual(urls, {"https://arena.ai", "https://arena.ai"})
-        self.assertEqual(domains, {".arena.ai", ".arena.ai"})
+        self.assertEqual(urls, {"https://arena.ai", "https://lmarena.ai"})
+        self.assertEqual(domains, {".arena.ai", ".lmarena.ai"})
 
     async def test_get_arena_context_cookies_dedupes_by_name_domain_path(self) -> None:
         class _FakeContext:
@@ -52,10 +52,10 @@ class TestArenaOriginAndCookieScoping(BaseBridgeTest):
                         {"name": "a", "domain": "arena.ai", "path": "/", "value": "v1"},
                         {"name": "b", "domain": "arena.ai", "path": "/", "value": "b1"},
                     ]
-                if urls == "https://arena.ai":
+                if urls == "https://lmarena.ai":
                     return [
-                        {"name": "a", "domain": "arena.ai", "path": "/", "value": "v2"},
-                        {"name": "c", "domain": "arena.ai", "path": "/", "value": "c1"},
+                        {"name": "a", "domain": "arena.ai", "path": "/", "value": "v2"}, # This should be deduped
+                        {"name": "c", "domain": "lmarena.ai", "path": "/", "value": "c1"},
                     ]
                 return []
 

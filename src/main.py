@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager, AsyncExitStack
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime, timezone, timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlparse, parse_qs
 
 import uvicorn
 from camoufox.async_api import AsyncCamoufox
@@ -272,26 +272,30 @@ def uuid7():
     hex_str = f"{uuid_int:032x}"
     return f"{hex_str[0:8]}-{hex_str[8:12]}-{hex_str[12:16]}-{hex_str[16:20]}-{hex_str[20:32]}"
 
-def check_link_expiry(url: str) -> bool:
-    """Check if an S3/R2 signed URL is still valid based on its query params."""
+def _get_signed_url_expiry(url: str) -> Optional[float]:
+    """Extract expiry timestamp from an S3/R2 signed URL."""
     try:
-        from urllib.parse import urlparse, parse_qs
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
         # S3/R2 standard headers for signed URLs
         date_str = params.get("X-Amz-Date", [None])[0]
         expires_str = params.get("X-Amz-Expires", [None])[0]
         if not date_str or not expires_str:
-            return False
+            return None
         
         # Parse timestamp format: 20260425T071405Z
         dt = datetime.strptime(date_str, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-        expiry_ts = dt.timestamp() + int(expires_str)
-        
-        # Return True if current time is before expiry (with 60s safety buffer)
-        return time.time() < (expiry_ts - 60)
-    except Exception:
+        return dt.timestamp() + int(expires_str)
+    except (ValueError, TypeError, IndexError, AttributeError):
+        return None
+
+def check_link_expiry(url: str) -> bool:
+    """Check if an S3/R2 signed URL is still valid based on its query params."""
+    expiry_ts = _get_signed_url_expiry(url)
+    if expiry_ts is None:
         return False
+    # Return True if current time is before expiry (with 60s safety buffer)
+    return time.time() < (expiry_ts - 60)
 
 # Image upload helper functions
 async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: str) -> Optional[tuple]:
@@ -309,7 +313,12 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         image_hash = hashlib.md5(image_data).hexdigest()
         cached = _state_module.IMAGES_CACHE.get(image_hash)
         if cached:
-            if check_link_expiry(cached.get("url", "")):
+            # Use cached expiry directly if available, otherwise fallback to parsing URL
+            expiry = cached.get("expiry")
+            if expiry is None:
+                expiry = _get_signed_url_expiry(cached.get("url", ""))
+            
+            if expiry and time.time() < (expiry - 60):
                 debug_print(f"📦 Using cached image for hash {image_hash[:8]}...")
                 return cached["key"], cached["url"]
             else:
@@ -432,22 +441,20 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             
             download_url = download_data['data']['url']
             debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
+            
             # Cache the uploaded image by MD5 to avoid redundant uploads.
-            try:
-                from urllib.parse import urlparse, parse_qs
-                parsed = urlparse(download_url)
-                params = parse_qs(parsed.query)
-                date_str = params.get("X-Amz-Date", [None])[0]
-                expires_str = params.get("X-Amz-Expires", [None])[0]
-                if date_str and expires_str:
-                    dt = datetime.strptime(date_str, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-                    expiry_ts = dt.timestamp() + int(expires_str)
-                else:
-                    expiry_ts = time.time() + 3600
-            except Exception:
+            expiry_ts = _get_signed_url_expiry(download_url)
+            if expiry_ts is None:
                 expiry_ts = time.time() + 3600
 
             try:
+                # LRU/Size limit for IMAGES_CACHE to prevent memory growth
+                if len(_state_module.IMAGES_CACHE) >= 1000:
+                    # Simple eviction: clear 10% of cache if full
+                    keys_to_remove = list(_state_module.IMAGES_CACHE.keys())[:100]
+                    for k in keys_to_remove:
+                        _state_module.IMAGES_CACHE.pop(k, None)
+                
                 _state_module.IMAGES_CACHE[image_hash] = {"key": key, "url": download_url, "expiry": float(expiry_ts)}
             except Exception:
                 pass
@@ -939,19 +946,20 @@ async def get_initial_data():
                         text = str(item.get('text', ''))
                         matches = re.findall(action_pattern, text)
                         for action_id, action_name in matches:
-                            if action_name not in _state_module.DISCOVERED_ACTIONS:
+                            if _state_module.DISCOVERED_ACTIONS.get(action_name) != action_id:
                                 _state_module.DISCOVERED_ACTIONS[action_name] = action_id
                                 found_count += 1
-
-                    # Update specific config keys for backward compatibility if found
-                    if "generateUploadUrl" in _state_module.DISCOVERED_ACTIONS:
-                        config["next_action_upload"] = _state_module.DISCOVERED_ACTIONS["generateUploadUrl"]
-                    if "getSignedUrl" in _state_module.DISCOVERED_ACTIONS:
-                        config["next_action_signed_url"] = _state_module.DISCOVERED_ACTIONS["getSignedUrl"]
+                    
+                    if found_count > 0:
+                        debug_print(f"  ✅ Updated {found_count} Next-Action IDs in memory")
+                        if "generateUploadUrl" in _state_module.DISCOVERED_ACTIONS:
+                            config["next_action_upload"] = _state_module.DISCOVERED_ACTIONS["generateUploadUrl"]
+                        if "getSignedUrl" in _state_module.DISCOVERED_ACTIONS:
+                            config["next_action_signed_url"] = _state_module.DISCOVERED_ACTIONS["getSignedUrl"]
+                        save_config(config)
                     
                     if _state_module.DISCOVERED_ACTIONS:
-                        save_config(config)
-                        debug_print(f"✅ Discovered {len(_state_module.DISCOVERED_ACTIONS)} Server Actions (New: {found_count})")
+                        debug_print(f"✅ Discovered {len(_state_module.DISCOVERED_ACTIONS)} Server Actions (New/Updated: {found_count})")
                     
             except Exception as e:
                 debug_print(f"❌ Error during Server Action discovery: {e}")

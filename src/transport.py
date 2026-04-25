@@ -417,7 +417,7 @@ def _detect_arena_origin(url: Optional[str] = None) -> str:
     """
     text = str(url or "").strip()
     if not text:
-        return _LMARENA_ORIGIN
+        return _ARENA_ORIGIN
     try:
         parts = urlsplit(text)
     except Exception:
@@ -428,13 +428,13 @@ def _detect_arena_origin(url: Optional[str] = None) -> str:
         host = str(parts.netloc or "").split("@")[-1].split(":")[0].lower()
     if not host:
         host = text.split("/")[0].split("@")[-1].split(":")[0].lower()
-    return _ARENA_HOST_TO_ORIGIN.get(host, _LMARENA_ORIGIN)
+    return _ARENA_HOST_TO_ORIGIN.get(host, _ARENA_ORIGIN)
 
 
 def _arena_origin_candidates(url: Optional[str] = None) -> list[str]:
     """Return `[primary, secondary]` origins, preferring the detected origin but always including both."""
     primary = _detect_arena_origin(url)
-    secondary = _ARENA_ORIGIN if primary == _LMARENA_ORIGIN else _LMARENA_ORIGIN
+    secondary = _LMARENA_ORIGIN if primary == _ARENA_ORIGIN else _ARENA_ORIGIN
     return [primary, secondary]
 
 
@@ -636,21 +636,19 @@ async def fetch_lmarena_stream_via_chrome(
 
     desired_cookies: list[dict] = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
-    if cf_clearance:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": _domain})
-    if cf_bm:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": _domain})
-    if cfuvid:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": _domain})
-    if provisional_user_id:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "provisional_user_id", "value": provisional_user_id, "domain": _domain})
-    if grecaptcha_cookie:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": _domain})
+    # We define cookies for both domains for seamless migration
+    cookie_definitions = [
+        (cf_clearance, "cf_clearance"),
+        (cf_bm, "__cf_bm"),
+        (cfuvid, "_cfuvid"),
+        (provisional_user_id, "provisional_user_id"),
+        (grecaptcha_cookie, "_GRECAPTCHA"),
+    ]
+    for value, name in cookie_definitions:
+        if value:
+            for _domain in (".lmarena.ai", ".arena.ai"):
+                desired_cookies.append({"name": name, "value": value, "domain": _domain})
+    
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
 
@@ -1144,21 +1142,19 @@ async def fetch_lmarena_stream_via_camoufox(
 
     desired_cookies: list[dict] = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
-    if cf_clearance:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": _domain})
-    if cf_bm:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": _domain})
-    if cfuvid:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": _domain})
-    if provisional_user_id:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "provisional_user_id", "value": provisional_user_id, "domain": _domain})
-    if grecaptcha_cookie:
-        for _domain in (".lmarena.ai", ".arena.ai"):
-            desired_cookies.append({"name": "_GRECAPTCHA", "value": grecaptcha_cookie, "domain": _domain})
+    # We define cookies for both domains for seamless migration
+    cookie_definitions = [
+        (cf_clearance, "cf_clearance"),
+        (cf_bm, "__cf_bm"),
+        (cfuvid, "_cfuvid"),
+        (provisional_user_id, "provisional_user_id"),
+        (grecaptcha_cookie, "_GRECAPTCHA"),
+    ]
+    for value, name in cookie_definitions:
+        if value:
+            for _domain in (".lmarena.ai", ".arena.ai"):
+                desired_cookies.append({"name": name, "value": value, "domain": _domain})
+    
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))
@@ -2451,6 +2447,8 @@ async def camoufox_proxy_worker():
                             if _m()._upsert_browser_session_into_config(cfg, [{"name": "arena-auth-prod-v1", "value": cur}]):
                                 _m().save_config(cfg)
                                 _m().debug_print("🦊 Camoufox proxy: saved arena-auth to browser_cookies for HTTP fallback.")
+                        except (IOError, json.JSONDecodeError) as e:
+                            _m().debug_print(f"🦊 Camoufox proxy: failed to save arena-auth to config: {e}")
                         except Exception:
                             pass
                         break

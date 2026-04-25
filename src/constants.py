@@ -159,7 +159,7 @@ STATUS_MESSAGES = {
 # ============================================================
 
 # Default reCAPTCHA sitekey and action from gpt4free/g4f/Provider/needs_auth/LMArena.py
-RECAPTCHA_SITEKEY = "6Led_uYrAAAAAKjxDIF58fgFtX3t8loNAK85bW9I"
+RECAPTCHA_SITEKEY = "6Led_uYrAAAAAIP_9E8Ais_67Z6Vp4vdf40p8SQU"
 RECAPTCHA_ACTION = "chat_submit"
 
 # reCAPTCHA Enterprise v2 sitekey used when v3 scoring fails and LMArena prompts a checkbox challenge
@@ -207,9 +207,9 @@ GRECAPTCHA_POLL_MS = 250
 TURNSTILE_MAX_ATTEMPTS = 15
 
 # Token expiry margins (seconds)
-TOKEN_EXPIRY_SKEW_SECONDS = 300
-RECAPTCHA_TOKEN_EXPIRY_SECONDS = 110
-RECAPTCHA_V3_TOKEN_LIFETIME_SECONDS = 110
+TOKEN_EXPIRY_SKEW_SECONDS = 60
+RECAPTCHA_TOKEN_EXPIRY_SECONDS = 115
+RECAPTCHA_V3_TOKEN_LIFETIME_SECONDS = 115
 
 # Background refresh interval (seconds)
 PERIODIC_REFRESH_INTERVAL_SECONDS = 1800  # 30 minutes

@@ -23,6 +23,7 @@ import time
 from typing import Optional
 
 import httpx
+import requests
 from fastapi import HTTPException
 
 
@@ -142,8 +143,15 @@ def _upsert_browser_session_into_config(config: dict, cookies: list[dict], user_
         changed = True
     # Only promote to auth_tokens if persist is enabled
     if bool(config.get("persist_arena_auth_cookie")) and combined:
-        if config.get("auth_tokens") != [combined]:
-            config["auth_tokens"] = [combined]
+        existing = config.get("auth_tokens")
+        if isinstance(existing, list):
+            tokens = [str(t or "").strip() for t in existing if str(t or "").strip()]
+        else:
+            tokens = []
+        if combined not in tokens:
+            tokens.append(combined)
+        if existing != tokens:
+            config["auth_tokens"] = tokens
             changed = True
 
     # Promote frequently-used cookies to top-level config keys.

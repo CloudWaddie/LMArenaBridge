@@ -3295,7 +3295,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 log_http_status(response.status_code, "LMArena API Stream")
 
                                 # Redirects break SSE streaming and usually indicate an origin change (arena.ai vs
-                                # arena.ai) or bot-mitigation. Switch to browser transports (userscript proxy when
+                                # lmarena.ai) or bot-mitigation. Switch to browser transports (userscript proxy when
                                 # active) and retry instead of trying to parse the redirect body as stream data.
                                 try:
                                     status_int = int(getattr(response, "status_code", 0) or 0)

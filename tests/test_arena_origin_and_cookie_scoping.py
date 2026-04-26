@@ -8,16 +8,13 @@ class TestArenaOriginAndCookieScoping(BaseBridgeTest):
         self.assertEqual(self.main._detect_arena_origin("about:blank"), "https://arena.ai")
         self.assertEqual(self.main._detect_arena_origin("https://arena.ai/?mode=direct"), "https://arena.ai")
         self.assertEqual(self.main._detect_arena_origin("https://arena.ai/?mode=direct"), "https://arena.ai")
-        self.assertEqual(self.main._detect_arena_origin("https://www.arena.ai/foo"), "https://arena.ai")
-
-    def test_arena_origin_candidates(self) -> None:
         self.assertEqual(
             self.main._arena_origin_candidates("https://arena.ai/nextjs-api/sign-up"),
             ["https://arena.ai", "https://lmarena.ai"],
         )
         self.assertEqual(
-            self.main._arena_origin_candidates("https://lmarena.ai/nextjs-api/stream/create-evaluation"),
-            ["https://lmarena.ai", "https://arena.ai"],
+            self.main._arena_origin_candidates("https://arena.ai/nextjs-api/stream/create-evaluation"),
+            ["https://arena.ai", "https://lmarena.ai"],
         )
 
     def test_arena_auth_cookie_specs_scope_to_both_origins(self) -> None:

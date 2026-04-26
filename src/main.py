@@ -448,15 +448,14 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
                 expiry_ts = time.time() + 3600
 
             try:
-                # LRU/Size limit for IMAGES_CACHE to prevent memory growth
+                # Size limit for IMAGES_CACHE to prevent memory growth (FIFO eviction)
                 if len(_state_module.IMAGES_CACHE) >= 1000:
-                    # Simple eviction: clear 10% of cache if full
-                    keys_to_remove = list(_state_module.IMAGES_CACHE.keys())[:100]
+                    # Clear 10% of cache if full
+                    keys_to_remove = list(_state_module.IMAGES_CACHE)[:100]
                     for k in keys_to_remove:
                         _state_module.IMAGES_CACHE.pop(k, None)
-                # Implement a basic size limit to prevent memory exhaustion
-                if len(_state_module.IMAGES_CACHE) < 10000:
-                    _state_module.IMAGES_CACHE[image_hash] = {"key": key, "url": download_url, "expiry": float(expiry_ts)}
+                
+                _state_module.IMAGES_CACHE[image_hash] = {"key": key, "url": download_url, "expiry": float(expiry_ts)}
             except Exception:
                 pass
 

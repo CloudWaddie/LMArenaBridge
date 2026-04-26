@@ -454,8 +454,10 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
                     keys_to_remove = list(_state_module.IMAGES_CACHE.keys())[:100]
                     for k in keys_to_remove:
                         _state_module.IMAGES_CACHE.pop(k, None)
-                
-                _state_module.IMAGES_CACHE[image_hash] = {"key": key, "url": download_url, "expiry": float(expiry_ts)}
+            try:
+                # Implement a basic size limit to prevent memory exhaustion
+                if len(_state_module.IMAGES_CACHE) < 10000:
+                    _state_module.IMAGES_CACHE[image_hash] = {"key": key, "url": download_url, "expiry": float(expiry_ts)}
             except Exception:
                 pass
 
@@ -939,7 +941,7 @@ async def get_initial_data():
                     debug_print(f"  📦 Scanning {len(captured_responses)} JavaScript chunks for Server Actions...")
                     # Regex pattern based on Next.js server-reference generation:
                     # (0,a.createServerReference)("HASH",a.callServer,void 0,a.findSourceMapURL,"ACTION_NAME")
-                    action_pattern = r'\(0,[a-zA-Z_$][\w$]*\.createServerReference\)\(\"([\w\d]*?)\",[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\'](\w+)["\']\)'
+                    action_pattern = r'\(0,[a-zA-Z_$][\w$]*\.createServerReference\)\(["\']([\w\d]*?)["\'],[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\'](\w+)["\']\)'
                     
                     found_count = 0
                     for item in captured_responses:

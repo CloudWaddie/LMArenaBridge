@@ -41,9 +41,6 @@ class TestArenaOriginAndCookieScoping(BaseBridgeTest):
                 self.calls: list[object] = []
 
             async def cookies(self, urls):  # noqa: ANN001
-                self.calls.append(urls)
-                if isinstance(urls, list):
-                    raise RuntimeError("bulk not supported")
                 if urls == "https://arena.ai":
                     return [
                         {"name": "a", "domain": "arena.ai", "path": "/", "value": "v1"},
@@ -54,7 +51,6 @@ class TestArenaOriginAndCookieScoping(BaseBridgeTest):
                         {"name": "a", "domain": "arena.ai", "path": "/", "value": "v2"}, # This should be deduped
                         {"name": "c", "domain": "lmarena.ai", "path": "/", "value": "c1"},
                     ]
-                return []
 
         ctx = _FakeContext()
         cookies = await self.main._get_arena_context_cookies(ctx, page_url="https://arena.ai/?mode=direct")

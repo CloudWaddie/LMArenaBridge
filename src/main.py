@@ -454,7 +454,6 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
                     keys_to_remove = list(_state_module.IMAGES_CACHE.keys())[:100]
                     for k in keys_to_remove:
                         _state_module.IMAGES_CACHE.pop(k, None)
-            try:
                 # Implement a basic size limit to prevent memory exhaustion
                 if len(_state_module.IMAGES_CACHE) < 10000:
                     _state_module.IMAGES_CACHE[image_hash] = {"key": key, "url": download_url, "expiry": float(expiry_ts)}

@@ -63,7 +63,7 @@ class TestStreamTaskExceptionSilenced(unittest.IsolatedAsyncioTestCase):
             ):
                 resp = await main.fetch_lmarena_stream_via_chrome(
                     "POST",
-                    "https://lmarena.ai/api",
+                    "https://arena.ai/api",
                     {"recaptchaV3Token": "payload-token"},
                     "token",
                     timeout_seconds=2,

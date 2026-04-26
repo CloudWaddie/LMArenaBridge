@@ -19,7 +19,7 @@ class TestStrictModelsForceChromeFetch(BaseBridgeTest):
             headers={},
             text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
             method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
+            url="https://arena.ai/nextjs-api/stream/create-evaluation",
         )
         camoufox_fetch_mock = AsyncMock(return_value=camoufox_resp)
 

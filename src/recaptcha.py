@@ -315,8 +315,8 @@ async def _set_provisional_user_id_in_browser(page, context, *, provisional_user
     try:
         if context is not None:
             # Keep cookie variants in sync:
-            # - Some sessions store `provisional_user_id` as a domain cookie on `.lmarena.ai`
-            # - Others store it as a host-only cookie on `lmarena.ai` (via `url`)
+            # - Some sessions store `provisional_user_id` as a domain cookie on `.arena.ai`
+            # - Others store it as a host-only cookie on `arena.ai` (via `url`)
             # If the two disagree, upstream can reject /nextjs-api/sign-up with confusing errors.
             await context.add_cookies(_m()._provisional_user_id_cookie_specs(provisional_user_id))
     except Exception as e:
@@ -469,14 +469,14 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
     cookies = []
     # When using domain, do NOT include path - they're mutually exclusive in Playwright
     if cf_clearance:
-        cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
+        cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".arena.ai"})
     if cf_bm:
-        cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
+        cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".arena.ai"})
     if cfuvid:
-        cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
+        cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".arena.ai"})
     if provisional_user_id:
         cookies.append(
-            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
+            {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".arena.ai"}
         )
     async with async_playwright() as p:
         context = await p.chromium.launch_persistent_context(
@@ -544,7 +544,7 @@ async def get_recaptcha_v3_token_with_chrome(config: dict) -> Optional[str]:
                 marker="LMArenaBridge Chrome Fetch",
                 headless=False,
             )
-            await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+            await page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
 
             # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile.
             try:
@@ -638,14 +638,14 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 await context.add_cookies([{
                     "name": "cf_clearance",
                     "value": cf_clearance,
-                    "domain": ".lmarena.ai",
+                    "domain": ".arena.ai",
                     "path": "/"
                 }])
 
             page = await context.new_page()
             
-            _m().debug_print("  🌐 Navigating to lmarena.ai...")
-            await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
+            _m().debug_print("  🌐 Navigating to arena.ai...")
+            await page.goto("https://arena.ai/", wait_until="domcontentloaded")
 
             # --- NEW: Cloudflare/Turnstile Pass-Through ---
             _m().debug_print("  🛡️  Checking for Cloudflare Turnstile...")

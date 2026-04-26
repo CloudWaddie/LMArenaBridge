@@ -10,12 +10,13 @@ import time
 import secrets
 import base64
 import mimetypes
+import hashlib
 from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime, timezone, timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlparse, parse_qs
 
 import uvicorn
 from camoufox.async_api import AsyncCamoufox
@@ -271,24 +272,58 @@ def uuid7():
     hex_str = f"{uuid_int:032x}"
     return f"{hex_str[0:8]}-{hex_str[8:12]}-{hex_str[12:16]}-{hex_str[16:20]}-{hex_str[20:32]}"
 
+def _get_signed_url_expiry(url: str) -> Optional[float]:
+    """Extract expiry timestamp from an S3/R2 signed URL."""
+    try:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        # S3/R2 standard headers for signed URLs
+        date_str = params.get("X-Amz-Date", [None])[0]
+        expires_str = params.get("X-Amz-Expires", [None])[0]
+        if not date_str or not expires_str:
+            return None
+        
+        # Parse timestamp format: 20260425T071405Z
+        dt = datetime.strptime(date_str, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        return dt.timestamp() + int(expires_str)
+    except (ValueError, TypeError, IndexError, AttributeError):
+        return None
+
+def check_link_expiry(url: str) -> bool:
+    """Check if an S3/R2 signed URL is still valid based on its query params."""
+    expiry_ts = _get_signed_url_expiry(url)
+    if expiry_ts is None:
+        return False
+    # Return True if current time is before expiry (with 60s safety buffer)
+    return time.time() < (expiry_ts - 60)
+
 # Image upload helper functions
 async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: str) -> Optional[tuple]:
     """
     Upload an image to LMArena R2 storage and return the key and download URL.
-    
-    Args:
-        image_data: Binary image data
-        mime_type: MIME type of the image (e.g., 'image/png')
-        filename: Original filename for the image
-    
-    Returns:
-        Tuple of (key, download_url) if successful, or None if upload fails
+    Uses MD5 caching to avoid re-uploading the same image.
     """
     try:
         # Validate inputs
         if not image_data:
             debug_print("❌ Image data is empty")
             return None
+        
+        # 0. Check MD5 Cache
+        image_hash = hashlib.md5(image_data).hexdigest()
+        cached = _state_module.IMAGES_CACHE.get(image_hash)
+        if cached:
+            # Use cached expiry directly if available, otherwise fallback to parsing URL
+            expiry = cached.get("expiry")
+            if expiry is None:
+                expiry = _get_signed_url_expiry(cached.get("url", ""))
+            
+            if expiry and time.time() < (expiry - 60):
+                debug_print(f"📦 Using cached image for hash {image_hash[:8]}...")
+                return cached["key"], cached["url"]
+            else:
+                debug_print(f"📦 Cached image expired for hash {image_hash[:8]}. Re-uploading...")
+                _state_module.IMAGES_CACHE.pop(image_hash, None)
         
         if not mime_type or not mime_type.startswith('image/'):
             debug_print(f"❌ Invalid MIME type: {mime_type}")
@@ -312,14 +347,14 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             "Accept": "text/x-component",
             "Content-Type": "text/plain;charset=UTF-8",
             "Next-Action": upload_action_id,
-            "Referer": "https://lmarena.ai/?mode=direct",
+            "Referer": "https://arena.ai/?mode=direct",
         })
         
         import cloudscraper as _cs
         def _cs_upload():
             scraper = _cs.create_scraper()
             return scraper.post(
-                "https://lmarena.ai/?mode=direct",
+                "https://arena.ai/?mode=direct",
                 headers=request_headers,
                 data=json.dumps([filename, mime_type]),
                 timeout=30.0,
@@ -378,7 +413,7 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    "https://lmarena.ai/?mode=direct",
+                    "https://arena.ai/?mode=direct",
                     headers=request_headers_step3,
                     content=json.dumps([key]),
                     timeout=30.0
@@ -406,6 +441,24 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             
             download_url = download_data['data']['url']
             debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
+            
+            # Cache the uploaded image by MD5 to avoid redundant uploads.
+            expiry_ts = _get_signed_url_expiry(download_url)
+            if expiry_ts is None:
+                expiry_ts = time.time() + 3600
+
+            try:
+                # Size limit for IMAGES_CACHE to prevent memory growth (FIFO eviction)
+                if len(_state_module.IMAGES_CACHE) >= 1000:
+                    # Clear 10% of cache if full
+                    keys_to_remove = list(_state_module.IMAGES_CACHE)[:100]
+                    for k in keys_to_remove:
+                        _state_module.IMAGES_CACHE.pop(k, None)
+                
+                _state_module.IMAGES_CACHE[image_hash] = {"key": key, "url": download_url, "expiry": float(expiry_ts)}
+            except Exception:
+                pass
+
             return (key, download_url)
         except (json.JSONDecodeError, KeyError, IndexError) as e:
             debug_print(f"❌ Failed to parse download URL response: {e}")
@@ -784,8 +837,8 @@ async def get_initial_data():
             # Register the route interceptor
             await page.route('**/*', capture_js_route)
             
-            debug_print("Navigating to lmarena.ai...")
-            await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
+            debug_print("Navigating to arena.ai...")
+            await page.goto("https://arena.ai/", wait_until="domcontentloaded")
 
             debug_print("Waiting for Cloudflare challenge to complete...")
             challenge_passed = False
@@ -877,78 +930,40 @@ async def get_initial_data():
             except Exception as e:
                 debug_print(f"❌ Error extracting models: {e}")
 
-            # Extract Next-Action IDs from captured JavaScript responses
+            # Extract Next-Action IDs from captured JavaScript responses (Aggressive Discovery)
             debug_print(f"\nExtracting Next-Action IDs from {len(captured_responses)} captured JS responses...")
             try:
-                upload_action_id = None
-                signed_url_action_id = None
-                
                 if not captured_responses:
                     debug_print("  ⚠️  No JavaScript responses were captured")
                 else:
-                    debug_print(f"  📦 Processing {len(captured_responses)} JavaScript chunk files")
+                    debug_print(f"  📦 Scanning {len(captured_responses)} JavaScript chunks for Server Actions...")
+                    # Regex pattern based on Next.js server-reference generation:
+                    # (0,a.createServerReference)("HASH",a.callServer,void 0,a.findSourceMapURL,"ACTION_NAME")
+                    action_pattern = r'\(0,[a-zA-Z_$][\w$]*\.createServerReference\)\(["\']([\w\d]*?)["\'],[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\'](\w+)["\']\)'
                     
+                    found_count = 0
                     for item in captured_responses:
-                        url = item['url']
-                        text = item['text']
-                        
-                        try:
-                            # debug_print(f"  🔎 Checking: {url.split('/')[-1][:50]}...")
-                            
-                            # Look for getSignedUrl action ID (ID captured in group 1)
-                            signed_url_matches = re.findall(
-                                r'\(0,[a-zA-Z].createServerReference\)\(\"([\w\d]*?)\",[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\']getSignedUrl["\']\)',
-                                text
-                            )
-                            
-                            # Look for generateUploadUrl action ID (ID captured in group 1)
-                            upload_matches = re.findall(
-                                r'\(0,[a-zA-Z].createServerReference\)\(\"([\w\d]*?)\",[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\']generateUploadUrl["\']\)',
-                                text
-                            )
-                            
-                            # Process matches
-                            if signed_url_matches and not signed_url_action_id:
-                                signed_url_action_id = signed_url_matches[0]
-                                debug_print(f"    📥 Found getSignedUrl action ID: {signed_url_action_id[:20]}...")
-                            
-                            if upload_matches and not upload_action_id:
-                                upload_action_id = upload_matches[0]
-                                debug_print(f"    📤 Found generateUploadUrl action ID: {upload_action_id[:20]}...")
-                            
-                            if upload_action_id and signed_url_action_id:
-                                debug_print(f"  ✅ Found both action IDs, stopping search")
-                                break
-                                
-                        except Exception as e:
-                            debug_print(f"    ⚠️  Error parsing response from {url}: {e}")
-                            continue
-                
-                # Save the action IDs to config
-                if upload_action_id:
-                    config["next_action_upload"] = upload_action_id
-                if signed_url_action_id:
-                    config["next_action_signed_url"] = signed_url_action_id
-                
-                if upload_action_id and signed_url_action_id:
-                    save_config(config)
-                    debug_print(f"\n✅ Saved both Next-Action IDs to config")
-                    debug_print(f"   Upload: {upload_action_id}")
-                    debug_print(f"   Signed URL: {signed_url_action_id}")
-                elif upload_action_id or signed_url_action_id:
-                    save_config(config)
-                    debug_print(f"\n⚠️ Saved partial Next-Action IDs:")
-                    if upload_action_id:
-                        debug_print(f"   Upload: {upload_action_id}")
-                    if signed_url_action_id:
-                        debug_print(f"   Signed URL: {signed_url_action_id}")
-                else:
-                    debug_print(f"\n⚠️ Could not extract Next-Action IDs from JavaScript chunks")
-                    debug_print(f"   This is optional - image upload may not work without them")
+                        text = str(item.get('text', ''))
+                        matches = re.findall(action_pattern, text)
+                        for action_id, action_name in matches:
+                            if _state_module.DISCOVERED_ACTIONS.get(action_name) != action_id:
+                                _state_module.DISCOVERED_ACTIONS[action_name] = action_id
+                                found_count += 1
+                    
+                    if found_count > 0:
+                        debug_print(f"  ✅ Updated {found_count} Next-Action IDs in memory")
+                        if "generateUploadUrl" in _state_module.DISCOVERED_ACTIONS:
+                            config["next_action_upload"] = _state_module.DISCOVERED_ACTIONS["generateUploadUrl"]
+                        if "getSignedUrl" in _state_module.DISCOVERED_ACTIONS:
+                            config["next_action_signed_url"] = _state_module.DISCOVERED_ACTIONS["getSignedUrl"]
+                        save_config(config)
+                    
+                    if _state_module.DISCOVERED_ACTIONS:
+                        debug_print(f"✅ Discovered {len(_state_module.DISCOVERED_ACTIONS)} Server Actions (New/Updated: {found_count})")
                     
             except Exception as e:
-                debug_print(f"❌ Error extracting Next-Action IDs: {e}")
-                debug_print(f"   This is optional - continuing without them")
+                debug_print(f"❌ Error during Server Action discovery: {e}")
+                debug_print("   This is optional - continuing without them")
 
             # Extract reCAPTCHA sitekey/action from captured JS responses (helps keep up with LMArena changes).
             debug_print(f"\nExtracting reCAPTCHA params from {len(captured_responses)} captured JS responses...")
@@ -2429,7 +2444,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             # Use LMArena's retry endpoint
             # Format: PUT /nextjs-api/stream/retry-evaluation-session-message/{sessionId}/messages/{messageId}
             payload = {}
-            url = f"https://lmarena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
+            url = f"https://arena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Using PUT method for retry")
             http_method = "PUT"
@@ -2461,7 +2476,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = f"https://lmarena.ai{STREAM_CREATE_EVALUATION_PATH}"
+            url = f"https://arena.ai{STREAM_CREATE_EVALUATION_PATH}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
@@ -2490,7 +2505,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = f"https://lmarena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
+            url = f"https://arena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")

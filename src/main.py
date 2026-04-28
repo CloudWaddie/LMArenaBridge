@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager, AsyncExitStack
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime, timezone, timedelta
-from urllib.parse import urlsplit, urlparse, parse_qs
+from urllib.parse import urlsplit, urlparse, parse_qs, urljoin
 
 import uvicorn
 from camoufox.async_api import AsyncCamoufox
@@ -95,6 +95,7 @@ from .transport import (
     _arena_auth_cookie_specs,
     _provisional_user_id_cookie_specs,
     _get_arena_context_cookies,
+    _canonicalize_arena_url,
     _normalize_userscript_proxy_url,
     fetch_lmarena_stream_via_userscript_proxy,
     fetch_lmarena_stream_via_chrome,
@@ -2444,7 +2445,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             # Use LMArena's retry endpoint
             # Format: PUT /nextjs-api/stream/retry-evaluation-session-message/{sessionId}/messages/{messageId}
             payload = {}
-            url = f"https://arena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
+            url = f"{ARENA_ORIGIN}/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Using PUT method for retry")
             http_method = "PUT"
@@ -2476,7 +2477,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = f"https://arena.ai{STREAM_CREATE_EVALUATION_PATH}"
+            url = f"{ARENA_ORIGIN}{STREAM_CREATE_EVALUATION_PATH}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
@@ -2505,11 +2506,13 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = f"https://arena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
+            url = f"{ARENA_ORIGIN}/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
             http_method = "POST"
+
+        url = _canonicalize_arena_url(url)
 
         debug_print(f"\n🚀 Making API request to LMArena...")
         debug_print(f"⏱️  Timeout set to: 120 seconds")
@@ -2571,16 +2574,103 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         async def make_request_with_retry(url, payload, http_method, max_retries=3):
             nonlocal current_token, headers, failed_tokens, recaptcha_token
 
+            import cloudscraper as _cs
+
+            method = str(http_method or "POST").upper()
+            request_url = _canonicalize_arena_url(url)
+            redirect_statuses = {
+                HTTPStatus.MOVED_PERMANENTLY,
+                HTTPStatus.MOVED_TEMPORARILY,
+                HTTPStatus.TEMPORARY_REDIRECT,
+                HTTPStatus.PERMANENT_REDIRECT,
+            }
+
+            def _payload_body() -> str:
+                if payload is None:
+                    return ""
+                if isinstance(payload, (dict, list)):
+                    return json.dumps(payload)
+                return str(payload)
+
+            def _response_bytes(resp) -> bytes:
+                content = getattr(resp, "content", None)
+                if isinstance(content, bytes):
+                    return content
+                if isinstance(content, bytearray):
+                    return bytes(content)
+                text = getattr(resp, "text", "")
+                return str(text or "").encode("utf-8", errors="replace")
+
+            def _response_headers(resp) -> dict:
+                try:
+                    return dict(getattr(resp, "headers", {}) or {})
+                except Exception:
+                    return {}
+
+            def _browser_response_from_requests(resp, req_url: str) -> BrowserFetchStreamResponse:
+                body = _response_bytes(resp).decode("utf-8", errors="replace")
+                final_url = _canonicalize_arena_url(str(getattr(resp, "url", "") or req_url))
+                return BrowserFetchStreamResponse(
+                    int(getattr(resp, "status_code", 0) or 0),
+                    _response_headers(resp),
+                    body,
+                    method=method,
+                    url=final_url,
+                )
+
+            def _raise_httpx_status(resp, req_url: str) -> None:
+                status_code = int(getattr(resp, "status_code", 0) or 0)
+                final_url = _canonicalize_arena_url(str(getattr(resp, "url", "") or req_url))
+                request_obj = httpx.Request(method, final_url)
+                response_obj = httpx.Response(
+                    status_code,
+                    headers=_response_headers(resp),
+                    content=_response_bytes(resp),
+                    request=request_obj,
+                )
+                raise httpx.HTTPStatusError(
+                    f"{status_code} Error from LMArena API",
+                    request=request_obj,
+                    response=response_obj,
+                )
+
+            def _cs_request(target_url: str):
+                scraper = _cs.create_scraper()
+                kwargs = {
+                    "headers": headers,
+                    "data": _payload_body(),
+                    "timeout": 120,
+                    "allow_redirects": False,
+                }
+                if method == "PUT":
+                    return scraper.put(target_url, **kwargs)
+                return scraper.post(target_url, **kwargs)
+
             for attempt in range(max_retries):
                 try:
-                    import cloudscraper as _cs
-                    def _cs_request():
-                        scraper = _cs.create_scraper()
-                        if http_method == "PUT":
-                            return scraper.put(url, json=payload, headers=headers, timeout=120)
-                        else:
-                            return scraper.post(url, json=payload, headers=headers, timeout=120)
-                    response = await asyncio.to_thread(_cs_request)
+                    response = await asyncio.to_thread(_cs_request, request_url)
+
+                    redirect_hops = 0
+                    while int(getattr(response, "status_code", 0) or 0) in redirect_statuses and redirect_hops < 5:
+                        try:
+                            location = str(
+                                response.headers.get("Location")
+                                or response.headers.get("location")
+                                or ""
+                            ).strip()
+                        except Exception:
+                            location = ""
+                        if not location:
+                            break
+                        next_url = _canonicalize_arena_url(
+                            urljoin(str(getattr(response, "url", "") or request_url), location)
+                        )
+                        debug_print(
+                            f"Upstream redirected {response.status_code}; replaying {method} to {next_url}"
+                        )
+                        request_url = next_url
+                        response = await asyncio.to_thread(_cs_request, request_url)
+                        redirect_hops += 1
 
                     log_http_status(response.status_code, "LMArena API")
 
@@ -2635,9 +2725,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 debug_print(f"❌ No more tokens available: {e.detail}")
                                 break
 
-                    response.raise_for_status()
-                    return response
+                    if int(getattr(response, "status_code", 0) or 0) >= 400:
+                        _raise_httpx_status(response, request_url)
+                    return _browser_response_from_requests(response, request_url)
 
+                except httpx.HTTPStatusError:
+                    raise
                 except (requests.exceptions.HTTPError, _cs.exceptions.CloudflareException) as e:
                     status_code = getattr(getattr(e, 'response', None), 'status_code', None)
                     if status_code and status_code not in [429, 401]:

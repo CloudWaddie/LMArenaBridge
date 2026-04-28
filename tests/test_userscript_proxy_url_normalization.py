@@ -4,6 +4,20 @@ from tests._stream_test_utils import BaseBridgeTest
 
 
 class TestUserscriptProxyUrlNormalization(BaseBridgeTest):
+    def test_canonicalizes_legacy_arena_hosts(self) -> None:
+        self.assertEqual(
+            self.main._canonicalize_arena_url("https://lmarena.ai/nextjs-api/stream/create-evaluation"),
+            "https://arena.ai/nextjs-api/stream/create-evaluation",
+        )
+        self.assertEqual(
+            self.main._canonicalize_arena_url("https://www.lmarena.ai/nextjs-api/sign-up?x=1"),
+            "https://arena.ai/nextjs-api/sign-up?x=1",
+        )
+        self.assertEqual(
+            self.main._canonicalize_arena_url("https://example.com/foo"),
+            "https://example.com/foo",
+        )
+
     def test_normalizes_lmarena_urls_to_paths(self) -> None:
         self.assertEqual(
             self.main._normalize_userscript_proxy_url("https://arena.ai/nextjs-api/stream/create-evaluation"),
@@ -65,6 +79,11 @@ class TestUserscriptProxyUrlNormalization(BaseBridgeTest):
 
         self.assertIsNotNone(resp)
         self.assertEqual(fetch_urls, ["https://example.com/foo?x=1"])
+        mock_page.goto.assert_awaited_with(
+            "https://arena.ai/?mode=direct",
+            wait_until="domcontentloaded",
+            timeout=120000,
+        )
 
     async def test_camoufox_fetch_keeps_absolute_non_arena_urls_absolute(self) -> None:
         fetch_urls: list[str] = []
@@ -108,4 +127,8 @@ class TestUserscriptProxyUrlNormalization(BaseBridgeTest):
 
         self.assertIsNotNone(resp)
         self.assertEqual(fetch_urls, ["https://example.com/foo?x=1"])
-
+        mock_page.goto.assert_awaited_with(
+            "https://arena.ai/?mode=direct",
+            wait_until="domcontentloaded",
+            timeout=60000,
+        )

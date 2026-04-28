@@ -16,7 +16,7 @@ import time
 import uuid
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import HTTPException, Request
@@ -102,7 +102,7 @@ class BrowserFetchStreamResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code == 0 or self.status_code >= 400:
-            request = httpx.Request(self._method, self._url or "https://lmarena.ai/")
+            request = httpx.Request(self._method, self._url or _ARENA_ORIGIN)
             response = httpx.Response(self.status_code or 502, request=request, content=self._text.encode("utf-8"))
             raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=request, response=response)
 
@@ -255,7 +255,7 @@ class UserscriptProxyStreamResponse:
         self._headers: dict = {}
         self._timeout_seconds = int(timeout_seconds or 120)
         self._method = "POST"
-        self._url = "https://lmarena.ai/"
+        self._url = _ARENA_ORIGIN
 
     @property
     def status_code(self) -> int:
@@ -400,6 +400,7 @@ class UserscriptProxyStreamResponse:
 
 _LMARENA_ORIGIN = "https://lmarena.ai"
 _ARENA_ORIGIN = "https://arena.ai"
+_ARENA_DIRECT_MODE_URL = _constants.ARENA_DIRECT_MODE_URL
 _ARENA_HOST_TO_ORIGIN = {
     "lmarena.ai": _LMARENA_ORIGIN,
     "www.lmarena.ai": _LMARENA_ORIGIN,
@@ -436,6 +437,23 @@ def _arena_origin_candidates(url: Optional[str] = None) -> list[str]:
     primary = _detect_arena_origin(url)
     secondary = _LMARENA_ORIGIN if primary == _ARENA_ORIGIN else _ARENA_ORIGIN
     return [primary, secondary]
+
+
+def _canonicalize_arena_url(url: str) -> str:
+    """Map legacy LMArena hosts to the canonical arena.ai host while preserving path/query."""
+    text = str(url or "").strip()
+    if not text:
+        return text
+    try:
+        parts = urlsplit(text)
+    except Exception:
+        return text
+    if not parts.scheme or not parts.netloc:
+        return text
+    host = str(parts.netloc or "").split("@")[-1].split(":")[0].lower()
+    if host not in {"lmarena.ai", "www.lmarena.ai", "www.arena.ai"}:
+        return text
+    return urlunsplit(("https", "arena.ai", parts.path or "/", parts.query, parts.fragment))
 
 
 def _arena_auth_cookie_specs(token: str, *, page_url: Optional[str] = None) -> list[dict]:
@@ -479,7 +497,8 @@ async def _get_arena_context_cookies(context, *, page_url: Optional[str] = None)
     urls = _arena_origin_candidates(page_url)
     try:
         cookies = await context.cookies(urls)
-        return cookies if isinstance(cookies, list) else []
+        if isinstance(cookies, list):
+            return cookies
     except Exception:
         pass
 
@@ -736,7 +755,7 @@ async def fetch_lmarena_stream_via_chrome(
                 marker="LMArenaBridge Chrome Fetch",
                 headless=bool(headless),
             )
-            await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+            await page.goto(_ARENA_DIRECT_MODE_URL, wait_until="domcontentloaded", timeout=120000)
 
             # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile before minting tokens.
             try:
@@ -984,17 +1003,15 @@ async def fetch_lmarena_stream_via_chrome(
                     # Give a brief moment for meta chunk to arrive in the queue (race condition)
                     try:
                         # Check if there's anything in the queue that might be the meta chunk
+                        queued_item = None
                         try:
-                            item = lines_queue.get_nowait()
-                            if isinstance(item, str) and item.startswith('{"__type":"meta"'):
-                                meta = json.loads(item)
+                            queued_item = lines_queue.get_nowait()
+                            if isinstance(queued_item, str) and queued_item.startswith('{"__type":"meta"'):
+                                meta = json.loads(queued_item)
                             else:
-                                # Put it back and use default meta
-                                await lines_queue.put(item)
-                                meta = {"status": 200, "headers": {}}
+                                meta = None
                         except asyncio.QueueEmpty:
-                            # No items in queue, use default successful response
-                            meta = {"status": 200, "headers": {}}
+                            queued_item = None
                         
                         if meta:
                             result = meta
@@ -1003,7 +1020,11 @@ async def fetch_lmarena_stream_via_chrome(
                             if isinstance(res, dict) and not res.get("__streaming"):
                                 result = res
                             else:
-                                result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
+                                if queued_item is not None:
+                                    await lines_queue.put(queued_item)
+                                    result = {"status": 200, "headers": {}}
+                                else:
+                                    result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
                     except Exception as e:
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
                 elif meta:
@@ -1204,10 +1225,10 @@ async def fetch_lmarena_stream_via_camoufox(
                 headless=headless,
             )
               
-            _m().debug_print(f"  🦊 Navigating to lmarena.ai...")
+            _m().debug_print(f"  🦊 Navigating to arena.ai...")
             try:
                 await asyncio.wait_for(
-                    page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=60000),
+                    page.goto(_ARENA_DIRECT_MODE_URL, wait_until="domcontentloaded", timeout=60000),
                     timeout=70.0,
                 )
             except Exception:
@@ -1472,17 +1493,15 @@ async def fetch_lmarena_stream_via_camoufox(
                     # Give a brief moment for meta chunk to arrive in the queue (race condition)
                     try:
                         # Check if there's anything in the queue that might be the meta chunk
+                        queued_item = None
                         try:
-                            item = lines_queue.get_nowait()
-                            if isinstance(item, str) and item.startswith('{"__type":"meta"'):
-                                meta = json.loads(item)
+                            queued_item = lines_queue.get_nowait()
+                            if isinstance(queued_item, str) and queued_item.startswith('{"__type":"meta"'):
+                                meta = json.loads(queued_item)
                             else:
-                                # Put it back and use default meta
-                                await lines_queue.put(item)
-                                meta = {"status": 200, "headers": {}}
+                                meta = None
                         except asyncio.QueueEmpty:
-                            # No items in queue, use default successful response
-                            meta = {"status": 200, "headers": {}}
+                            queued_item = None
                         
                         if meta:
                             result = meta
@@ -1491,7 +1510,11 @@ async def fetch_lmarena_stream_via_camoufox(
                             if isinstance(res, dict) and not res.get("__streaming"):
                                 result = res
                             else:
-                                result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
+                                if queued_item is not None:
+                                    await lines_queue.put(queued_item)
+                                    result = {"status": 200, "headers": {}}
+                                else:
+                                    result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
                     except Exception as e:
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
                 elif meta:
@@ -2001,8 +2024,8 @@ async def camoufox_proxy_worker():
                 )
 
                 try:
-                    _m().debug_print("🦊 Camoufox proxy: navigating to https://lmarena.ai/?mode=direct ...")
-                    await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+                    _m().debug_print(f"🦊 Camoufox proxy: navigating to {_ARENA_DIRECT_MODE_URL} ...")
+                    await page.goto(_ARENA_DIRECT_MODE_URL, wait_until="domcontentloaded", timeout=120000)
                     _m().debug_print("🦊 Camoufox proxy: navigation complete.")
                 except Exception as e:
                     _m().debug_print(f"⚠️ Navigation warning: {e}")
@@ -2182,7 +2205,7 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
                 try:
-                    await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+                    await page.goto(_ARENA_DIRECT_MODE_URL, wait_until="domcontentloaded", timeout=120000)
                 except Exception:
                     pass
                 try:
@@ -2426,7 +2449,7 @@ async def camoufox_proxy_worker():
                             wait_loops = 40
                             try:
                                 await page.goto(
-                                    "https://lmarena.ai/?mode=direct",
+                                    _ARENA_DIRECT_MODE_URL,
                                     wait_until="domcontentloaded",
                                     timeout=120000,
                                 )

@@ -30,7 +30,14 @@ SUPABASE_ANON_KEY: Optional[str] = None
 
 # reCAPTCHA
 RECAPTCHA_TOKEN: Optional[str] = None
+# Initialize expiry far in the past to force a refresh on startup
 RECAPTCHA_EXPIRY: Any = None  # Will be set on init
+
+# Image cache: { md5_hash: { key: str, url: str, expiry: float } }
+IMAGES_CACHE: Dict[str, dict] = {}
+
+# Discovered actions: { action_name: action_id }
+DISCOVERED_ACTIONS: Dict[str, str] = {}
 
 
 def get_model_usage_stats() -> defaultdict:

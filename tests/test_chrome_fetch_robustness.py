@@ -37,7 +37,7 @@ class TestChromeFetchRobustness(unittest.IsolatedAsyncioTestCase):
              patch("src.main.asyncio.sleep", AsyncMock()):
             
             resp = await main.fetch_lmarena_stream_via_chrome(
-                "POST", "https://lmarena.ai/api", {"p": 1}, "token"
+                "POST", "https://arena.ai/api", {"p": 1}, "token"
             )
             
             self.assertIsNotNone(resp)
@@ -86,7 +86,7 @@ class TestChromeFetchRobustness(unittest.IsolatedAsyncioTestCase):
         ):
             resp = await main.fetch_lmarena_stream_via_chrome(
                 "POST",
-                "https://lmarena.ai/api",
+                "https://arena.ai/api",
                 {"p": 1, "recaptchaV3Token": "payload-token"},
                 "token",
             )

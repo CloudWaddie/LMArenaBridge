@@ -63,7 +63,7 @@ class TestStreamUserscriptProxyStatusTimeoutFallback(BaseBridgeTest):
             headers={},
             text='a0:"Hello"\nad:{"finishReason":"stop"}\n',
             method="POST",
-            url="https://lmarena.ai/nextjs-api/stream/create-evaluation",
+            url="https://arena.ai/nextjs-api/stream/create-evaluation",
         )
 
         # Browser transports return None on first call (to let proxy be tried), then succeed on retry.

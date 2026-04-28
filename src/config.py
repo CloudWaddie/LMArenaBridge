@@ -65,7 +65,7 @@ def _apply_config_defaults(config: dict) -> None:
     config.setdefault("api_keys", [])
     config.setdefault("usage_stats", {})
     config.setdefault("prune_invalid_tokens", False)
-    config.setdefault("persist_arena_auth_cookie", False)
+    config.setdefault("persist_arena_auth_cookie", True)
     config.setdefault("camoufox_proxy_window_mode", constants.DEFAULT_CAMOUFOX_PROXY_WINDOW_MODE)
     config.setdefault("camoufox_fetch_window_mode", constants.DEFAULT_CAMOUFOX_FETCH_WINDOW_MODE)
     config.setdefault("chrome_fetch_window_mode", constants.DEFAULT_CHROME_FETCH_WINDOW_MODE)
@@ -179,7 +179,7 @@ def get_default_config() -> dict:
         ],
         "usage_stats": {},
         "prune_invalid_tokens": False,
-        "persist_arena_auth_cookie": False,
+        "persist_arena_auth_cookie": True,
         "camoufox_proxy_window_mode": constants.DEFAULT_CAMOUFOX_PROXY_WINDOW_MODE,
         "camoufox_fetch_window_mode": constants.DEFAULT_CAMOUFOX_FETCH_WINDOW_MODE,
         "chrome_fetch_window_mode": constants.DEFAULT_CHROME_FETCH_WINDOW_MODE,

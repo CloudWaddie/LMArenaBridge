@@ -23,6 +23,7 @@ import time
 from typing import Optional
 
 import httpx
+import requests
 from fastapi import HTTPException
 
 
@@ -120,7 +121,14 @@ def _upsert_browser_session_into_config(config: dict, cookies: list[dict], user_
         if not name or value is None:
             continue
         name = str(name)
+        # Always save arena-auth-prod-v1 to browser_cookies (for HTTP fallback)
+        # Only promote to top-level auth_tokens when persist_arena_auth_cookie is true
         if name == "arena-auth-prod-v1" and not bool(config.get("persist_arena_auth_cookie")):
+            # Still save to browser_cookies for plain HTTP fallback
+            value = str(value)
+            if cookie_store.get(name) != value:
+                cookie_store[name] = value
+                changed = True
             continue
         value = str(value)
         if cookie_store.get(name) != value:
@@ -128,10 +136,22 @@ def _upsert_browser_session_into_config(config: dict, cookies: list[dict], user_
             changed = True
 
     # Combine split cookies (.0 and .1) and save as arena-auth-prod-v1
-    if bool(config.get("persist_arena_auth_cookie")):
-        combined = _combine_split_arena_auth_cookies(cookies)
-        if combined and cookie_store.get("arena-auth-prod-v1") != combined:
-            cookie_store["arena-auth-prod-v1"] = combined
+    # Always save combined cookie to browser_cookies
+    combined = _combine_split_arena_auth_cookies(cookies)
+    if combined and cookie_store.get("arena-auth-prod-v1") != combined:
+        cookie_store["arena-auth-prod-v1"] = combined
+        changed = True
+    # Only promote to auth_tokens if persist is enabled
+    if bool(config.get("persist_arena_auth_cookie")) and combined:
+        existing = config.get("auth_tokens")
+        if isinstance(existing, list):
+            tokens = [str(t or "").strip() for t in existing if str(t or "").strip()]
+        else:
+            tokens = []
+        if combined not in tokens:
+            tokens.append(combined)
+        if existing != tokens:
+            config["auth_tokens"] = tokens
             changed = True
 
     # Promote frequently-used cookies to top-level config keys.
@@ -205,8 +225,8 @@ def get_request_headers_with_token(token: str, recaptcha_v3_token: Optional[str]
     headers: dict[str, str] = {
         "Content-Type": "text/plain;charset=UTF-8",
         "Cookie": "; ".join(cookie_parts),
-        "Origin": "https://lmarena.ai",
-        "Referer": "https://lmarena.ai/?mode=direct",
+        "Origin": "https://arena.ai",
+        "Referer": "https://arena.ai/?mode=direct",
     }
 
     user_agent = normalize_user_agent_value(config.get("user_agent"))
@@ -523,10 +543,10 @@ async def refresh_arena_auth_token_via_lmarena_http(old_token: str, config: Opti
         def _cs_get():
             scraper = _cs.create_scraper()
             scraper.headers.update({"User-Agent": ua})
-            return scraper.get("https://lmarena.ai/", cookies=cookies, timeout=30, allow_redirects=True)
+            return scraper.get("https://arena.ai/", cookies=cookies, timeout=30, allow_redirects=True)
         import asyncio as _aio
         resp = await _aio.to_thread(_cs_get)
-    except (cloudscraper.exceptions.CloudflareException, requests.exceptions.RequestException):
+    except (_cs.exceptions.CloudflareException, requests.exceptions.RequestException):
         return None
 
     try:
@@ -852,18 +872,16 @@ def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback:
         if single_token and not is_arena_auth_token_expired(single_token):
             auth_tokens = [single_token]
     if not auth_tokens and _m().EPHEMERAL_ARENA_AUTH_TOKEN and not is_arena_auth_token_expired(_m().EPHEMERAL_ARENA_AUTH_TOKEN):
-        # Use an in-memory token captured from the browser session as a fallback (do not override configured tokens).
         auth_tokens = [_m().EPHEMERAL_ARENA_AUTH_TOKEN]
     if not auth_tokens:
         cookie_store = config.get("browser_cookies")
-        if isinstance(cookie_store, dict) and bool(config.get("persist_arena_auth_cookie")):
+        if isinstance(cookie_store, dict):
             token = str(cookie_store.get("arena-auth-prod-v1") or "").strip()
             if token and not is_arena_auth_token_expired(token):
-                config["auth_tokens"] = [token]
-                _m().save_config(config, preserve_auth_tokens=False)
-                auth_tokens = config.get("auth_tokens", [])
-        if not auth_tokens:
-            raise HTTPException(status_code=500, detail="No auth tokens configured")
+                auth_tokens = [token]
+                _m().debug_print("🔑 Using arena-auth cookie from browser session (browser_cookies).")
+    if not auth_tokens:
+        raise HTTPException(status_code=500, detail="No auth tokens configured")
     
     # Filter out excluded tokens
     if exclude_tokens:

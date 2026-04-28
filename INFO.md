@@ -2,7 +2,7 @@ Here is the updated plan for `main.py`.
 
 ###The Plan1. **Modify `get_recaptcha_v3_token**`:
 * **Headless Mode:** Ensure `AsyncCamoufox(headless=False, ...)` is set.
-* **Navigation:** Go to `https://lmarena.ai/`.
+* **Navigation:** Go to `https://arena.ai/`.
 * **Cloudflare Challenge:** Immediately after loading, inject a check for the Turnstile widget.
 * Use a loop to check if the page title is "Just a moment..." or if the Turnstile selector exists.
 * Call your existing `click_turnstile(page)` function if detected.
@@ -25,8 +25,8 @@ async with AsyncCamoufox(headless=False, main_world_eval=True) as browser:
 
 ```python
             # ... inside get_recaptcha_v3_token ...
-            debug_print("  🌐 Navigating to lmarena.ai...")
-            await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
+            debug_print("  🌐 Navigating to arena.ai...")
+            await page.goto("https://arena.ai/", wait_until="domcontentloaded")
 
             # --- NEW: Cloudflare/Turnstile Pass-Through ---
             debug_print("  🛡️  Checking for Cloudflare Turnstile...")

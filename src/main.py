@@ -10,12 +10,13 @@ import time
 import secrets
 import base64
 import mimetypes
+import hashlib
 from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
 from pathlib import Path
 from typing import Optional, Dict, List
 from datetime import datetime, timezone, timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlparse, parse_qs
 
 import uvicorn
 from camoufox.async_api import AsyncCamoufox
@@ -271,24 +272,58 @@ def uuid7():
     hex_str = f"{uuid_int:032x}"
     return f"{hex_str[0:8]}-{hex_str[8:12]}-{hex_str[12:16]}-{hex_str[16:20]}-{hex_str[20:32]}"
 
+def _get_signed_url_expiry(url: str) -> Optional[float]:
+    """Extract expiry timestamp from an S3/R2 signed URL."""
+    try:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+        # S3/R2 standard headers for signed URLs
+        date_str = params.get("X-Amz-Date", [None])[0]
+        expires_str = params.get("X-Amz-Expires", [None])[0]
+        if not date_str or not expires_str:
+            return None
+        
+        # Parse timestamp format: 20260425T071405Z
+        dt = datetime.strptime(date_str, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
+        return dt.timestamp() + int(expires_str)
+    except (ValueError, TypeError, IndexError, AttributeError):
+        return None
+
+def check_link_expiry(url: str) -> bool:
+    """Check if an S3/R2 signed URL is still valid based on its query params."""
+    expiry_ts = _get_signed_url_expiry(url)
+    if expiry_ts is None:
+        return False
+    # Return True if current time is before expiry (with 60s safety buffer)
+    return time.time() < (expiry_ts - 60)
+
 # Image upload helper functions
 async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: str) -> Optional[tuple]:
     """
     Upload an image to LMArena R2 storage and return the key and download URL.
-    
-    Args:
-        image_data: Binary image data
-        mime_type: MIME type of the image (e.g., 'image/png')
-        filename: Original filename for the image
-    
-    Returns:
-        Tuple of (key, download_url) if successful, or None if upload fails
+    Uses MD5 caching to avoid re-uploading the same image.
     """
     try:
         # Validate inputs
         if not image_data:
             debug_print("❌ Image data is empty")
             return None
+        
+        # 0. Check MD5 Cache
+        image_hash = hashlib.md5(image_data).hexdigest()
+        cached = _state_module.IMAGES_CACHE.get(image_hash)
+        if cached:
+            # Use cached expiry directly if available, otherwise fallback to parsing URL
+            expiry = cached.get("expiry")
+            if expiry is None:
+                expiry = _get_signed_url_expiry(cached.get("url", ""))
+            
+            if expiry and time.time() < (expiry - 60):
+                debug_print(f"📦 Using cached image for hash {image_hash[:8]}...")
+                return cached["key"], cached["url"]
+            else:
+                debug_print(f"📦 Cached image expired for hash {image_hash[:8]}. Re-uploading...")
+                _state_module.IMAGES_CACHE.pop(image_hash, None)
         
         if not mime_type or not mime_type.startswith('image/'):
             debug_print(f"❌ Invalid MIME type: {mime_type}")
@@ -312,14 +347,14 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             "Accept": "text/x-component",
             "Content-Type": "text/plain;charset=UTF-8",
             "Next-Action": upload_action_id,
-            "Referer": "https://lmarena.ai/?mode=direct",
+            "Referer": "https://arena.ai/?mode=direct",
         })
         
         import cloudscraper as _cs
         def _cs_upload():
             scraper = _cs.create_scraper()
             return scraper.post(
-                "https://lmarena.ai/?mode=direct",
+                "https://arena.ai/?mode=direct",
                 headers=request_headers,
                 data=json.dumps([filename, mime_type]),
                 timeout=30.0,
@@ -378,7 +413,7 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    "https://lmarena.ai/?mode=direct",
+                    "https://arena.ai/?mode=direct",
                     headers=request_headers_step3,
                     content=json.dumps([key]),
                     timeout=30.0
@@ -406,6 +441,24 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             
             download_url = download_data['data']['url']
             debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
+            
+            # Cache the uploaded image by MD5 to avoid redundant uploads.
+            expiry_ts = _get_signed_url_expiry(download_url)
+            if expiry_ts is None:
+                expiry_ts = time.time() + 3600
+
+            try:
+                # Size limit for IMAGES_CACHE to prevent memory growth (FIFO eviction)
+                if len(_state_module.IMAGES_CACHE) >= 1000:
+                    # Clear 10% of cache if full
+                    keys_to_remove = list(_state_module.IMAGES_CACHE)[:100]
+                    for k in keys_to_remove:
+                        _state_module.IMAGES_CACHE.pop(k, None)
+                
+                _state_module.IMAGES_CACHE[image_hash] = {"key": key, "url": download_url, "expiry": float(expiry_ts)}
+            except Exception:
+                pass
+
             return (key, download_url)
         except (json.JSONDecodeError, KeyError, IndexError) as e:
             debug_print(f"❌ Failed to parse download URL response: {e}")
@@ -784,8 +837,8 @@ async def get_initial_data():
             # Register the route interceptor
             await page.route('**/*', capture_js_route)
             
-            debug_print("Navigating to lmarena.ai...")
-            await page.goto("https://lmarena.ai/", wait_until="domcontentloaded")
+            debug_print("Navigating to arena.ai...")
+            await page.goto("https://arena.ai/", wait_until="domcontentloaded")
 
             debug_print("Waiting for Cloudflare challenge to complete...")
             challenge_passed = False
@@ -877,78 +930,40 @@ async def get_initial_data():
             except Exception as e:
                 debug_print(f"❌ Error extracting models: {e}")
 
-            # Extract Next-Action IDs from captured JavaScript responses
+            # Extract Next-Action IDs from captured JavaScript responses (Aggressive Discovery)
             debug_print(f"\nExtracting Next-Action IDs from {len(captured_responses)} captured JS responses...")
             try:
-                upload_action_id = None
-                signed_url_action_id = None
-                
                 if not captured_responses:
                     debug_print("  ⚠️  No JavaScript responses were captured")
                 else:
-                    debug_print(f"  📦 Processing {len(captured_responses)} JavaScript chunk files")
+                    debug_print(f"  📦 Scanning {len(captured_responses)} JavaScript chunks for Server Actions...")
+                    # Regex pattern based on Next.js server-reference generation:
+                    # (0,a.createServerReference)("HASH",a.callServer,void 0,a.findSourceMapURL,"ACTION_NAME")
+                    action_pattern = r'\(0,[a-zA-Z_$][\w$]*\.createServerReference\)\(["\']([\w\d]*?)["\'],[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\'](\w+)["\']\)'
                     
+                    found_count = 0
                     for item in captured_responses:
-                        url = item['url']
-                        text = item['text']
-                        
-                        try:
-                            # debug_print(f"  🔎 Checking: {url.split('/')[-1][:50]}...")
-                            
-                            # Look for getSignedUrl action ID (ID captured in group 1)
-                            signed_url_matches = re.findall(
-                                r'\(0,[a-zA-Z].createServerReference\)\(\"([\w\d]*?)\",[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\']getSignedUrl["\']\)',
-                                text
-                            )
-                            
-                            # Look for generateUploadUrl action ID (ID captured in group 1)
-                            upload_matches = re.findall(
-                                r'\(0,[a-zA-Z].createServerReference\)\(\"([\w\d]*?)\",[a-zA-Z_$][\w$]*\.callServer,void 0,[a-zA-Z_$][\w$]*\.findSourceMapURL,["\']generateUploadUrl["\']\)',
-                                text
-                            )
-                            
-                            # Process matches
-                            if signed_url_matches and not signed_url_action_id:
-                                signed_url_action_id = signed_url_matches[0]
-                                debug_print(f"    📥 Found getSignedUrl action ID: {signed_url_action_id[:20]}...")
-                            
-                            if upload_matches and not upload_action_id:
-                                upload_action_id = upload_matches[0]
-                                debug_print(f"    📤 Found generateUploadUrl action ID: {upload_action_id[:20]}...")
-                            
-                            if upload_action_id and signed_url_action_id:
-                                debug_print(f"  ✅ Found both action IDs, stopping search")
-                                break
-                                
-                        except Exception as e:
-                            debug_print(f"    ⚠️  Error parsing response from {url}: {e}")
-                            continue
-                
-                # Save the action IDs to config
-                if upload_action_id:
-                    config["next_action_upload"] = upload_action_id
-                if signed_url_action_id:
-                    config["next_action_signed_url"] = signed_url_action_id
-                
-                if upload_action_id and signed_url_action_id:
-                    save_config(config)
-                    debug_print(f"\n✅ Saved both Next-Action IDs to config")
-                    debug_print(f"   Upload: {upload_action_id}")
-                    debug_print(f"   Signed URL: {signed_url_action_id}")
-                elif upload_action_id or signed_url_action_id:
-                    save_config(config)
-                    debug_print(f"\n⚠️ Saved partial Next-Action IDs:")
-                    if upload_action_id:
-                        debug_print(f"   Upload: {upload_action_id}")
-                    if signed_url_action_id:
-                        debug_print(f"   Signed URL: {signed_url_action_id}")
-                else:
-                    debug_print(f"\n⚠️ Could not extract Next-Action IDs from JavaScript chunks")
-                    debug_print(f"   This is optional - image upload may not work without them")
+                        text = str(item.get('text', ''))
+                        matches = re.findall(action_pattern, text)
+                        for action_id, action_name in matches:
+                            if _state_module.DISCOVERED_ACTIONS.get(action_name) != action_id:
+                                _state_module.DISCOVERED_ACTIONS[action_name] = action_id
+                                found_count += 1
+                    
+                    if found_count > 0:
+                        debug_print(f"  ✅ Updated {found_count} Next-Action IDs in memory")
+                        if "generateUploadUrl" in _state_module.DISCOVERED_ACTIONS:
+                            config["next_action_upload"] = _state_module.DISCOVERED_ACTIONS["generateUploadUrl"]
+                        if "getSignedUrl" in _state_module.DISCOVERED_ACTIONS:
+                            config["next_action_signed_url"] = _state_module.DISCOVERED_ACTIONS["getSignedUrl"]
+                        save_config(config)
+                    
+                    if _state_module.DISCOVERED_ACTIONS:
+                        debug_print(f"✅ Discovered {len(_state_module.DISCOVERED_ACTIONS)} Server Actions (New/Updated: {found_count})")
                     
             except Exception as e:
-                debug_print(f"❌ Error extracting Next-Action IDs: {e}")
-                debug_print(f"   This is optional - continuing without them")
+                debug_print(f"❌ Error during Server Action discovery: {e}")
+                debug_print("   This is optional - continuing without them")
 
             # Extract reCAPTCHA sitekey/action from captured JS responses (helps keep up with LMArena changes).
             debug_print(f"\nExtracting reCAPTCHA params from {len(captured_responses)} captured JS responses...")
@@ -1321,7 +1336,7 @@ async def dashboard(session: str = Depends(get_current_session)):
         stats_html = "<tr><td colspan='2' class='no-data'>No usage data yet</td></tr>"
 
     # Check token status - check both legacy auth_token and new auth_tokens list
-    has_auth_token = bool(config.get("auth_token")) or bool(config.get("auth_tokens"))
+                has_auth_token = bool(str(config.get("auth_token") or "").strip()) or any(config.get("auth_tokens") or [])
     token_status = "✅ Configured" if has_auth_token else "❌ Not Set"
     token_class = "status-good" if has_auth_token else "status-bad"
     
@@ -2429,7 +2444,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             # Use LMArena's retry endpoint
             # Format: PUT /nextjs-api/stream/retry-evaluation-session-message/{sessionId}/messages/{messageId}
             payload = {}
-            url = f"https://lmarena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
+            url = f"https://arena.ai/nextjs-api/stream/retry-evaluation-session-message/{session['conversation_id']}/messages/{retry_message_id}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Using PUT method for retry")
             http_method = "PUT"
@@ -2461,7 +2476,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = f"https://lmarena.ai{STREAM_CREATE_EVALUATION_PATH}"
+            url = f"https://arena.ai{STREAM_CREATE_EVALUATION_PATH}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
@@ -2490,7 +2505,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 "modality": modality,
                 "recaptchaV3Token": recaptcha_token, # <--- ADD TOKEN HERE
             }
-            url = f"https://lmarena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
+            url = f"https://arena.ai/nextjs-api/stream/post-to-evaluation/{session['conversation_id']}"
             debug_print(f"📤 Target URL: {url}")
             debug_print(f"📦 Payload structure: Simple userMessage format")
             debug_print(f"🔍 Full payload: {json.dumps(payload, indent=2)}")
@@ -2509,19 +2524,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         try:
             current_token = get_next_auth_token(exclude_tokens=failed_tokens)
         except HTTPException:
-            # Stream mode: when no auth token is configured, fall back to browser-backed transports
-            # (Userscript proxy / Chrome/Camoufox fetch). This matches strict-model behavior and avoids a hard 500.
-            if stream:
-                debug_print("⚠️ No auth token configured for streaming; enabling browser/proxy transports.")
-                current_token = ""
-                force_browser_transports_in_stream = True
-            # Non-streaming strict models can still proceed via browser fetch transports, which may have a valid
-            # arena-auth cookie already stored in the persistent profile.
-            elif strict_chrome_fetch_model:
-                debug_print("⚠️ No auth token configured; proceeding with browser-only transports.")
-                current_token = ""
-            else:
-                raise
+            debug_print("⚠️ No auth token configured; enabling browser/proxy transports.")
+            current_token = ""
+            force_browser_transports_in_stream = True
 
         # Strict models: if round-robin picked a placeholder/invalid-looking token but there is a better token
         # available, switch to the first plausible token without mutating user config.
@@ -2563,11 +2568,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         else:
             debug_print("🔑 No auth token configured (will rely on browser session cookies).")
         
-        # Retry logic wrapper
         async def make_request_with_retry(url, payload, http_method, max_retries=3):
-            """Make request with automatic retry on 429/401 errors"""
             nonlocal current_token, headers, failed_tokens, recaptcha_token
-            
+
             for attempt in range(max_retries):
                 try:
                     import cloudscraper as _cs
@@ -2579,10 +2582,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             return scraper.post(url, json=payload, headers=headers, timeout=120)
                     response = await asyncio.to_thread(_cs_request)
 
-                    # Log status with human-readable message
                     log_http_status(response.status_code, "LMArena API")
 
-                    # Check for retry-able errors
                     if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
                         debug_print(f"⏱️  Attempt {attempt + 1}/{max_retries} - Rate limit with token {current_token[:20]}...")
                         retry_after = response.headers.get("Retry-After")
@@ -2591,7 +2592,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                         if attempt < max_retries - 1:
                             try:
-                                # Try with next token (excluding failed ones)
                                 current_token = get_next_auth_token(exclude_tokens=failed_tokens)
                                 headers = get_request_headers_with_token(current_token, recaptcha_token)
                                 debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
@@ -2621,40 +2621,32 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                     elif response.status_code == HTTPStatus.UNAUTHORIZED:
                         debug_print(f"🔒 Attempt {attempt + 1}/{max_retries} - Auth failed with token {current_token[:20]}...")
-                        # Add current token to failed set
                         failed_tokens.add(current_token)
-                        # (Pruning disabled)
                         debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
 
                         if attempt < max_retries - 1:
                             try:
-                                # Try with next available token (excluding failed ones)
                                 current_token = get_next_auth_token(exclude_tokens=failed_tokens)
                                 headers = get_request_headers_with_token(current_token, recaptcha_token)
                                 debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
-                                await asyncio.sleep(1)  # Brief delay
+                                await asyncio.sleep(1)
                                 continue
                             except HTTPException as e:
                                 debug_print(f"❌ No more tokens available: {e.detail}")
                                 break
 
-                    # If we get here, return the response (success or non-retryable error)
                     response.raise_for_status()
                     return response
 
-                except (requests.exceptions.HTTPError, cloudscraper.exceptions.CloudflareException) as e:
-                    # Handle HTTP errors from cloudscraper (requests-based)
+                except (requests.exceptions.HTTPError, _cs.exceptions.CloudflareException) as e:
                     status_code = getattr(getattr(e, 'response', None), 'status_code', None)
                     if status_code and status_code not in [429, 401]:
                         raise
-                    # If last attempt, raise the error
                     if attempt == max_retries - 1:
                         raise
-            
-            # Should not reach here, but just in case
+
             raise HTTPException(status_code=503, detail="Max retries exceeded")
-        
-        # Handle streaming mode
+
         if stream:
             async def generate_stream():
                 nonlocal current_token, headers, failed_tokens, recaptcha_token
@@ -4297,7 +4289,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     debug_print("⚠️ Userscript Proxy returned None. Falling back...")
 
             if response is None:
-                if strict_chrome_fetch_model:
+                if strict_chrome_fetch_model or force_browser_transports_in_stream:
                     debug_print(f"🌐 Using Chrome fetch transport for non-streaming strict model ({model_public_name})...")
                     # Chrome fetch transport has its own internal reCAPTCHA retries, 
                     # but we add an outer loop here to handle token rotation (401) and rate limits (429).
@@ -4718,6 +4710,183 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         print(f"📛 Error message: {str(e)}")
         print("="*80 + "\n")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# Anthropic API Models
+from pydantic import BaseModel
+from typing import Any
+
+class AnthropicMessageRequest(BaseModel):
+    model: str
+    messages: List[Dict[str, Any]]
+    max_tokens: int
+    system: Optional[str] = None
+    temperature: Optional[float] = None
+    stream: Optional[bool] = False
+
+
+@app.post("/api/v1/messages")
+async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Request, api_key: dict = Depends(rate_limit_api_key)):
+    """
+    Anthropic Messages API endpoint.
+    Translates Anthropic-style requests to OpenAI-style and processes through LMArena.
+    """
+    debug_print("\n" + "="*80)
+    debug_print("🟣 ANTHROPIC MESSAGES REQUEST RECEIVED")
+    debug_print("="*80)
+    debug_print(f"🤖 Model: {request.model}")
+    debug_print(f"💬 Messages: {len(request.messages)}")
+    debug_print(f"🌊 Stream: {request.stream}")
+
+    # Convert Anthropic messages to OpenAI format
+    openai_messages = []
+    for msg in request.messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            # Handle content blocks
+            text_parts = []
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    text_parts.append(block.get("text", ""))
+            content = "\n".join(text_parts)
+        openai_messages.append({"role": role, "content": content})
+
+    # Add system message if present
+    if request.system:
+        openai_messages.insert(0, {"role": "system", "content": request.system})
+
+    # Build OpenAI-style request body
+    openai_body = {
+        "model": request.model,
+        "messages": openai_messages,
+        "max_tokens": request.max_tokens,
+        "stream": request.stream,
+    }
+    if request.temperature is not None:
+        openai_body["temperature"] = request.temperature
+
+    debug_print(f"📦 Converted to OpenAI format")
+
+    # Create a mock request object for the chat completions handler
+    class MockRequest:
+        def __init__(self, body):
+            self._body = body
+
+        async def json(self):
+            return self._body
+
+        async def is_disconnected(self):
+            return await raw_request.is_disconnected()
+
+    mock_request = MockRequest(openai_body)
+
+    if request.stream:
+        # Streaming response - convert OpenAI SSE to Anthropic format
+        async def anthropic_stream_generator():
+            message_id = f"msg_{uuid.uuid4()}"
+            accumulated_text = ""
+
+            # Send message_start
+            yield f"event: message_start\ndata: {json.dumps({'type': 'message_start', 'message': {'id': message_id, 'type': 'message', 'role': 'assistant', 'content': [], 'model': request.model, 'stop_reason': None, 'usage': {'input_tokens': sum(len(str(m.get('content', ''))) for m in openai_messages), 'output_tokens': 0}}})}\n\n"
+
+            # Send content_block_start
+            yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': 0, 'content_block': {'type': 'text', 'text': ''}})}\n\n"
+
+            try:
+                result = await api_chat_completions(mock_request, api_key)
+
+                if isinstance(result, StreamingResponse):
+                    async for chunk in result.body_iterator:
+                        chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
+                        for line in chunk_str.strip().split('\n'):
+                            if line.startswith('data: '):
+                                data = line[6:]
+                                if data == '[DONE]':
+                                    break
+                                try:
+                                    chunk_data = json.loads(data)
+                                    delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                                    if "content" in delta:
+                                        content = delta["content"]
+                                        accumulated_text += content
+                                        yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': content}})}\n\n"
+                                except json.JSONDecodeError:
+                                    continue
+
+            except Exception as e:
+                yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': {'message': str(e), 'type': 'internal_error'}})}\n\n"
+                return
+
+            # Send content_block_stop
+            yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': 0})}\n\n"
+
+            # Send message_delta
+            yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': 'end_turn'}, 'usage': {'output_tokens': len(accumulated_text)}})}\n\n"
+
+            # Send message_stop
+            yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"
+
+        return StreamingResponse(
+            anthropic_stream_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    else:
+        # Non-streaming response
+        result = await api_chat_completions(mock_request, api_key)
+
+        if isinstance(result, StreamingResponse):
+            # Read streaming response
+            full_text = ""
+            async for chunk in result.body_iterator:
+                chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
+                for line in chunk_str.strip().split('\n'):
+                    if line.startswith('data: '):
+                        data = line[6:]
+                        if data == '[DONE]':
+                            break
+                        try:
+                            chunk_data = json.loads(data)
+                            delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                            if "content" in delta:
+                                full_text += delta["content"]
+                        except json.JSONDecodeError:
+                            continue
+
+            return {
+                "id": f"msg_{uuid.uuid4()}",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": full_text}],
+                "model": request.model,
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 0, "output_tokens": len(full_text.split())}
+            }
+
+        if isinstance(result, dict) and "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"].get("message", "Unknown error"))
+
+        # Convert OpenAI response to Anthropic format
+        choices = result.get("choices", [])
+        content = ""
+        if choices:
+            content = choices[0].get("message", {}).get("content", "")
+
+        return {
+            "id": result.get("id", f"msg_{uuid.uuid4()}"),
+            "type": "message",
+            "role": "assistant",
+            "content": [{"type": "text", "text": content}],
+            "model": request.model,
+            "stop_reason": "end_turn",
+            "usage": {"input_tokens": result.get("usage", {}).get("prompt_tokens", 0), "output_tokens": result.get("usage", {}).get("completion_tokens", len(content))}
+        }
+
 
 if __name__ == "__main__":
     # Avoid crashes on Windows consoles with non-UTF8 code pages (e.g., GBK) when printing emojis.

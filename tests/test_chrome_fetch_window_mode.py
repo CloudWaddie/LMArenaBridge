@@ -33,7 +33,7 @@ class TestChromeFetchWindowMode(BaseBridgeTest):
         ):
             resp = await self.main.fetch_lmarena_stream_via_chrome(
                 "POST",
-                "https://lmarena.ai/api",
+                "https://arena.ai/api",
                 {"p": 1},
                 "token",
             )

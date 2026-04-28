@@ -1336,7 +1336,7 @@ async def dashboard(session: str = Depends(get_current_session)):
         stats_html = "<tr><td colspan='2' class='no-data'>No usage data yet</td></tr>"
 
     # Check token status - check both legacy auth_token and new auth_tokens list
-                has_auth_token = bool(str(config.get("auth_token") or "").strip()) or any(config.get("auth_tokens") or [])
+    has_auth_token = bool(str(config.get("auth_token") or "").strip()) or any(config.get("auth_tokens") or [])
     token_status = "✅ Configured" if has_auth_token else "❌ Not Set"
     token_class = "status-good" if has_auth_token else "status-bad"
     
@@ -2170,6 +2170,39 @@ async def health_check():
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "error": str(e)
         }
+
+# --- Ollama-compatible stubs (OpenWebUI probes these endpoints) ---
+
+@app.get("/api/v1/api/tags")
+async def ollama_tags(api_key: dict = Depends(rate_limit_api_key)):
+    models = get_models()
+    
+    valid_models = [m for m in models 
+                   if (m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
+                       or m.get('capabilities', {}).get('outputCapabilities', {}).get('search')
+                       or m.get('capabilities', {}).get('outputCapabilities', {}).get('image'))
+                   and m.get('organization')]
+    
+    ollama_models = [
+        {
+            "name": model.get("publicName", ""),
+            "model": model.get("publicName", ""),
+            "modified_at": "2024-01-01T00:00:00Z",
+            "size": 0
+        }
+        for model in valid_models if model.get("publicName")
+    ]
+    return {"models": ollama_models}
+
+
+@app.get("/api/v1/api/ps")
+async def ollama_ps(api_key: dict = Depends(rate_limit_api_key)):
+    return {"models": []}
+
+
+@app.get("/api/v1/api/version")
+async def ollama_version(api_key: dict = Depends(rate_limit_api_key)):
+    return {"version": "0.1.0"}
 
 @app.get("/api/v1/models")
 async def list_models(api_key: dict = Depends(rate_limit_api_key)):

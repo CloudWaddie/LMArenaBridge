@@ -1144,6 +1144,11 @@ async def fetch_lmarena_stream_via_camoufox(
             for _domain in (".lmarena.ai", ".arena.ai"):
                 desired_cookies.append({"name": name, "value": value, "domain": _domain})
     
+    # If no auth token provided, try to get one from config/browser_cookies
+    if not auth_token:
+        # Check if we have an arena-auth cookie in browser_cookies
+        auth_token = config.get("browser_cookies", {}).get("arena-auth-prod-v1") or _m().EPHEMERAL_ARENA_AUTH_TOKEN or ""
+    
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))
@@ -1212,6 +1217,169 @@ async def fetch_lmarena_stream_via_camoufox(
                     await asyncio.sleep(2)
             except Exception:
                 pass
+            
+            # Check for existing auth cookie
+            current_cookie = ""
+            try:
+                existing = await _get_arena_context_cookies(context, page_url=str(getattr(page, "url", "") or ""))
+                for c in existing or []:
+                    if str(c.get("name") or "") == "arena-auth-prod-v1":
+                        current_cookie = str(c.get("value") or "").strip()
+                        break
+            except Exception as e:
+                _m().debug_print(f"⚠️ Error checking for existing auth cookie: {e}")
+            
+            needs_signup = not current_cookie
+            
+            if not auth_token and needs_signup:
+                _m().debug_print(" 🦊 No auth cookie, attempting anonymous signup...")
+                provisional_user_id = str(config.get("provisional_user_id") or "").strip()
+                if not provisional_user_id:
+                    provisional_user_id = str(uuid.uuid4())
+                
+                turnstile_token = ""
+                widget_id = None
+                _m().debug_print(" 🦊 Rendering Turnstile widget...")
+                render_turnstile_js = """async ({ sitekey }) => {
+                  const w = (window.wrappedJSObject || window);
+                  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+                  const key = String(sitekey || '');
+                  const out = { ok: false, widgetId: null, stage: 'start', error: '' };
+                  if (!key) { out.stage = 'no_sitekey'; return out; }
+                  try {
+                    const prev = w.__LM_BRIDGE_TURNSTILE_WIDGET_ID;
+                    if (prev != null && w.turnstile && typeof w.turnstile.remove === 'function') {
+                      try { w.turnstile.remove(prev); } catch (e) {}
+                    }
+                  } catch (e) {}
+                  try {
+                    const old = w.document.getElementById('lm-bridge-turnstile');
+                    if (old) old.remove();
+                  } catch (e) {}
+                  async function ensureLoaded() {
+                    if (w.turnstile && typeof w.turnstile.render === 'function') return true;
+                    try {
+                      const h = w.document?.head;
+                      if (!h) return false;
+                      if (!w.__LM_BRIDGE_TURNSTILE_INJECTED) {
+                        w.__LM_BRIDGE_TURNSTILE_INJECTED = true;
+                        out.stage = 'inject_script';
+                        await Promise.race([
+                          new Promise((resolve) => {
+                            const s = w.document.createElement('script');
+                            s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+                            s.async = true;
+                            s.defer = true;
+                            s.onload = () => resolve(true);
+                            s.onerror = () => resolve(false);
+                            h.appendChild(s);
+                          }),
+                          sleep(12000).then(() => false),
+                        ]);
+                      }
+                    } catch (e) { out.error = String(e); }
+                    const start = Date.now();
+                    while ((Date.now() - start) < 15000) {
+                      if (w.turnstile && typeof w.turnstile.render === 'function') return true;
+                      await sleep(250);
+                    }
+                    return false;
+                  }
+                  const ok = await ensureLoaded();
+                  if (!ok || !(w.turnstile && typeof w.turnstile.render === 'function')) { out.stage = 'not_loaded'; return out; }
+                  out.stage = 'render';
+                  try {
+                    const el = w.document.createElement('div');
+                    el.id = 'lm-bridge-turnstile';
+                    el.style.cssText = 'position:fixed;left:20px;top:20px;z-index:2147483647;';
+                    (w.document.body || w.document.documentElement).appendChild(el);
+                    const params = new w.Object();
+                    params.sitekey = key;
+                    params.size = 'normal';
+                    params.appearance = 'interaction-only';
+                    params.callback = (tok) => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = String(tok || ''); } catch (e) {} };
+                    params['error-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
+                    params['expired-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
+                    const widgetId = w.turnstile.render(el, params);
+                    w.__LM_BRIDGE_TURNSTILE_WIDGET_ID = widgetId;
+                    out.ok = true;
+                    out.widgetId = widgetId;
+                    return out;
+                  } catch (e) {
+                    out.error = String(e);
+                    out.stage = 'render_error';
+                    return out;
+                  }
+                }"""
+                
+                poll_turnstile_js = """({ widgetId }) => {
+                  const w = (window.wrappedJSObject || window);
+                  try {
+                    const tok = w.__LM_BRIDGE_TURNSTILE_TOKEN;
+                    if (tok && String(tok).trim()) return String(tok);
+                    if (!w.turnstile || typeof w.turnstile.getResponse !== 'function') return '';
+                    return String(w.turnstile.getResponse(widgetId) || '');
+                  } catch (e) {
+                    return '';
+                  }
+                }"""
+                
+                try:
+                    mint_info = await asyncio.wait_for(
+                        page.evaluate(render_turnstile_js, {"sitekey": _m().TURNSTILE_SITEKEY}),
+                        timeout=30.0,
+                    )
+                except Exception as e:
+                    mint_info = {"ok": False, "stage": "evaluate_error", "error": str(e)}
+                
+                _m().debug_print(f" 🦊 Turnstile render result: ok={mint_info.get('ok')}, stage={mint_info.get('stage')}")
+                
+                if mint_info and mint_info.get("widgetId"):
+                    widget_id = mint_info.get("widgetId")
+                    _m().debug_print(f" 🦊 Clicking Turnstile widget to trigger challenge...")
+                    try:
+                        await _m().click_turnstile(page)
+                        await asyncio.sleep(2)
+                    except Exception as e:
+                        _m().debug_print(f" ⚠️ Click error: {e}")
+                    started = _m().time.monotonic()
+                    while (_m().time.monotonic() - started) < 130.0:
+                        try:
+                            cur = await asyncio.wait_for(
+                                page.evaluate(poll_turnstile_js, {"widgetId": widget_id}),
+                                timeout=5.0,
+                            )
+                        except Exception as e:
+                            _m().debug_print(f"⚠️ Turnstile poll error: {e}")
+                            cur = ""
+                        turnstile_token = str(cur or "").strip()
+                        if turnstile_token:
+                            break
+                        await asyncio.sleep(1.0)
+                
+                if turnstile_token:
+                    _m().debug_print(f" 🦊 Got Turnstile token, calling signup...")
+                    try:
+                        resp = await _m()._camoufox_proxy_signup_anonymous_user(
+                            page,
+                            turnstile_token=turnstile_token,
+                            provisional_user_id=provisional_user_id,
+                            recaptcha_sitekey=recaptcha_sitekey,
+                            recaptcha_action="sign_up",
+                        )
+                        if resp:
+                            _m().debug_print(f" 🦊 Signup response status: {resp.get('status')}")
+                            body_text = str(resp.get("body", ""))
+                            if body_text:
+                                derived = _m().maybe_build_arena_auth_cookie_from_signup_response_body(body_text)
+                                if derived and not _m().is_arena_auth_token_expired(derived, skew_seconds=0):
+                                    auth_token = derived
+                                    desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
+                                    _m().debug_print(f" 🦊 Got auth token from signup!")
+                    except Exception as e:
+                        _m().debug_print(f" ⚠️ Signup failed: {e}")
+                else:
+                    _m().debug_print(" ⚠️ Turnstile token mint failed")
             
             # Persist cookies
             try:

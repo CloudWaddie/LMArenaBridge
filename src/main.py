@@ -4819,7 +4819,8 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
         async def anthropic_stream_generator():
             message_id = f"msg_{uuid.uuid4()}"
             accumulated_text = ""
-
+            buffer = ""
+            
             # Send message_start
             yield f"event: message_start\ndata: {json.dumps({'type': 'message_start', 'message': {'id': message_id, 'type': 'message', 'role': 'assistant', 'content': [], 'model': request.model, 'stop_reason': None, 'usage': {'input_tokens': sum(len(str(m.get('content', ''))) for m in openai_messages), 'output_tokens': 0}}})}\n\n"
 
@@ -4829,23 +4830,35 @@ async def anthropic_messages(request: AnthropicMessageRequest, raw_request: Requ
             try:
                 result = await api_chat_completions(mock_request, api_key)
 
+                # Return error for dict response (error case)
+                if isinstance(result, dict) and result.get("error"):
+                    yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': {'message': result['error'].get('message', 'Unknown error'), 'type': result['error'].get('type', 'invalid_request_error')}})}\n\n"
+                    return
+                
                 if isinstance(result, StreamingResponse):
                     async for chunk in result.body_iterator:
                         chunk_str = chunk.decode('utf-8') if isinstance(chunk, bytes) else str(chunk)
-                        for line in chunk_str.strip().split('\n'):
-                            if line.startswith('data: '):
-                                data = line[6:]
-                                if data == '[DONE]':
-                                    break
-                                try:
-                                    chunk_data = json.loads(data)
-                                    delta = chunk_data.get("choices", [{}])[0].get("delta", {})
-                                    if "content" in delta:
-                                        content = delta["content"]
-                                        accumulated_text += content
-                                        yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': content}})}\n\n"
-                                except json.JSONDecodeError:
-                                    continue
+                        buffer += chunk_str
+                        while '\n' in buffer:
+                            line, buffer = buffer.split('\n', 1)
+                            line = line.strip()
+                            if not line.startswith('data: '):
+                                continue
+                            data = line[6:]
+                            if data == '[DONE]':
+                                break
+                            try:
+                                chunk_data = json.loads(data)
+                                delta = chunk_data.get("choices", [{}])[0].get("delta", {})
+                                if "content" in delta:
+                                    content = delta["content"]
+                                    accumulated_text += content
+                                    yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': 0, 'delta': {'type': 'text_delta', 'text': content}})}\n\n"
+                            except json.JSONDecodeError:
+                                continue
+                else:
+                    yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': {'message': 'Unexpected non-streaming response from API', 'type': 'internal_error'}})}\n\n"
+                    return
 
             except Exception as e:
                 yield f"event: error\ndata: {json.dumps({'type': 'error', 'error': {'message': str(e), 'type': 'internal_error'}})}\n\n"

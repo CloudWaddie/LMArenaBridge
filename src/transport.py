@@ -1226,8 +1226,8 @@ async def fetch_lmarena_stream_via_camoufox(
                     if str(c.get("name") or "") == "arena-auth-prod-v1":
                         current_cookie = str(c.get("value") or "").strip()
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                _m().debug_print(f"⚠️ Error checking for existing auth cookie: {e}")
             
             needs_signup = not current_cookie
             

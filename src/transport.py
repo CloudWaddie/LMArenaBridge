@@ -102,7 +102,7 @@ class BrowserFetchStreamResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code == 0 or self.status_code >= 400:
-            request = httpx.Request(self._method, self._url or "https://lmarena.ai/")
+            request = httpx.Request(self._method, self._url or "https://arena.ai/")
             response = httpx.Response(self.status_code or 502, request=request, content=self._text.encode("utf-8"))
             raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=request, response=response)
 
@@ -255,7 +255,7 @@ class UserscriptProxyStreamResponse:
         self._headers: dict = {}
         self._timeout_seconds = int(timeout_seconds or 120)
         self._method = "POST"
-        self._url = "https://lmarena.ai/"
+        self._url = "https://arena.ai/"
 
     @property
     def status_code(self) -> int:
@@ -477,34 +477,23 @@ async def _get_arena_context_cookies(context, *, page_url: Optional[str] = None)
     Fetch cookies for both arena.ai and lmarena.ai from a Playwright/Camoufox browser context.
     """
     urls = _arena_origin_candidates(page_url)
-    try:
-        cookies = await context.cookies(urls)
-        return cookies if isinstance(cookies, list) else []
-    except Exception:
-        pass
-
-    merged: list[dict] = []
-    seen: set[tuple[str, str, str]] = set()
+    all_raw: list[dict] = []
     for url in urls:
         try:
             chunk = await context.cookies(url)
+            if isinstance(chunk, list):
+                all_raw.extend(chunk)
         except Exception:
-            chunk = []
-        if not isinstance(chunk, list):
+            pass
+    
+    seen: set[tuple[str, str, str]] = set()
+    merged: list[dict] = []
+    for c in all_raw:
+        key = (str(c.get("name") or ""), str(c.get("domain") or ""), str(c.get("path") or ""))
+        if key in seen:
             continue
-        for c in chunk:
-            try:
-                key = (
-                    str(c.get("name") or ""),
-                    str(c.get("domain") or ""),
-                    str(c.get("path") or ""),
-                )
-            except Exception:
-                continue
-            if key in seen:
-                continue
-            seen.add(key)
-            merged.append(c)
+        seen.add(key)
+        merged.append(c)
     return merged
 
 
@@ -512,8 +501,8 @@ def _normalize_userscript_proxy_url(url: str) -> str:
     """
     Convert LMArena absolute URLs into same-origin paths for in-page fetch.
 
-    The Camoufox proxy page can land on `arena.ai` while the backend constructs `https://lmarena.ai/...` URLs.
-    Absolute cross-origin URLs can cause browser fetch to reject with a generic NetworkError (CORS).
+    The proxy page may be on arena.ai (after redirect from lmarena.ai); absolute
+    cross-origin URLs can cause browser fetch to reject with a generic NetworkError (CORS).
     """
     text = str(url or "").strip()
     if not text:
@@ -736,7 +725,7 @@ async def fetch_lmarena_stream_via_chrome(
                 marker="LMArenaBridge Chrome Fetch",
                 headless=bool(headless),
             )
-            await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+            await page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
 
             # Best-effort: if we land on a Cloudflare challenge page, try clicking Turnstile before minting tokens.
             try:
@@ -1204,10 +1193,10 @@ async def fetch_lmarena_stream_via_camoufox(
                 headless=headless,
             )
               
-            _m().debug_print(f"  🦊 Navigating to lmarena.ai...")
+            _m().debug_print(f" 🦊 Navigating to arena.ai...")
             try:
                 await asyncio.wait_for(
-                    page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=60000),
+                    page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=60000),
                     timeout=70.0,
                 )
             except Exception:
@@ -1894,16 +1883,17 @@ async def camoufox_proxy_worker():
 
                 desired_cookies: list[dict] = []
                 # When using domain, do NOT include path - they're mutually exclusive in Playwright
-                if cf_clearance:
-                    desired_cookies.append({"name": "cf_clearance", "value": cf_clearance, "domain": ".lmarena.ai"})
-                if cf_bm:
-                    desired_cookies.append({"name": "__cf_bm", "value": cf_bm, "domain": ".lmarena.ai"})
-                if cfuvid:
-                    desired_cookies.append({"name": "_cfuvid", "value": cfuvid, "domain": ".lmarena.ai"})
-                if provisional_user_id:
-                    desired_cookies.append(
-                        {"name": "provisional_user_id", "value": provisional_user_id, "domain": ".lmarena.ai"}
-                    )
+                # Define cookies for BOTH domains since lmarena.ai 301-redirects to arena.ai
+                cookie_definitions = [
+                    (cf_clearance, "cf_clearance"),
+                    (cf_bm, "__cf_bm"),
+                    (cfuvid, "_cfuvid"),
+                    (provisional_user_id, "provisional_user_id"),
+                ]
+                for value, name in cookie_definitions:
+                    if value:
+                        for _domain in (".lmarena.ai", ".arena.ai"):
+                            desired_cookies.append({"name": name, "value": value, "domain": _domain})
                 if desired_cookies:
                     try:
                         existing_names: set[str] = set()
@@ -2001,8 +1991,8 @@ async def camoufox_proxy_worker():
                 )
 
                 try:
-                    _m().debug_print("🦊 Camoufox proxy: navigating to https://lmarena.ai/?mode=direct ...")
-                    await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+                    _m().debug_print("🦊 Camoufox proxy: navigating to https://arena.ai/?mode=direct ...")
+                    await page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
                     _m().debug_print("🦊 Camoufox proxy: navigation complete.")
                 except Exception as e:
                     _m().debug_print(f"⚠️ Navigation warning: {e}")
@@ -2182,7 +2172,7 @@ async def camoufox_proxy_worker():
                 except Exception:
                     pass
                 try:
-                    await page.goto("https://lmarena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
+                    await page.goto("https://arena.ai/?mode=direct", wait_until="domcontentloaded", timeout=120000)
                 except Exception:
                     pass
                 try:
@@ -2426,7 +2416,7 @@ async def camoufox_proxy_worker():
                             wait_loops = 40
                             try:
                                 await page.goto(
-                                    "https://lmarena.ai/?mode=direct",
+                                    "https://arena.ai/?mode=direct",
                                     wait_until="domcontentloaded",
                                     timeout=120000,
                                 )
@@ -2434,7 +2424,6 @@ async def camoufox_proxy_worker():
                                 pass
                     except Exception:
                         pass
-
                     for _ in range(int(wait_loops)):
                         cur = str(await _get_auth_cookie_value() or "").strip()
                         if not cur or _m().is_arena_auth_token_expired(cur, skew_seconds=0):

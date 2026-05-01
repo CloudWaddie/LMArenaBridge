@@ -1349,7 +1349,8 @@ async def fetch_lmarena_stream_via_camoufox(
                                 page.evaluate(poll_turnstile_js, {"widgetId": widget_id}),
                                 timeout=5.0,
                             )
-                        except Exception:
+                        except Exception as e:
+                            _m().debug_print(f"⚠️ Turnstile poll error: {e}")
                             cur = ""
                         turnstile_token = str(cur or "").strip()
                         if turnstile_token:

@@ -1147,11 +1147,7 @@ async def fetch_lmarena_stream_via_camoufox(
     # If no auth token provided, try to get one from config/browser_cookies
     if not auth_token:
         # Check if we have an arena-auth cookie in browser_cookies
-        browser_cookies = config.get("browser_cookies", {})
-        auth_token = browser_cookies.get("arena-auth-prod-v1", "")
-        if not auth_token:
-            # Check for ephemeral token
-            auth_token = _m().EPHEMERAL_ARENA_AUTH_TOKEN or ""
+        auth_token = config.get("browser_cookies", {}).get("arena-auth-prod-v1") or _m().EPHEMERAL_ARENA_AUTH_TOKEN or ""
     
     if auth_token:
         desired_cookies.extend(_arena_auth_cookie_specs(auth_token))

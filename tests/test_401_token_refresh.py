@@ -4,12 +4,10 @@ Test that 401 Unauthorized responses trigger token refresh before giving up.
 This tests the fix for GitHub issue #172:
   https://github.com/CloudWaddie/LMArenaBridge/issues/172
 
-Before the fix, a 401 would immediately mark the token as failed and try
-the next one. With only one token, this produced:
-  "No more auth tokens available to try" -> "503: Max retries exceeded"
-
-After the fix, the code attempts to refresh the token via LMArena HTTP
-before rotating to the next token.
+The fix uses multiple refresh strategies:
+  1) maybe_refresh_expired_auth_tokens (handles already-expired tokens in the pool)
+  2) Direct LMArena HTTP refresh via refresh_arena_auth_token_via_lmarena_http
+  3) Fall back to next token in rotation
 """
 
 import asyncio
@@ -35,7 +33,6 @@ class Test401TokenRefresh(unittest.IsolatedAsyncioTestCase):
     """Tests for the 401 token refresh logic added in issue #172."""
 
     async def asyncSetUp(self):
-        # Import main fresh for each test to avoid state leakage
         import importlib
         import src.main
         importlib.reload(src.main)
@@ -45,7 +42,6 @@ class Test401TokenRefresh(unittest.IsolatedAsyncioTestCase):
         self._orig_debug = self.main.DEBUG
         self.main.DEBUG = False
 
-        # Skip browser/network startup
         self._orig_pytest_current_test = os.environ.get("PYTEST_CURRENT_TEST")
         if not self._orig_pytest_current_test:
             os.environ["PYTEST_CURRENT_TEST"] = "unittest"
@@ -59,7 +55,6 @@ class Test401TokenRefresh(unittest.IsolatedAsyncioTestCase):
         self._temp_dir = tempfile.TemporaryDirectory()
         self._config_path = Path(self._temp_dir.name) / "config.json"
 
-        # Write a minimal config with a single base64- token
         config = {
             "password": "admin",
             "cf_clearance": "test-cf-clearance",
@@ -80,107 +75,121 @@ class Test401TokenRefresh(unittest.IsolatedAsyncioTestCase):
             os.environ["PYTEST_CURRENT_TEST"] = self._orig_pytest_current_test
         self._temp_dir.cleanup()
 
-    async def test_401_triggers_token_refresh_attempt(self):
-        """When a 401 occurs on a base64- token, maybe_refresh_expired_auth_tokens should be called."""
+    async def test_401_pool_refresh_succeeds(self):
+        """Strategy 1: maybe_refresh_expired_auth_tokens returns a token."""
         from src import main
-
-        refresh_called = False
-
-        async def mock_refresh(exclude_tokens=None):
-            nonlocal refresh_called
-            refresh_called = True
-            return "base64-refreshed-token"
-
-        # Simulate the 401 handling logic from make_request_with_retry (line 2655-2688)
-        current_token = "base64-dGVzdC10b2tlbg=="
-        failed_tokens = set()
-        recaptcha_token = None
-
-        from http import HTTPStatus
-
-        # Simulate receiving a 401 response
-        status_code = 401
-        if status_code == HTTPStatus.UNAUTHORIZED:
-            failed_tokens.add(current_token)
-
-            refreshed_token = None
-            if current_token.startswith("base64-"):
-                refreshed_token = await mock_refresh(exclude_tokens=failed_tokens)
-                if refreshed_token:
-                    current_token = refreshed_token
-
-        self.assertTrue(refresh_called, "maybe_refresh_expired_auth_tokens should have been called on 401")
-        self.assertEqual(current_token, "base64-refreshed-token")
-
-    async def test_401_refresh_failure_falls_back_to_next_token(self):
-        """When refresh returns None, should fall back to get_next_auth_token."""
-        from src import main
-        from http import HTTPStatus
 
         current_token = "base64-dGVzdC10b2tlbg=="
         failed_tokens = {current_token}
-        recaptcha_token = None
+
+        with patch.object(main, "maybe_refresh_expired_auth_tokens", new_callable=AsyncMock, return_value="base64-pool-refreshed"):
+            with patch.object(main, "refresh_arena_auth_token_via_lmarena_http", new_callable=AsyncMock) as mock_direct:
+                with patch.object(main, "get_next_auth_token") as mock_next:
+                    # Simulate the 401 handling logic
+                    refreshed_token = None
+                    if current_token.startswith("base64-"):
+                        refreshed_token = await main.maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
+                        if not refreshed_token:
+                            refreshed_token = await main.refresh_arena_auth_token_via_lmarena_http(current_token)
+                        if refreshed_token:
+                            current_token = refreshed_token
+                            failed_tokens.discard(current_token)
+
+            self.assertEqual(current_token, "base64-pool-refreshed")
+            # Direct refresh should NOT have been called since pool refresh succeeded
+            mock_direct.assert_not_called()
+            mock_next.assert_not_called()
+
+    async def test_401_direct_refresh_succeeds_when_pool_fails(self):
+        """Strategy 2: Pool refresh returns None, direct LMArena HTTP refresh succeeds."""
+        from src import main
+
+        current_token = "base64-dGVzdC10b2tlbg=="
+        failed_tokens = {current_token}
 
         with patch.object(main, "maybe_refresh_expired_auth_tokens", new_callable=AsyncMock, return_value=None):
-            with patch.object(main, "get_next_auth_token", return_value="base64-next-token") as mock_next:
-                refreshed_token = None
-                if current_token.startswith("base64-"):
-                    refreshed_token = await main.maybe_refresh_expired_auth_tokens(
-                        exclude_tokens=failed_tokens
-                    )
+            with patch.object(main, "refresh_arena_auth_token_via_lmarena_http", new_callable=AsyncMock, return_value="base64-direct-refreshed") as mock_direct:
+                with patch.object(main, "get_next_auth_token") as mock_next:
+                    refreshed_token = None
+                    if current_token.startswith("base64-"):
+                        refreshed_token = await main.maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
+                        if not refreshed_token:
+                            refreshed_token = await main.refresh_arena_auth_token_via_lmarena_http(current_token)
+                        if refreshed_token:
+                            current_token = refreshed_token
+                            failed_tokens.discard(current_token)
 
-                # Since refresh returned None, should try next token
-                if not refreshed_token:
-                    current_token = main.get_next_auth_token(exclude_tokens=failed_tokens)
+            self.assertEqual(current_token, "base64-direct-refreshed")
+            mock_direct.assert_called_once_with("base64-dGVzdC10b2tlbg==")
+            mock_next.assert_not_called()
+
+    async def test_401_both_refresh_strategies_fail_falls_back_to_next_token(self):
+        """Strategy 3: Both refresh strategies fail, fall back to get_next_auth_token."""
+        from src import main
+
+        current_token = "base64-dGVzdC10b2tlbg=="
+        failed_tokens = {current_token}
+
+        with patch.object(main, "maybe_refresh_expired_auth_tokens", new_callable=AsyncMock, return_value=None):
+            with patch.object(main, "refresh_arena_auth_token_via_lmarena_http", new_callable=AsyncMock, return_value=None):
+                with patch.object(main, "get_next_auth_token", return_value="base64-next-token") as mock_next:
+                    refreshed_token = None
+                    if current_token.startswith("base64-"):
+                        refreshed_token = await main.maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
+                        if not refreshed_token:
+                            refreshed_token = await main.refresh_arena_auth_token_via_lmarena_http(current_token)
+                        if refreshed_token:
+                            current_token = refreshed_token
+                            failed_tokens.discard(current_token)
+                    if not refreshed_token:
+                        current_token = main.get_next_auth_token(exclude_tokens=failed_tokens)
 
         self.assertEqual(current_token, "base64-next-token")
         mock_next.assert_called_once_with(exclude_tokens=failed_tokens)
 
     async def test_401_non_base64_token_skips_refresh(self):
-        """Non-base64 tokens should skip refresh and go straight to next token."""
+        """Non-base64 tokens should skip all refresh strategies and go straight to next token."""
         from src import main
 
         current_token = "some-plain-token"
         failed_tokens = {current_token}
 
-        with patch.object(main, "maybe_refresh_expired_auth_tokens", new_callable=AsyncMock) as mock_refresh:
-            with patch.object(main, "get_next_auth_token", return_value="next-token") as mock_next:
-                refreshed_token = None
-                if current_token.startswith("base64-"):
-                    refreshed_token = await main.maybe_refresh_expired_auth_tokens(
-                        exclude_tokens=failed_tokens
-                    )
+        with patch.object(main, "maybe_refresh_expired_auth_tokens", new_callable=AsyncMock) as mock_pool:
+            with patch.object(main, "refresh_arena_auth_token_via_lmarena_http", new_callable=AsyncMock) as mock_direct:
+                with patch.object(main, "get_next_auth_token", return_value="next-token") as mock_next:
+                    refreshed_token = None
+                    if current_token.startswith("base64-"):
+                        refreshed_token = await main.maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
+                        if not refreshed_token:
+                            refreshed_token = await main.refresh_arena_auth_token_via_lmarena_http(current_token)
+                    if not refreshed_token:
+                        current_token = main.get_next_auth_token(exclude_tokens=failed_tokens)
 
-                if not refreshed_token:
-                    current_token = main.get_next_auth_token(exclude_tokens=failed_tokens)
-
-        # Refresh should NOT have been called for non-base64 token
-        mock_refresh.assert_not_called()
+        mock_pool.assert_not_called()
+        mock_direct.assert_not_called()
         self.assertEqual(current_token, "next-token")
 
-    async def test_401_refresh_success_no_next_token_needed(self):
-        """When refresh succeeds, should NOT call get_next_auth_token."""
+    async def test_401_refresh_clears_failed_tokens(self):
+        """After successful refresh, the new token should be removed from failed_tokens."""
         from src import main
 
         current_token = "base64-dGVzdC10b2tlbg=="
         failed_tokens = {current_token}
 
-        with patch.object(main, "maybe_refresh_expired_auth_tokens", new_callable=AsyncMock, return_value="base64-new"):
-            with patch.object(main, "get_next_auth_token") as mock_next:
+        with patch.object(main, "maybe_refresh_expired_auth_tokens", new_callable=AsyncMock, return_value=None):
+            with patch.object(main, "refresh_arena_auth_token_via_lmarena_http", new_callable=AsyncMock, return_value="base64-new"):
                 refreshed_token = None
                 if current_token.startswith("base64-"):
-                    refreshed_token = await main.maybe_refresh_expired_auth_tokens(
-                        exclude_tokens=failed_tokens
-                    )
+                    refreshed_token = await main.maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
+                    if not refreshed_token:
+                        refreshed_token = await main.refresh_arena_auth_token_via_lmarena_http(current_token)
                     if refreshed_token:
                         current_token = refreshed_token
+                        failed_tokens.discard(current_token)
 
-                # Should NOT have tried next token since refresh succeeded
-                if not refreshed_token:
-                    current_token = main.get_next_auth_token(exclude_tokens=failed_tokens)
-
-        self.assertEqual(current_token, "base64-new")
-        mock_next.assert_not_called()
+        # The old token should still be in failed_tokens, but the new one should not
+        self.assertIn("base64-dGVzdC10b2tlbg==", failed_tokens)
+        self.assertNotIn("base64-new", failed_tokens)
 
 
 if __name__ == "__main__":

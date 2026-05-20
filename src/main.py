@@ -2658,6 +2658,25 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
 
                         if attempt < max_retries - 1:
+                            # Try to refresh the failed token via LMArena HTTP before giving up.
+                            # A 401 can mean the session needs a server-side refresh (Set-Cookie rotation),
+                            # not that the token is permanently invalid.
+                            refreshed_token = None
+                            if current_token.startswith("base64-"):
+                                debug_print("🔄 Attempting to refresh auth token via LMArena HTTP...")
+                                try:
+                                    refreshed_token = await maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
+                                except Exception:
+                                    refreshed_token = None
+                                if refreshed_token:
+                                    current_token = refreshed_token
+                                    headers = get_request_headers_with_token(current_token, recaptcha_token)
+                                    debug_print(f"✅ Token refreshed successfully, retrying...")
+                                    await asyncio.sleep(1)
+                                    continue
+                                else:
+                                    debug_print("⚠️ Token refresh failed, trying next token...")
+
                             try:
                                 current_token = get_next_auth_token(exclude_tokens=failed_tokens)
                                 headers = get_request_headers_with_token(current_token, recaptcha_token)
@@ -4245,8 +4264,29 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 yield f"data: {json.dumps(error_chunk)}\n\n"
                                 yield "data: [DONE]\n\n"
                                 return
-                            # The original code has `continue` here, which leads to `async for ka in wait_with_keepalive(2.0): yield ka`.
-                            # This is fine for 401 to allow token rotation and retry.
+                            # Try to refresh the auth token before rotating to next one
+                            if current_token and current_token.startswith("base64-"):
+                                debug_print("🔄 Stream 401: attempting to refresh auth token via LMArena HTTP...")
+                                try:
+                                    refreshed_token = await maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
+                                except Exception:
+                                    refreshed_token = None
+                                if refreshed_token:
+                                    current_token = refreshed_token
+                                    headers = get_request_headers_with_token(current_token, recaptcha_token)
+                                    debug_print("✅ Stream token refreshed successfully, retrying...")
+                                    async for ka in wait_with_keepalive(1.0):
+                                        yield ka
+                                    continue
+                                else:
+                                    debug_print("⚠️ Stream token refresh failed, trying next token...")
+                            # Try next token in rotation
+                            try:
+                                current_token = get_next_auth_token(exclude_tokens=failed_tokens)
+                                headers = get_request_headers_with_token(current_token, recaptcha_token)
+                                debug_print(f"🔄 Stream: retrying with next token: {current_token[:20]}...")
+                            except HTTPException:
+                                debug_print("❌ Stream: no more tokens available after 401.")
                             async for ka in wait_with_keepalive(2.0):
                                 yield ka
                             continue

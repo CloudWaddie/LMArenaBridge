@@ -2658,24 +2658,41 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
 
                         if attempt < max_retries - 1:
-                            # Try to refresh the failed token via LMArena HTTP before giving up.
                             # A 401 can mean the session needs a server-side refresh (Set-Cookie rotation),
-                            # not that the token is permanently invalid.
+                            # not that the token is permanently invalid. Try multiple refresh strategies:
+                            #   1) maybe_refresh_expired_auth_tokens (handles already-expired tokens in the pool)
+                            #   2) Direct LMArena HTTP refresh on the current token (works even if not expired yet)
+                            #   3) Fall back to next token in rotation
                             refreshed_token = None
                             if current_token.startswith("base64-"):
                                 debug_print("🔄 Attempting to refresh auth token via LMArena HTTP...")
+
+                                # Strategy 1: try refreshing any expired token in the pool
                                 try:
                                     refreshed_token = await maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
                                 except Exception:
                                     refreshed_token = None
+
+                                # Strategy 2: if pool refresh didn't help, try direct LMArena HTTP refresh
+                                # on the current token itself. This handles the case where a non-expired
+                                # token gets a 401 (server-side session invalidation, token rotation, etc.)
+                                if not refreshed_token:
+                                    try:
+                                        refreshed_token = await refresh_arena_auth_token_via_lmarena_http(current_token)
+                                    except Exception:
+                                        refreshed_token = None
+                                    if refreshed_token:
+                                        debug_print("✅ Direct LMArena HTTP refresh succeeded for current token.")
+
                                 if refreshed_token:
                                     current_token = refreshed_token
+                                    failed_tokens.discard(current_token)
                                     headers = get_request_headers_with_token(current_token, recaptcha_token)
-                                    debug_print(f"✅ Token refreshed successfully, retrying...")
+                                    debug_print("✅ Token refreshed successfully, retrying...")
                                     await asyncio.sleep(1)
                                     continue
                                 else:
-                                    debug_print("⚠️ Token refresh failed, trying next token...")
+                                    debug_print("⚠️ All token refresh strategies failed, trying next token...")
 
                             try:
                                 current_token = get_next_auth_token(exclude_tokens=failed_tokens)
@@ -4264,22 +4281,40 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 yield f"data: {json.dumps(error_chunk)}\n\n"
                                 yield "data: [DONE]\n\n"
                                 return
-                            # Try to refresh the auth token before rotating to next one
+                            # Try to refresh the auth token before rotating to next one.
+                            # Use multiple refresh strategies:
+                            #   1) maybe_refresh_expired_auth_tokens (handles already-expired tokens in the pool)
+                            #   2) Direct LMArena HTTP refresh on the current token (works even if not expired yet)
+                            #   3) Fall back to next token in rotation
                             if current_token and current_token.startswith("base64-"):
                                 debug_print("🔄 Stream 401: attempting to refresh auth token via LMArena HTTP...")
+                                refreshed_token = None
+
+                                # Strategy 1: try refreshing any expired token in the pool
                                 try:
                                     refreshed_token = await maybe_refresh_expired_auth_tokens(exclude_tokens=failed_tokens)
                                 except Exception:
                                     refreshed_token = None
+
+                                # Strategy 2: direct LMArena HTTP refresh on the current token
+                                if not refreshed_token:
+                                    try:
+                                        refreshed_token = await refresh_arena_auth_token_via_lmarena_http(current_token)
+                                    except Exception:
+                                        refreshed_token = None
+                                    if refreshed_token:
+                                        debug_print("✅ Stream: direct LMArena HTTP refresh succeeded.")
+
                                 if refreshed_token:
                                     current_token = refreshed_token
+                                    failed_tokens.discard(current_token)
                                     headers = get_request_headers_with_token(current_token, recaptcha_token)
                                     debug_print("✅ Stream token refreshed successfully, retrying...")
                                     async for ka in wait_with_keepalive(1.0):
                                         yield ka
                                     continue
                                 else:
-                                    debug_print("⚠️ Stream token refresh failed, trying next token...")
+                                    debug_print("⚠️ Stream: all token refresh strategies failed, trying next token...")
                             # Try next token in rotation
                             try:
                                 current_token = get_next_auth_token(exclude_tokens=failed_tokens)

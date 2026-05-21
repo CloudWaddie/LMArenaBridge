@@ -1035,6 +1035,28 @@ async def get_initial_data():
                 pass
 
             debug_print("✅ Initial data retrieval complete")
+
+            # Capture provisional_user_id from browser cookies if present.
+            # The arena.ai frontend may set this cookie during page load.
+            # We do NOT attempt anonymous signup here because:
+            #   1. The signup endpoint requires reCAPTCHA which fails in headless mode
+            #   2. Even if signup succeeds, the provisional user cannot create evaluations
+            #   3. The Camoufox transport (PR #175) has its own anonymous signup flow
+            #      that handles Turnstile/reCAPTCHA challenges properly.
+            # Without a persisted auth token, the server falls back to browser transport
+            # which has the best chance of obtaining a working session.
+            try:
+                cookies = await page.context.cookies()
+                for c in cookies:
+                    if c.get("name") == "provisional_user_id" and c.get("value"):
+                        pid = str(c["value"]).strip()
+                        cfg = get_config()
+                        cfg["provisional_user_id"] = pid
+                        save_config(cfg, preserve_auth_tokens=False)
+                        debug_print(f"✅ Captured provisional_user_id: {pid[:8]}...")
+                        break
+            except Exception as cookie_err:
+                debug_print(f"⚠️ Error capturing provisional_user_id: {cookie_err}")
     except Exception as e:
         debug_print(f"❌ An error occurred during initial data retrieval: {e}")
 

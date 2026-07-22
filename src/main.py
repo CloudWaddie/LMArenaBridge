@@ -104,6 +104,12 @@ from .transport import (
     camoufox_proxy_worker,
 )
 
+from .vision_solver import (
+    solve_recaptcha_v2_challenge,
+    VisionSolverConfig,
+    VISION_SOLVER_AVAILABLE,
+)
+
 # Aliases for backward compatibility
 DEBUG = constants.DEBUG
 PORT = constants.PORT

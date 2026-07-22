@@ -47,6 +47,9 @@ dev = [
     "radon",
     "xenon",
 ]
+vision = [
+    "vision-ai-recaptcha-solver>=1.0.5",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

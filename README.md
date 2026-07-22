@@ -125,7 +125,7 @@ LMArenaBridge includes optional AI-powered reCAPTCHA v2 image challenge solving 
 ### Installation
 
 ```bash
-pip install lmarenabridge[vision]
+pip install -e ".[vision]"
 # or
 pip install vision-ai-recaptcha-solver
 ```

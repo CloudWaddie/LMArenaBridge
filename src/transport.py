@@ -1071,6 +1071,22 @@ async def fetch_lmarena_stream_via_chrome(
                             await asyncio.sleep(0.5)
                             continue
 
+                        try:
+                            from .vision_solver import solve_recaptcha_v2_challenge, VisionSolverConfig
+                            _m().debug_print("🤖 Chrome fetch: invisible v2 mint failed, trying AI vision solver...")
+                            v2_vision_token = await solve_recaptcha_v2_challenge(
+                                website_key=_m().RECAPTCHA_V2_SITEKEY,
+                                website_url="https://arena.ai/",
+                                solver_config=VisionSolverConfig(_m().get_config()),
+                            )
+                            if v2_vision_token:
+                                payload["recaptchaV2Token"] = v2_vision_token
+                                payload.pop("recaptchaV3Token", None)
+                                await asyncio.sleep(0.5)
+                                continue
+                        except Exception:
+                            pass
+
                     try:
                         await _m().click_turnstile(page)
                     except Exception:
@@ -1697,6 +1713,22 @@ async def fetch_lmarena_stream_via_camoufox(
                         payload.pop("recaptchaV3Token", None)
                         await asyncio.sleep(0.5)
                         continue
+
+                    try:
+                        from .vision_solver import solve_recaptcha_v2_challenge, VisionSolverConfig
+                        _m().debug_print("🤖 Camoufox fetch: invisible v2 mint failed, trying AI vision solver...")
+                        v2_vision_token = await solve_recaptcha_v2_challenge(
+                            website_key=_m().RECAPTCHA_V2_SITEKEY,
+                            website_url="https://arena.ai/",
+                            solver_config=VisionSolverConfig(_m().get_config()),
+                        )
+                        if v2_vision_token:
+                            payload["recaptchaV2Token"] = v2_vision_token
+                            payload.pop("recaptchaV3Token", None)
+                            await asyncio.sleep(0.5)
+                            continue
+                    except Exception:
+                        pass
                 
                 await asyncio.sleep(2)
 

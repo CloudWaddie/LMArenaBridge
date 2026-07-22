@@ -118,6 +118,57 @@ You can use this project as a backend for [OpenWebUI](https://openwebui.com/), a
 
 LMArenaBridge supports sending images to vision-capable models on LMArena. When you send a message with images to a model that supports image input, the images are automatically uploaded to LMArena's R2 storage and included in the request.
 
+## AI Vision reCAPTCHA Solver
+
+LMArenaBridge includes optional AI-powered reCAPTCHA v2 image challenge solving using YOLO vision models. When reCAPTCHA v3 scoring fails and LMArena presents an image challenge (3x3 selection, 3x3 dynamic, or 4x4 square grid), the bridge can automatically solve it and continue.
+
+### Installation
+
+```bash
+pip install lmarenabridge[vision]
+# or
+pip install vision-ai-recaptcha-solver
+```
+
+The solver auto-downloads models from Hugging Face on first use:
+- Classification model (~500MB): `recaptcha_classification_57k.onnx`
+- Detection model: `yolo12x.pt`
+
+### How it works
+
+When `"recaptcha validation failed"` is returned:
+1. **Invisible v2 render** — fast attempt using `grecaptcha.enterprise.render()` with `size: 'invisible'`
+2. **Vision solver** — if invisible fails, launches a local Chromium, downloads challenge images, runs YOLO inference, clicks predicted tiles, and extracts the token
+3. **Fallback mitigations** — Turnstile click, mouse movements, exponential backoff
+
+### Configuration (all optional)
+
+Add to `config.json`:
+```json
+{
+  "vision_recaptcha_solver": {
+    "enabled": true,
+    "headless": true,
+    "timeout": 180,
+    "max_attempts": 3,
+    "browser_path": "C:\\path\\to\\chrome.exe",
+    "proxy": "http://user:pass@ip:port"
+  }
+}
+```
+
+### Requirements
+
+- Python 3.10+
+- Chromium-based browser (Chrome for Testing, Edge)
+- The `vision-ai-recaptcha-solver` Python package (heavy: torch, ultralytics, onnxruntime)
+
+### Notes
+
+- Without the optional dependency, the bridge continues working normally — the vision fallback is skipped silently.
+- Models auto-download to `~/.cache/vision_ai_recaptcha_solver/` on first run.
+- Multiple concurrent solves use distinct ports and temp dirs automatically.
+
 ## Production Deployment
 
 ### Error Handling

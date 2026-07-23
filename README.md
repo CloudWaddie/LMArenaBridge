@@ -5,6 +5,8 @@
 ### Thank you to the [AI Leaks server](https://discord.gg/fqmaHkQpJZ) for being a partner!
 <img width="200" alt="AI-Leaks-Logo" src="https://github.com/user-attachments/assets/5fd3d456-152c-44e2-acee-f4c2a1ca2caa">
 
+### Looking for a cheap unlimited AI subscription? Starting at 5$/mo: [CloudWaddie AI](https://ai.cloudwaddie.com)
+
 ### As featured in [FMHY](https://fmhy.net/ai#multiple-model-sites)
 
 > [!WARNING]

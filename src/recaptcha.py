@@ -699,15 +699,15 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 # Inject reCAPTCHA scripts since LMArena may not have them loaded
                 await _m().safe_page_evaluate(
                     page,
-                    """() => {
+                    """(sitekey) => {
                         const w = window.wrappedJSObject || window;
                         if (w.__LM_BRIDGE_RECAPTCHA_INJECTED) return true;
                         w.__LM_BRIDGE_RECAPTCHA_INJECTED = true;
                         const h = w.document?.head;
                         if (!h) return false;
                         const urls = [
-                            'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(recaptcha_sitekey),
-                            'https://www.google.com/recaptcha/api.js?render=' + encodeURIComponent(recaptcha_sitekey),
+                            'https://www.google.com/recaptcha/enterprise.js?render=' + encodeURIComponent(sitekey),
+                            'https://www.google.com/recaptcha/api.js?render=' + encodeURIComponent(sitekey),
                         ];
                         for (const u of urls) {
                             const s = w.document.createElement('script');
@@ -718,7 +718,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                         }
                         return true;
                     }""",
-                    recaptcha_sitekey=recaptcha_sitekey,
+                    arg=recaptcha_sitekey,
                 )
                 # Wait for scripts to load
                 await asyncio.sleep(5)

@@ -581,6 +581,28 @@ async def fetch_lmarena_stream_via_userscript_proxy(
     return UserscriptProxyStreamResponse(job_id, timeout_seconds=timeout_seconds)
 
 
+def _fetch_result_without_meta(fetch_task: "asyncio.Task") -> dict:
+    """Build a response dict from the in-page fetch task when no meta line was reported.
+
+    Both browser transports read status/headers/body from the page's `reportChunk`
+    binding. When that binding is unavailable, or the fetch completed with a buffered
+    body, the task's return value is the only copy of the response - discarding it
+    produced HTTP 200 responses with an empty body ("Stream produced no content deltas").
+    """
+    try:
+        task_result = fetch_task.result()
+    except Exception as exc:
+        return {"status": 502, "headers": {}, "text": f"FETCH_EXCEPTION: {exc}"}
+    if isinstance(task_result, dict) and not task_result.get("__streaming"):
+        return {
+            "status": task_result.get("status", 200),
+            "headers": task_result.get("headers") or {},
+            "text": task_result.get("text") or "",
+        }
+    # Streaming fetch: the body arrives through the chunk queue, not the return value.
+    return {"status": 200, "headers": {}, "text": ""}
+
+
 async def fetch_lmarena_stream_via_chrome(
     http_method: str,
     url: str,
@@ -853,6 +875,11 @@ async def fetch_lmarena_stream_via_chrome(
             fetch_script = """async ({url, method, body, extraHeaders, timeoutMs}) => {
               const controller = new AbortController();
               const timer = setTimeout(() => controller.abort('timeout'), timeoutMs);
+              // If the reportChunk binding is missing, the old script returned
+              // {__streaming: true} and dropped the body, so the caller saw HTTP 200 with no
+              // content chunks. Keep a buffered copy so that case returns the real payload.
+              const canReport = typeof window.reportChunk === 'function';
+              let buffered = '';
               try {
                 const res = await fetch(url, {
                   method,
@@ -872,7 +899,7 @@ async def fetch_lmarena_stream_via_chrome(
                 } catch (e) {}
 
                 // Send initial status and headers
-                if (window.reportChunk) {
+                if (canReport) {
                     await window.reportChunk(JSON.stringify({ __type: 'meta', status: res.status, headers }));
                 }
 
@@ -888,18 +915,32 @@ async def fetch_lmarena_stream_via_chrome(
                     const parts = buffer.split(/\\r?\\n/);
                     buffer = parts.pop() || '';
                     for (const line of parts) {
-                        if (line.trim() && window.reportChunk) {
+                        if (!line.trim()) continue;
+                        if (canReport) {
                             await window.reportChunk(line);
+                        } else {
+                            buffered += line + '\\n';
                         }
                     }
                     if (done) break;
                   }
-                  if (buffer.trim() && window.reportChunk) {
-                      await window.reportChunk(buffer);
+                  if (buffer.trim()) {
+                      if (canReport) {
+                          await window.reportChunk(buffer);
+                      } else {
+                          buffered += buffer;
+                      }
                   }
                 } else {
                   const text = await res.text();
-                  if (window.reportChunk) await window.reportChunk(text);
+                  if (canReport) {
+                      await window.reportChunk(text);
+                  } else {
+                      buffered += text;
+                  }
+                }
+                if (!canReport) {
+                  return { status: res.status, headers: headers, text: buffered };
                 }
                 return { __streaming: true };
               } catch (e) {
@@ -978,21 +1019,12 @@ async def fetch_lmarena_stream_via_chrome(
                             if isinstance(item, str) and item.startswith('{"__type":"meta"'):
                                 meta = json.loads(item)
                             else:
-                                # Put it back and use default meta
+                                # Put the content line back; the body is read from the chunk queue.
                                 await lines_queue.put(item)
-                                meta = {"status": 200, "headers": {}}
                         except asyncio.QueueEmpty:
-                            # No items in queue, use default successful response
-                            meta = {"status": 200, "headers": {}}
-                        
-                        if meta:
-                            result = meta
-                        else:
-                            res = fetch_task.result()
-                            if isinstance(res, dict) and not res.get("__streaming"):
-                                result = res
-                            else:
-                                result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
+                            pass
+
+                        result = meta if isinstance(meta, dict) else _fetch_result_without_meta(fetch_task)
                     except Exception as e:
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
                 elif meta:
@@ -1528,6 +1560,11 @@ async def fetch_lmarena_stream_via_camoufox(
             fetch_script = """async ({url, method, body, extraHeaders, timeoutMs}) => {
               const controller = new AbortController();
               const timer = setTimeout(() => controller.abort('timeout'), timeoutMs);
+              // If the reportChunk binding is missing, the old script returned
+              // {__streaming: true} and dropped the body, so the caller saw HTTP 200 with no
+              // content chunks. Keep a buffered copy so that case returns the real payload.
+              const canReport = typeof window.reportChunk === 'function';
+              let buffered = '';
               try {
                 const res = await fetch(url, {
                   method,
@@ -1547,7 +1584,7 @@ async def fetch_lmarena_stream_via_camoufox(
                 } catch (e) {}
 
                 // Send initial status and headers
-                if (window.reportChunk) {
+                if (canReport) {
                     await window.reportChunk(JSON.stringify({ __type: 'meta', status: res.status, headers }));
                 }
 
@@ -1563,18 +1600,32 @@ async def fetch_lmarena_stream_via_camoufox(
                     const parts = buffer.split(/\\r?\\n/);
                     buffer = parts.pop() || '';
                     for (const line of parts) {
-                        if (line.trim() && window.reportChunk) {
+                        if (!line.trim()) continue;
+                        if (canReport) {
                             await window.reportChunk(line);
+                        } else {
+                            buffered += line + '\\n';
                         }
                     }
                     if (done) break;
                   }
-                  if (buffer.trim() && window.reportChunk) {
-                      await window.reportChunk(buffer);
+                  if (buffer.trim()) {
+                      if (canReport) {
+                          await window.reportChunk(buffer);
+                      } else {
+                          buffered += buffer;
+                      }
                   }
                 } else {
                   const text = await res.text();
-                  if (window.reportChunk) await window.reportChunk(text);
+                  if (canReport) {
+                      await window.reportChunk(text);
+                  } else {
+                      buffered += text;
+                  }
+                }
+                if (!canReport) {
+                  return { status: res.status, headers: headers, text: buffered };
                 }
                 return { __streaming: true };
               } catch (e) {
@@ -1650,21 +1701,12 @@ async def fetch_lmarena_stream_via_camoufox(
                             if isinstance(item, str) and item.startswith('{"__type":"meta"'):
                                 meta = json.loads(item)
                             else:
-                                # Put it back and use default meta
+                                # Put the content line back; the body is read from the chunk queue.
                                 await lines_queue.put(item)
-                                meta = {"status": 200, "headers": {}}
                         except asyncio.QueueEmpty:
-                            # No items in queue, use default successful response
-                            meta = {"status": 200, "headers": {}}
-                        
-                        if meta:
-                            result = meta
-                        else:
-                            res = fetch_task.result()
-                            if isinstance(res, dict) and not res.get("__streaming"):
-                                result = res
-                            else:
-                                result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
+                            pass
+
+                        result = meta if isinstance(meta, dict) else _fetch_result_without_meta(fetch_task)
                     except Exception as e:
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
                 elif meta:
@@ -1784,10 +1826,12 @@ async def fetch_via_proxy_queue(
 
     task_id = str(uuid.uuid4())
     future = asyncio.Future()
-    proxy_pending_tasks[task_id] = future
+    # These registries live in main.py (see CLAUDE.md) so the /proxy/tasks and /proxy/result
+    # endpoints see the same objects; this module only reaches them through _m().
+    _m().proxy_pending_tasks[task_id] = future
 
     # Add to queue
-    proxy_task_queue.append({
+    _m().proxy_task_queue.append({
         "id": task_id,
         "url": url,
         "method": http_method,
@@ -1854,11 +1898,13 @@ async def fetch_via_proxy_queue(
             
     except asyncio.TimeoutError:
         _m().debug_print(f"❌ Proxy Task {task_id} timed out. Is the Userscript running?")
-        if task_id in proxy_pending_tasks:
-            del proxy_pending_tasks[task_id]
-        if task_id in [t['id'] for t in proxy_task_queue]:
+        pending = _m().proxy_pending_tasks
+        queue = _m().proxy_task_queue
+        if task_id in pending:
+            del pending[task_id]
+        if task_id in [t['id'] for t in queue]:
             # Remove from queue if not picked up
-            proxy_task_queue[:] = [t for t in proxy_task_queue if t['id'] != task_id]
+            queue[:] = [t for t in queue if t['id'] != task_id]
         return None
     except Exception as e:
         _m().debug_print(f"❌ Proxy Task Exception: {e}")

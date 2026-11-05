@@ -773,9 +773,10 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
     if not api_keys:
         return {"key": "anonymous", "name": "Anonymous", "rpm": 9999}
 
-    # If keys are configured but none provided, use first available key
+    # Keys are configured, so a caller must present one. Silently substituting the first
+    # configured key let any unauthenticated client use the bridge.
     if not api_key_str:
-        api_key_str = api_keys[0]["key"]
+        raise HTTPException(status_code=401, detail="Invalid API Key.")
 
     key_data = next((k for k in api_keys if k["key"] == api_key_str), None)
     if not key_data:

@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 
@@ -33,6 +34,48 @@ class TestSafePageEvaluate(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(page.evaluate_calls, 2)
         self.assertGreaterEqual(page.wait_calls, 1)
         sleep_mock.assert_awaited()
+
+    async def test_safe_page_evaluate_forwards_argument_to_page_evaluate(self) -> None:
+        from src import main
+
+        seen: list = []
+
+        class _ArgPage:
+            async def evaluate(self, script, arg=None):  # noqa: ARG002
+                seen.append(arg)
+                return "ok"
+
+        result = await main.safe_page_evaluate(
+            _ArgPage(),
+            "(sitekey) => sitekey",
+            arg="recaptcha-sitekey",
+        )
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(seen, ["recaptcha-sitekey"])
+
+    async def test_safe_page_evaluate_without_argument_uses_single_arg_evaluate(self) -> None:
+        from src import main
+
+        calls: list = []
+
+        class _SingleArgPage:
+            async def evaluate(self, script):  # noqa: ARG002
+                calls.append(script)
+                return "ok"
+
+        result = await main.safe_page_evaluate(_SingleArgPage(), "() => true")
+
+        self.assertEqual(result, "ok")
+        self.assertEqual(calls, ["() => true"])
+
+    async def test_recaptcha_script_injection_passes_sitekey_as_argument(self) -> None:
+        """Regression: recaptcha.py used to pass an unsupported `recaptcha_sitekey=` kwarg."""
+        from src import recaptcha
+
+        source = Path(recaptcha.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("recaptcha_sitekey=recaptcha_sitekey,", source)
+        self.assertIn("arg=recaptcha_sitekey", source)
 
 
 if __name__ == "__main__":

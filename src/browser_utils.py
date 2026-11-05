@@ -347,12 +347,19 @@ def is_execution_context_destroyed_error(exc: BaseException) -> bool:
     return "Execution context was destroyed" in message
 
 
-async def safe_page_evaluate(page, script: str, retries: int = 3):
+_NO_EVALUATE_ARG = object()
+
+
+async def safe_page_evaluate(page, script: str, retries: int = 3, arg: object = _NO_EVALUATE_ARG):
     retries = max(1, min(int(retries), 5))
     last_exc: Exception | None = None
     for attempt in range(retries):
         try:
-            return await page.evaluate(script)
+            # Only pass a second argument when the caller supplied one; some page doubles
+            # (and older Playwright versions) expect `evaluate(script)` with a single argument.
+            if arg is _NO_EVALUATE_ARG:
+                return await page.evaluate(script)
+            return await page.evaluate(script, arg)
         except Exception as e:
             last_exc = e
             if is_execution_context_destroyed_error(e) and attempt < retries - 1:

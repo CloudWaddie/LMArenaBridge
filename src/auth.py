@@ -880,6 +880,18 @@ def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback:
             if token and not is_arena_auth_token_expired(token):
                 auth_tokens = [token]
                 _m().debug_print("🔑 Using arena-auth cookie from browser session (browser_cookies).")
+                # Promote the recovered cookie to auth_tokens so the token survives restarts.
+                # This follows the same persistence policy as cookie capture during browser sessions.
+                if bool(config.get("persist_arena_auth_cookie")):
+                    existing = config.get("auth_tokens")
+                    persisted = (
+                        [str(t or "").strip() for t in existing if str(t or "").strip()]
+                        if isinstance(existing, list)
+                        else []
+                    )
+                    if token not in persisted:
+                        config["auth_tokens"] = persisted + [token]
+                        _m().save_config(config, preserve_auth_tokens=False)
     if not auth_tokens:
         raise HTTPException(status_code=500, detail="No auth tokens configured")
     

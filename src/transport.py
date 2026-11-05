@@ -1721,6 +1721,20 @@ async def fetch_lmarena_stream_via_camoufox(
 
                 if not _is_recaptcha_validation_failed(status_code, result.get("text")):
                     if status_code < 400:
+                        # When the in-page fetch could not report chunks (missing `reportChunk`
+                        # binding), it returns the whole body instead of streaming it. Hand that
+                        # buffer back before falling through to the (empty) chunk queue, otherwise
+                        # the caller gets HTTP 200 with zero content deltas.
+                        buffered_body = result.get("text") if isinstance(result, dict) else None
+                        if isinstance(buffered_body, str) and buffered_body:
+                            return BrowserFetchStreamResponse(
+                                status_code=status_code,
+                                headers=result.get("headers", {}),
+                                text=buffered_body,
+                                method=http_method,
+                                url=url,
+                            )
+
                         def _on_fetch_task_done(task: "asyncio.Task") -> None:
                             _m()._consume_background_task_exception(task)
                             try:

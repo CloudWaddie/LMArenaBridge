@@ -19,7 +19,6 @@ jobs:
         run: |
           echo "=== DEBUG: GH_PAT Secret Check ==="
           echo "Secret value length: ${#GH_PAT}"
-          echo "Secret first 4 chars: ${GH_PAT:0:4}"
           
           if [ -z "$GH_PAT" ]; then
             echo "WARNING: GH_PAT secret is not set or is empty!"
@@ -51,12 +50,12 @@ jobs:
         if: steps.check_secret.outputs.secret_set == 'true'
         env:
           GH_TOKEN: ${{ secrets.GH_PAT }}
+          BRANCH_NAME: ${{ github.event.pull_request.head.ref }}
+          FORK_REPO: cloudwaddie-agent/${{ github.event.repository.name }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          # Get the branch name from the merged PR head
-          BRANCH_NAME="${{ github.event.pull_request.head.ref }}"
-          FORK_REPO="cloudwaddie-agent/${{ github.event.repository.name }}"
-          HEAD_REPO="${{ github.event.pull_request.head.repo.full_name }}"
-          
+          # Branch name, fork and head repo all come from the event, so they are
+          # read from the environment rather than pasted into the script.
           echo "=== Fork Cleanup Debug Info ==="
           echo "Branch name: $BRANCH_NAME"
           echo "Fork repo: $FORK_REPO"

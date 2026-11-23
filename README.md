@@ -30,6 +30,14 @@ curl http://localhost:8000/api/v1/chat/completions \
 
 See `CLAUDE.md` for the architecture overview and test commands.
 
+## Chat API limitations
+
+The OpenAI-compatible chat completions endpoint and the Anthropic-style `/api/v1/messages` endpoint are intended for chat, not as drop-in backends for Claude Code or other agents that require tool calling.
+
+- The bridge sends only the final message's content for each new turn. It prepends system instructions as plain text, not as a separate system role. Follow-ups can reuse an existing Arena conversation, but the bridge does not replay the client-supplied history.
+- Tool definitions and tool choices are not sent to Arena. Tool calls and tool results are not supported.
+- `max_tokens` and reasoning controls such as `reasoning_effort` are not forwarded to Arena.
+
 ## Notes
 
 - LMArena rate-limits chat creation aggressively (real `Retry-After` of ~20 minutes when hammered) — keep request bursts small.

@@ -845,8 +845,53 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
 
 # --- Core Logic ---
 
+async def _refresh_public_model_catalog():
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("https://arena.ai/nextjs-api/model-catalog")
+            response.raise_for_status()
+        catalog = response.json()
+
+        arenas = {
+            "chat": ("text", "vision", "document"),
+            "webdev": ("code", "image-to-code"),
+            "image": ("text-to-image", "image-edit", "multi-image-edit"),
+            "search": ("search",),
+            "video": ("text-to-video", "image-to-video", "video-to-video"),
+        }
+        arena_ranks = {
+            arena: (modality, index == 0)
+            for modality, names in arenas.items()
+            for index, arena in enumerate(names)
+        }
+        unranked = 2**53 - 1
+        models_by_id = {}
+        for section in catalog:
+            models = section["models"]
+            complete = section.get("complete")
+            if not isinstance(models, list) or not (bool(models) if complete is None else complete):
+                return
+            modality, primary = arena_ranks.get(section["arena"], (None, False))
+            for model in models:
+                if not model.get("id"):
+                    continue
+                cached = models_by_id.setdefault(model["id"], {**model, "rankByModality": {}})
+                if modality:
+                    ranks = cached["rankByModality"]
+                    if primary:
+                        rank = model.get("rank")
+                        ranks[modality] = unranked if rank is None else rank
+                    else:
+                        ranks.setdefault(modality, unranked)
+        if models_by_id:
+            save_models(list(models_by_id.values()))
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        debug_print(f"⚠️ Could not refresh the public model catalog: {exc}")
+
+
 async def get_initial_data():
     debug_print("Starting initial data retrieval...")
+    await _refresh_public_model_catalog()
     try:
         async with AsyncCamoufox(headless=True, main_world_eval=True) as browser:
             page = await browser.new_page()
@@ -988,21 +1033,10 @@ async def get_initial_data():
                 debug_print(f"⚠️  Error extracting deployment id: {e}")
 
             page_body = ""
-
-            # Extract models
-            debug_print("Extracting models from page...")
             try:
                 page_body = await page.content()
-                match = re.search(r'{\\"initialModels\\":(\[.*?\]),\\"initial', page_body, re.DOTALL)
-                if match:
-                    models_json = match.group(1).encode().decode('unicode_escape')
-                    models = json.loads(models_json)
-                    save_models(models)
-                    debug_print(f"✅ Saved {len(models)} models")
-                else:
-                    debug_print("⚠️ Could not find models in page")
             except Exception as e:
-                debug_print(f"❌ Error extracting models: {e}")
+                debug_print(f"❌ Error reading page content: {e}")
 
             # Extract Next-Action IDs from captured JavaScript responses (Aggressive Discovery)
             debug_print(f"\nExtracting Next-Action IDs from {len(captured_responses)} captured JS responses...")

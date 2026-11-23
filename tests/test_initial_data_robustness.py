@@ -30,6 +30,7 @@ class TestInitialDataRobustness(unittest.IsolatedAsyncioTestCase):
              patch("src.main.get_config", return_value={}), \
              patch("src.main.save_config"), \
              patch("src.main.save_models"), \
+             patch("src.main._refresh_public_model_catalog", AsyncMock()), \
              patch("src.main.asyncio.sleep", AsyncMock()):
             
             await main.get_initial_data()

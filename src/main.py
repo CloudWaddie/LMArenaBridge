@@ -11,7 +11,6 @@ import secrets
 import base64
 import mimetypes
 import ipaddress
-import socket
 import hashlib
 from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -600,7 +599,7 @@ async def process_message_content(content, model_capabilities: dict) -> tuple[st
                         try:
                             # SSRF guard: refuse hosts that resolve to non-public IPs
                             _host = urlparse(url).hostname or ''
-                            _addrs = {i[4][0] for i in socket.getaddrinfo(_host, None)}
+                            _addrs = {i[4][0] for i in await asyncio.get_running_loop().getaddrinfo(_host, None)}
                             if not _addrs or not all(ipaddress.ip_address(a).is_global for a in _addrs):
                                 debug_print(f"⚠️  Refusing image URL resolving to a non-public address: {url[:80]}")
                                 continue
@@ -2467,8 +2466,18 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         per_key_sessions = chat_sessions.setdefault(api_key["key"], {})
         session = per_key_sessions.get(conversation_id)
         if session and session.get("model") == model_public_name and session.get("model_id"):
+            _saved_caps = session.get("model_capabilities") or {}
+            if num_images and not (_saved_caps.get("inputCapabilities") or {}).get("image"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"This conversation was started with a '{model_public_name}' variant that "
+                        "does not accept image input, and the upstream evaluation session is bound "
+                        "to it. Start a new conversation to send images."
+                    ),
+                )
             model_id = session["model_id"]
-            model_capabilities = session.get("model_capabilities") or model_capabilities
+            model_capabilities = _saved_caps or model_capabilities
 
         # Determine modality based on model capabilities.
         # Priority: video > image > search > chat (webdev-only variants are

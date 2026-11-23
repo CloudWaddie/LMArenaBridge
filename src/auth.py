@@ -759,7 +759,13 @@ async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Opt
 def _persist_refreshed_auth_token(cfg: dict, old_token: str, new_token: str) -> None:
     """Swap a refreshed session token into config.json so restarts keep working."""
     try:
-        tokens = cfg.get("auth_tokens", [])
+        # Re-read the on-disk config and apply the swap to it: writing back the stale
+        # in-memory cfg would erase credentials added via the dashboard mid-request,
+        # while save_config's default merge would restore the expired token over ours.
+        disk_cfg = _m().get_config()
+        if not isinstance(disk_cfg, dict):
+            disk_cfg = cfg
+        tokens = disk_cfg.get("auth_tokens", [])
         if not isinstance(tokens, list):
             tokens = []
         replaced = False
@@ -768,17 +774,15 @@ def _persist_refreshed_auth_token(cfg: dict, old_token: str, new_token: str) -> 
                 tokens[i] = new_token
                 replaced = True
                 break
-        if not replaced:
+        if not replaced and new_token not in [str(t or "").strip() for t in tokens]:
             tokens.append(new_token)
-        cfg["auth_tokens"] = tokens
-        if str(cfg.get("auth_token") or "").strip() == old_token:
-            cfg["auth_token"] = new_token
-        cookies = cfg.get("browser_cookies")
+        disk_cfg["auth_tokens"] = tokens
+        if str(disk_cfg.get("auth_token") or "").strip() == old_token:
+            disk_cfg["auth_token"] = new_token
+        cookies = disk_cfg.get("browser_cookies")
         if isinstance(cookies, dict) and cookies.get("arena-auth-prod-v1") == old_token:
             cookies["arena-auth-prod-v1"] = new_token
-        # preserve_auth_tokens=False: the refreshed token must survive save_config's
-        # disk-merge, which otherwise restores the expired token it just replaced.
-        _m().save_config(cfg, preserve_auth_tokens=False)
+        _m().save_config(disk_cfg, preserve_auth_tokens=False)
     except Exception:
         pass
 

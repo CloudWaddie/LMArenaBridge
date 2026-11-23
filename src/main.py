@@ -2337,21 +2337,40 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         model_org = None
         model_capabilities = {}
         
-        # The same publicName can map to several variants (e.g. text-only vs image-input).
-        # When the request carries images, prefer a variant that accepts image input.
-        request_has_images = any(
-            isinstance(msg.get("content"), list)
-            and any(isinstance(part, dict) and part.get("type") == "image_url" for part in msg["content"])
+        # The same publicName can map to several variants (e.g. text-only vs image-input
+        # vs web-only output). Restrict to variants whose output the bridge can serve,
+        # then prefer one that accepts the request's image attachments.
+        num_images = sum(
+            1
             for msg in messages
-            if isinstance(msg, dict)
+            if isinstance(msg, dict) and isinstance(msg.get("content"), list)
+            for part in msg["content"]
+            if isinstance(part, dict) and part.get("type") == "image_url"
         )
         candidates = [m for m in models if m.get("publicName") == model_public_name]
-        selected = candidates[0] if candidates else None
-        if request_has_images and len(candidates) > 1:
-            for m in candidates:
-                if (m.get("capabilities") or {}).get("inputCapabilities", {}).get("image"):
-                    selected = m
-                    break
+        servable = [
+            m for m in candidates
+            if any((m.get("capabilities") or {}).get("outputCapabilities", {}).get(k)
+                   for k in ("text", "search", "image"))
+        ] or candidates
+        selected = servable[0] if servable else None
+        if num_images and len(servable) > 1:
+            image_capable = [
+                m for m in servable
+                if (m.get("capabilities") or {}).get("inputCapabilities", {}).get("image")
+            ]
+            if num_images > 1:
+                multi = [
+                    m for m in image_capable
+                    if isinstance(
+                        (m.get("capabilities") or {}).get("inputCapabilities", {}).get("image"),
+                        dict,
+                    ) and m["capabilities"]["inputCapabilities"]["image"].get("multipleImages")
+                ]
+                if multi:
+                    image_capable = multi
+            if image_capable:
+                selected = image_capable[0]
         if selected:
             model_id = selected.get("id")
             model_org = selected.get("organization")

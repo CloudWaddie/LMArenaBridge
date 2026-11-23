@@ -2529,6 +2529,13 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         # Check if conversation exists for this API key (robust to tests patching chat_sessions to a plain dict)
         per_key_sessions = chat_sessions.setdefault(api_key_str, {})
         session = per_key_sessions.get(conversation_id)
+
+        # A continuing conversation must keep the model variant it was created with —
+        # re-resolving per request can silently switch variants (e.g. image-edit ->
+        # text-only) while upstream keeps one evaluation session.
+        if session and session.get("model") == model_public_name and session.get("model_id"):
+            model_id = session["model_id"]
+            model_capabilities = session.get("model_capabilities") or model_capabilities
         
         # Detect retry: if session exists and last message is same user message (no assistant response after it)
         is_retry = False
@@ -4220,6 +4227,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 chat_sessions[api_key_str][conversation_id] = {
                                     "conversation_id": session_id,
                                     "model": model_public_name,
+                                    "model_id": model_id,
+                                    "model_capabilities": model_capabilities,
                                     "messages": [
                                         {"id": user_msg_id, "role": "user", "content": prompt},
                                         assistant_message
@@ -4649,6 +4658,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 chat_sessions[api_key_str][conversation_id] = {
                     "conversation_id": session_id,
                     "model": model_public_name,
+                    "model_id": model_id,
+                    "model_capabilities": model_capabilities,
                     "messages": [
                         {"id": user_msg_id, "role": "user", "content": prompt},
                         assistant_message

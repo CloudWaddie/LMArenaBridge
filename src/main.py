@@ -2402,6 +2402,20 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         debug_print(f"✅ Found model ID: {model_id}")
         debug_print(f"🔧 Model capabilities: {model_capabilities}")
         
+        # Look up the existing conversation early so follow-ups reuse the variant
+        # the session was created with — re-resolving per request can silently
+        # switch variants (e.g. image-edit <-> text-only) while upstream keeps
+        # one evaluation session. Must happen before process_message_content so
+        # attachment processing uses the same capabilities as the payload.
+        conversation_id = hashlib.sha256(
+            f"{api_key['key']}_{model_public_name}_{str(next((m.get('content', '') for m in messages if m.get('role') == 'user'), ''))[:100]}".encode()
+        ).hexdigest()[:16]
+        per_key_sessions = chat_sessions.setdefault(api_key["key"], {})
+        session = per_key_sessions.get(conversation_id)
+        if session and session.get("model") == model_public_name and session.get("model_id"):
+            model_id = session["model_id"]
+            model_capabilities = session.get("model_capabilities") or model_capabilities
+
         # Determine modality based on model capabilities.
         # Priority: image > search > chat
         if model_capabilities.get("outputCapabilities", {}).get("image"):
@@ -2527,16 +2541,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         headers: dict[str, str] = {}
         
         # Check if conversation exists for this API key (robust to tests patching chat_sessions to a plain dict)
-        per_key_sessions = chat_sessions.setdefault(api_key_str, {})
-        session = per_key_sessions.get(conversation_id)
-
-        # A continuing conversation must keep the model variant it was created with —
-        # re-resolving per request can silently switch variants (e.g. image-edit ->
-        # text-only) while upstream keeps one evaluation session.
-        if session and session.get("model") == model_public_name and session.get("model_id"):
-            model_id = session["model_id"]
-            model_capabilities = session.get("model_capabilities") or model_capabilities
-        
         # Detect retry: if session exists and last message is same user message (no assistant response after it)
         is_retry = False
         retry_message_id = None

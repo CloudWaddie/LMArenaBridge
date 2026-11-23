@@ -2317,6 +2317,27 @@ async def debug_stream(api_key: dict = Depends(rate_limit_api_key)):  # noqa: AR
 
     return StreamingResponse(_gen(), media_type="text/event-stream")
 
+
+def _parse_arena_citation_sources(data: str) -> list[dict]:
+    try:
+        delta = json.loads(data)
+        if not isinstance(delta, dict) or delta.get("toolCallId") != "citation-source":
+            return []
+        args_text = delta.get("argsTextDelta")
+        if not isinstance(args_text, str):
+            return []
+        args = json.loads(args_text)
+    except json.JSONDecodeError:
+        return []
+
+    source = args.get("source") if isinstance(args, dict) else None
+    if isinstance(source, dict):
+        return [source]
+    if isinstance(source, list):
+        return [item for item in source if isinstance(item, dict)]
+    return []
+
+
 @app.post("/api/v1/chat/completions")
 async def api_chat_completions(request: Request, api_key: dict = Depends(rate_limit_api_key)):
     debug_print("\n" + "="*80)
@@ -3982,24 +4003,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         except json.JSONDecodeError:
                                             pass
                                     
-                                    # Parse citations/tool calls: ac:{...} (for search models)
+                                    # Parse citation-source tool-call deltas.
                                     elif line.startswith("ac:"):
-                                        citation_data = line[3:]
-                                        try:
-                                            citation_obj = json.loads(citation_data)
-                                            # Extract source information from argsTextDelta
-                                            if 'argsTextDelta' in citation_obj:
-                                                args_data = json.loads(citation_obj['argsTextDelta'])
-                                                if 'source' in args_data:
-                                                    source = args_data['source']
-                                                    # Can be a single source or array of sources
-                                                    if isinstance(source, list):
-                                                        citations.extend(source)
-                                                    elif isinstance(source, dict):
-                                                        citations.append(source)
-                                            debug_print(f"  🔗 Citation added: {citation_obj.get('toolCallId')}")
-                                        except json.JSONDecodeError:
-                                            pass
+                                        citations.extend(_parse_arena_citation_sources(line[3:]))
                                     
                                     # Parse error messages
                                     elif line.startswith("a3:"):
@@ -4653,27 +4659,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         debug_print(f"  ⚠️ Failed to parse image data on line {line_count}: {image_data[:100]} - {e}")
                         continue
                 
-                # Parse citations/tool calls: ac:{...} (for search models)
+                # Parse citation-source tool-call deltas.
                 elif line.startswith("ac:"):
-                    citation_data = line[3:]  # Remove "ac:" prefix
-                    citation_chunks_found += 1
-                    try:
-                        citation_obj = json.loads(citation_data)
-                        # Extract source information from argsTextDelta
-                        if 'argsTextDelta' in citation_obj:
-                            args_data = json.loads(citation_obj['argsTextDelta'])
-                            if 'source' in args_data:
-                                source = args_data['source']
-                                # Can be a single source or array of sources
-                                if isinstance(source, list):
-                                    citations.extend(source)
-                                elif isinstance(source, dict):
-                                    citations.append(source)
-                        if citation_chunks_found <= 3:  # Log first 3 citations
-                            debug_print(f"  🔗 Citation chunk {citation_chunks_found}: {citation_obj.get('toolCallId')}")
-                    except json.JSONDecodeError as e:
-                        debug_print(f"  ⚠️ Failed to parse citation chunk on line {line_count}: {citation_data[:100]} - {e}")
-                        continue
+                    sources = _parse_arena_citation_sources(line[3:])
+                    if sources:
+                        citation_chunks_found += 1
+                        citations.extend(sources)
                 
                 # Parse error messages: a3:"An error occurred"
                 elif line.startswith("a3:"):

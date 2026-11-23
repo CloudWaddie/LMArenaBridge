@@ -60,8 +60,10 @@ class TestChromeFetchRobustness(unittest.IsolatedAsyncioTestCase):
                 return "user-agent"
             if isinstance(script, str) and script.lstrip().startswith("async ({url, method, body, extraHeaders"):
                 extra = (arg or {}).get("extraHeaders") or {}
-                self.assertEqual(extra.get("X-Recaptcha-Token"), "payload-token")
-                self.assertEqual(extra.get("X-Recaptcha-Action"), "action")
+                # X-Recaptcha-* headers are rejected by arena.ai with
+                # 429 {"error": "prompt failed"} — the token must stay in the payload.
+                self.assertNotIn("X-Recaptcha-Token", extra)
+                self.assertNotIn("X-Recaptcha-Action", extra)
                 return {"status": 200, "headers": {}, "text": "success"}
             raise AssertionError(f"Unexpected evaluate script: {str(script)[:80]}")
 

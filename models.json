@@ -1,0 +1,2742 @@
+[
+  {
+    "id": "019b24bb-5caf-71c3-b854-37d0c7086f21",
+    "organization": "boss-bandit",
+    "provider": "boss-bandit",
+    "publicName": "Max",
+    "displayName": "Max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true,
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        },
+        "search": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991,
+      "webdev": 9007199254740991,
+      "image": 9007199254740991,
+      "search": 9007199254740991
+    }
+  },
+  {
+    "id": "01a141d8-c8f9-710a-bdf4-983605ae330c",
+    "organization": "google",
+    "provider": "googleVertexGlobalWithThoughtSignatures",
+    "publicName": "gemini-4-argon-high",
+    "displayName": "gemini-4-argon-high",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "file": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 2,
+    "rankByModality": {
+      "chat": 2,
+      "webdev": 18
+    }
+  },
+  {
+    "id": "01a0681c-b561-76b6-b338-a44ff0cff460",
+    "organization": "google",
+    "provider": "googleVertexGlobalWithThoughtSignatures",
+    "publicName": "gemini-3.8-flash-high",
+    "displayName": "gemini-3.8-flash-high",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "file": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 11,
+    "rankByModality": {
+      "chat": 11,
+      "webdev": 47
+    }
+  },
+  {
+    "id": "01a0dc86-c4b7-7c3e-812f-891aba9574d1",
+    "organization": "xiaomi",
+    "provider": "xiaomiV1",
+    "publicName": "mimo-v2.6-pro",
+    "displayName": "mimo-v2.6-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 31,
+    "rankByModality": {
+      "chat": 31,
+      "webdev": 35
+    }
+  },
+  {
+    "id": "01a03a3b-64e3-790c-bdba-bd0e1c04b0f5",
+    "organization": "zai",
+    "provider": "siliconFlow",
+    "publicName": "anonymous-0825",
+    "displayName": "glm-5.3-flash",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 37,
+    "rankByModality": {
+      "chat": 37,
+      "webdev": 40
+    }
+  },
+  {
+    "id": "01a0c5d1-9000-71c6-9c2c-b1b958c71006",
+    "organization": "xiaomi",
+    "provider": "xiaomiV1",
+    "publicName": "mimo-v2.6-flash",
+    "displayName": "mimo-v2.6-flash",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 90,
+    "rankByModality": {
+      "chat": 90,
+      "webdev": 30
+    }
+  },
+  {
+    "id": "01a0ca93-91d0-7bb4-843e-02dc64ca64f6",
+    "organization": "openai",
+    "provider": "openaiResponses",
+    "publicName": "gpt-6-luna-max",
+    "displayName": "gpt-6-luna-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "file": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 99,
+    "rankByModality": {
+      "chat": 99
+    }
+  },
+  {
+    "id": "01a01326-36b7-7b0d-8af1-ccba21cf001f",
+    "organization": "alibaba",
+    "provider": "alibaba",
+    "publicName": "qwen3.8-27b",
+    "displayName": "qwen3.8-27b",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 112,
+    "rankByModality": {
+      "chat": 112
+    }
+  },
+  {
+    "id": "01a117ba-842b-76c6-bffb-9ca7bc4a6e45",
+    "organization": "anthropic",
+    "provider": "googleVertexAnthropicAdaptive",
+    "publicName": "claude-haiku-5.5-high",
+    "displayName": "claude-haiku-5.5-high",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "file": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 139,
+    "rankByModality": {
+      "chat": 139,
+      "webdev": 44
+    }
+  },
+  {
+    "id": "01a14c4a-9269-761f-843d-f047a26d1d6c",
+    "organization": "deepseek",
+    "provider": "deepseekVisionToolCalling",
+    "publicName": "deepseek-v4.1-flash-high",
+    "displayName": "deepseek-v4.1-flash-high",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991,
+      "webdev": 9007199254740991
+    }
+  },
+  {
+    "id": "01a1c1ad-c7fd-71bb-ae40-b95422e61018",
+    "organization": "meta",
+    "provider": "metaModelApi",
+    "publicName": "muse-ember-max",
+    "displayName": "muse-ember-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991,
+      "webdev": 42
+    }
+  },
+  {
+    "id": "01a14ae7-0d76-74af-80ac-33cf2b2322aa",
+    "organization": "deepseek",
+    "provider": "deepseekVisionToolCalling",
+    "publicName": "deepseek-v4.1-flash-max",
+    "displayName": "deepseek-v4.1-flash-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991,
+      "webdev": 23
+    }
+  },
+  {
+    "id": "019f7cb6-9dc5-70ef-aadb-e1287c3384e3",
+    "organization": "moonshot",
+    "provider": "moonshot",
+    "publicName": "kimi-k3",
+    "displayName": "kimi-k3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "file": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991
+    }
+  },
+  {
+    "id": "01a0e982-1984-7919-9dec-0fef46824d29",
+    "organization": "anthropic",
+    "provider": "googleVertexAnthropicAdaptive",
+    "publicName": "claude-sonnet-5-5-high",
+    "displayName": "claude-sonnet-5-5-high",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "file": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991,
+      "webdev": 13
+    }
+  },
+  {
+    "id": "01a17964-d631-70ad-99d5-54f60ed1b6cd",
+    "organization": "openai",
+    "provider": "openaiResponses",
+    "publicName": "gpt-6.1-terra-low",
+    "displayName": "gpt-6.1-terra-low",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "file": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991
+    }
+  },
+  {
+    "id": "019f722d-f655-7a00-8eb3-24d9be72a104",
+    "organization": "thinky",
+    "provider": "thinky",
+    "publicName": "inkling-medium",
+    "displayName": "inkling-medium",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991,
+      "webdev": 9007199254740991
+    }
+  },
+  {
+    "id": "01a063c1-adb1-73e2-9c02-10b6e7cfb1eb",
+    "organization": "meta",
+    "provider": "metaModelApi",
+    "publicName": "muse-spark-1.3-xhigh",
+    "displayName": "muse-spark-1.3-xhigh",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "file": true
+      },
+      "outputCapabilities": {
+        "text": true,
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991,
+      "webdev": 37
+    }
+  },
+  {
+    "id": "019ff69d-0234-7d00-a218-8fefcc9b7a9d",
+    "organization": "xai",
+    "provider": "xaiResponses",
+    "publicName": "grok-4.6",
+    "displayName": "grok-4.6-medium",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "text": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "chat": 9007199254740991
+    }
+  },
+  {
+    "id": "019fc887-69e7-7308-a353-36da657fc18e",
+    "organization": "alibaba",
+    "provider": "alibabaToolCall",
+    "publicName": "paisley",
+    "displayName": "qwen3.8-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 21,
+    "rankByModality": {
+      "webdev": 21
+    }
+  },
+  {
+    "id": "01a01327-1a98-7645-8595-06506a9c1f7f",
+    "organization": "alibaba",
+    "provider": "alibabaToolCall",
+    "publicName": "qwen3.8-27b",
+    "displayName": "qwen3.8-27b",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 45,
+    "rankByModality": {
+      "webdev": 45
+    }
+  },
+  {
+    "id": "01a0ca83-3771-78e9-bb46-9bd372c8f86c",
+    "organization": "openai",
+    "provider": "openaiResponses",
+    "publicName": "gpt-6-luna-max",
+    "displayName": "gpt-6-luna-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 51,
+    "rankByModality": {
+      "webdev": 51
+    }
+  },
+  {
+    "id": "01a1bc5c-e389-7e59-a728-9939461d4a62",
+    "organization": "baidu",
+    "provider": "baiduyiyanApi",
+    "publicName": "ernie-5.5-flash-preview",
+    "displayName": "ernie-5.5-flash-preview",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "web": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "webdev": 9007199254740991
+    }
+  },
+  {
+    "id": "01a1d8a9-ca03-7fa9-8ac3-043ede1f6b18",
+    "organization": "microsoft-ai",
+    "provider": "microsoftFalcon",
+    "publicName": "mai-image-2.7",
+    "displayName": "mai-image-2.7",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 4,
+    "rankByModality": {
+      "image": 4
+    }
+  },
+  {
+    "id": "01a1407b-22ea-7a91-a894-b63dc081a05a",
+    "organization": "meta",
+    "provider": "metaImage",
+    "publicName": "muse-image",
+    "displayName": "muse-image",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 13,
+    "rankByModality": {
+      "image": 13
+    }
+  },
+  {
+    "id": "019fbb94-0662-7830-808f-ee8dfe6098a2",
+    "organization": "google",
+    "provider": "google-genai",
+    "publicName": "gemini-3.1-flash-lite-image (nano-banana-2-lite)",
+    "displayName": "gemini-3.1-flash-lite-image (nano-banana-2-lite)",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 17,
+    "rankByModality": {
+      "image": 17
+    }
+  },
+  {
+    "id": "019f42b5-8c52-7793-9be8-de35eecf7ea9",
+    "organization": "bytedance",
+    "provider": "byteplus",
+    "publicName": "seedream-5.0-pro",
+    "displayName": "seedream-5.0-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 18,
+    "rankByModality": {
+      "image": 18
+    }
+  },
+  {
+    "id": "019e98fd-7a13-732a-93d6-2584d8b11d5a",
+    "organization": "alibaba",
+    "provider": "qwenImage",
+    "publicName": "zen-bear-v4",
+    "displayName": "qwen-image-2.0-pro-2026-06-22",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true,
+          "multipleImages": false
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 25,
+    "rankByModality": {
+      "image": 25
+    }
+  },
+  {
+    "id": "019ed208-69ca-7f3f-85ee-182d5f0ea08b",
+    "organization": "luma-ai",
+    "provider": "lumaImagePublic",
+    "publicName": "uni-1.1-max",
+    "displayName": "uni-1.1-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 26,
+    "rankByModality": {
+      "image": 26
+    }
+  },
+  {
+    "id": "019ed208-3556-7d81-b768-f124f370145b",
+    "organization": "luma-ai",
+    "provider": "lumaImagePublic",
+    "publicName": "uni-1.1",
+    "displayName": "uni-1.1",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 28,
+    "rankByModality": {
+      "image": 28
+    }
+  },
+  {
+    "id": "019cc6e2-6e4a-76c1-bf57-76b12d98dbf3",
+    "organization": "xai",
+    "provider": "xaiImage",
+    "publicName": "grok-imagine-image",
+    "displayName": "grok-imagine-image",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": false
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 30,
+    "rankByModality": {
+      "image": 30
+    }
+  },
+  {
+    "id": "019c9078-386f-7c92-99f3-97d5d6b0f239",
+    "organization": "bytedance",
+    "provider": "byteplus",
+    "publicName": "seedream-5.0-lite",
+    "displayName": "seedream-5.0-lite",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 43,
+    "rankByModality": {
+      "image": 43
+    }
+  },
+  {
+    "id": "019e8ebd-8102-7dd1-aedb-af5a0ab5f83b",
+    "organization": "krea",
+    "provider": "fal",
+    "publicName": "krea-2-medium",
+    "displayName": "krea-2-medium",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 47,
+    "rankByModality": {
+      "image": 47
+    }
+  },
+  {
+    "id": "019db3ef-f2e3-7508-b3bc-c2ba377804ea",
+    "organization": "wan",
+    "provider": "alibaba",
+    "publicName": "wan2.7-image",
+    "displayName": "wan2.7-image",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 60,
+    "rankByModality": {
+      "image": 60
+    }
+  },
+  {
+    "id": "01a14882-6744-7de3-bd16-5ee607d5faca",
+    "organization": "microsoft-ai",
+    "provider": "microsoftFalcon",
+    "publicName": "mai-image-2.7",
+    "displayName": "mai-image-2.7",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true,
+          "multipleImages": false
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "01a1d205-71ca-7517-9671-1257f4d66a80",
+    "organization": "krea",
+    "provider": "fal",
+    "publicName": "krea-3-high",
+    "displayName": "krea-3-high",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "01a14695-753c-7feb-91bb-35a8019af769",
+    "organization": "bfl",
+    "provider": "bflFlux3",
+    "publicName": "flux-3-image-klein",
+    "displayName": "flux-3-image-klein",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "019d287c-4906-7f9c-8b78-8a2a86cf00a5",
+    "organization": "alibaba",
+    "provider": "alibaba",
+    "publicName": "qwen-image-2.0",
+    "displayName": "qwen-image-2.0",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false,
+          "multipleImages": false
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "01a1d8d4-643c-7193-a7e7-2d496dcee97c",
+    "organization": "microsoft-ai",
+    "provider": "microsoftFalcon",
+    "publicName": "mai-image-2.7",
+    "displayName": "mai-image-2.7",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "019bec2d-e92c-745d-ae46-c7166590237a",
+    "organization": "tencent",
+    "provider": "tencentEval",
+    "publicName": "sungod",
+    "displayName": "hunyuan-image-3.0-instruct",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true,
+          "multipleImages": false
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "01a1d205-8b2f-7411-a64a-703ccb67e54e",
+    "organization": "krea",
+    "provider": "fal",
+    "publicName": "krea-3-high",
+    "displayName": "krea-3-high",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "01a0e8eb-2266-7683-9e2a-f6acdaff6cd5",
+    "organization": "ideogram",
+    "provider": "ideogram",
+    "publicName": "ideogram-4.5",
+    "displayName": "ideogram-4.5",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true,
+          "multipleImages": true
+        }
+      },
+      "outputCapabilities": {
+        "image": {
+          "aspectRatios": [
+            "1:1"
+          ]
+        }
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "image": 9007199254740991
+    }
+  },
+  {
+    "id": "019fb8c5-4796-7f8d-bd9b-0e278b3d9de7",
+    "organization": "amazon",
+    "provider": "amazonSearch",
+    "publicName": "amazon-web-search-agent",
+    "displayName": "amazon-web-search-agent",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "search": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 1,
+    "rankByModality": {
+      "search": 1
+    }
+  },
+  {
+    "id": "019f4e39-a888-7430-a6e7-ca2c33ec78f1",
+    "organization": "xai",
+    "provider": "xaiResponsesSearch",
+    "publicName": "grok-4.5-search",
+    "displayName": "grok-4.5-search",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "search": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 14,
+    "rankByModality": {
+      "search": 14
+    }
+  },
+  {
+    "id": "019ce84a-f675-780c-a2bb-f86498a34de5",
+    "organization": "google",
+    "provider": "googleVertexGlobalSearch",
+    "publicName": "gemini-3.1-pro-grounding",
+    "displayName": "gemini-3.1-pro-grounding",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "search": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 16,
+    "rankByModality": {
+      "search": 16
+    }
+  },
+  {
+    "id": "019f1a07-de72-7fbe-8d82-56dbd7348360",
+    "organization": "anthropic",
+    "provider": "anthropicSearch",
+    "publicName": "claude-sonnet-5-search",
+    "displayName": "claude-sonnet-5-search",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "search": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 26,
+    "rankByModality": {
+      "search": 26
+    }
+  },
+  {
+    "id": "01a0ca94-48d5-7395-ac81-8220f88816dc",
+    "organization": "openai",
+    "provider": "openaiResponses",
+    "publicName": "gpt-6-luna-search-max",
+    "displayName": "gpt-6-luna-search-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "search": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 35,
+    "rankByModality": {
+      "search": 35
+    }
+  },
+  {
+    "id": "01a1b273-562f-75bf-b5c8-6869ff0a3c38",
+    "organization": "google",
+    "provider": "googleVertexApi",
+    "publicName": "gemini-omni-1.2-flash",
+    "displayName": "gemini-omni-1.2-flash",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "video": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 1,
+    "rankByModality": {
+      "video": 1
+    }
+  },
+  {
+    "id": "01a06df1-5f5b-7836-aa72-e17403ae8bb0",
+    "organization": "google",
+    "provider": "googleVertexApi",
+    "publicName": "gemini-omni-1.1-flash",
+    "displayName": "gemini-omni-1.1-flash",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "video": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 2,
+    "rankByModality": {
+      "video": 2
+    }
+  },
+  {
+    "id": "019fbb93-f92a-751c-b418-155052fcc6f8",
+    "organization": "google",
+    "provider": "googleVertexApi",
+    "publicName": "gemini-omni-flash",
+    "displayName": "gemini-omni-flash",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "video": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 3,
+    "rankByModality": {
+      "video": 3
+    }
+  },
+  {
+    "id": "019fde42-61fa-7d12-9f3f-6d2fc64365f7",
+    "organization": "bfl",
+    "provider": "bflVideo3",
+    "publicName": "flux-3-video",
+    "displayName": "flux-3-video",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 4,
+    "rankByModality": {
+      "video": 4
+    }
+  },
+  {
+    "id": "019d4231-5b3d-72d1-aa8c-04841b8eab5f",
+    "organization": "bytedance",
+    "provider": "byteplus",
+    "publicName": "k2",
+    "displayName": "dreamina-seedance-2.0-720p",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "video": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 6,
+    "rankByModality": {
+      "video": 6
+    }
+  },
+  {
+    "id": "019fd40c-e6c8-7d66-b5ab-72e6fa021030",
+    "organization": "bytedance",
+    "provider": "byteplus",
+    "publicName": "lhotse",
+    "displayName": "dreamina-seedance-2.5-720p\n",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true,
+        "video": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 7,
+    "rankByModality": {
+      "video": 7
+    }
+  },
+  {
+    "id": "01a010ff-f14f-7953-bb48-27baf9105203",
+    "organization": "wan",
+    "provider": "wan",
+    "publicName": "vega",
+    "displayName": "wan3.0",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 8,
+    "rankByModality": {
+      "video": 8
+    }
+  },
+  {
+    "id": "019fbbc9-b0ee-7912-83fe-a8afd9062c8f",
+    "organization": "minimax",
+    "provider": "minimaxV2",
+    "publicName": "hailuo-3",
+    "displayName": "minimax-h3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 11,
+    "rankByModality": {
+      "video": 11
+    }
+  },
+  {
+    "id": "01f39601-03ed-4d66-8afb-5039c90b27ea",
+    "organization": "openai",
+    "provider": "openai",
+    "publicName": "sora-2-pro",
+    "displayName": "sora-2-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 13,
+    "rankByModality": {
+      "video": 13
+    }
+  },
+  {
+    "id": "019f91b2-bf47-7455-a763-14f60c1d5f0c",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "veo-3.1-audio",
+    "displayName": "veo-3.1-audio",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 14,
+    "rankByModality": {
+      "video": 14
+    }
+  },
+  {
+    "id": "019f91b3-a82a-7fce-b9d0-c5847008e059",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "veo-3.1-audio-1080p",
+    "displayName": "veo-3.1-audio-1080p",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 15,
+    "rankByModality": {
+      "video": 15
+    }
+  },
+  {
+    "id": "019f91b3-9bd5-72a5-ab37-1b8c8f1dfc90",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "veo-3.1-fast-audio",
+    "displayName": "veo-3.1-fast-audio",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 16,
+    "rankByModality": {
+      "video": 16
+    }
+  },
+  {
+    "id": "019f91b2-af51-7239-a081-9c6ca572b12b",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "veo-3.1-fast-audio-1080p",
+    "displayName": "veo-3.1-fast-audio-1080p",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 17,
+    "rankByModality": {
+      "video": 17
+    }
+  },
+  {
+    "id": "043a03a9-a792-4045-9f6d-4bcd747dac43",
+    "organization": "openai",
+    "provider": "openai",
+    "publicName": "sora-2",
+    "displayName": "sora-2",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 19,
+    "rankByModality": {
+      "video": 19
+    }
+  },
+  {
+    "id": "019de5a8-bff1-7059-a714-a62306010c70",
+    "organization": "wan",
+    "provider": "alibaba",
+    "publicName": "wan2.7-t2v",
+    "displayName": "wan2.7-t2v",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 22,
+    "rankByModality": {
+      "video": 22
+    }
+  },
+  {
+    "id": "019c48d2-6244-73d5-b6f0-c138efff5331",
+    "organization": "wan",
+    "provider": "alibaba",
+    "publicName": "wan2.6-t2v",
+    "displayName": "wan2.6-t2v",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 23,
+    "rankByModality": {
+      "video": 23
+    }
+  },
+  {
+    "id": "019a74c8-5bf5-7f37-b0c4-4d597ea6f831",
+    "organization": "wan",
+    "provider": "alibaba",
+    "publicName": "wan2.5-t2v-preview",
+    "displayName": "wan2.5-t2v-preview",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 27,
+    "rankByModality": {
+      "video": 27
+    }
+  },
+  {
+    "id": "019c920d-8d0e-7625-a023-635cf4e9f5d5",
+    "organization": "runway",
+    "provider": "replicate",
+    "publicName": "runway-gen-4.5",
+    "displayName": "runway-gen-4.5",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 29,
+    "rankByModality": {
+      "video": 29
+    }
+  },
+  {
+    "id": "fec7074d-a3a0-4f83-a487-82700fcec84d",
+    "organization": "luma-ai",
+    "provider": "luma",
+    "publicName": "ray-3",
+    "displayName": "ray-3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 33,
+    "rankByModality": {
+      "video": 33
+    }
+  },
+  {
+    "id": "019a1e21-7cb0-7778-9dd0-02ed4fb3563f",
+    "organization": "minimax",
+    "provider": "minimax",
+    "publicName": "hailuo-2.3",
+    "displayName": "hailuo-2.3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 34,
+    "rankByModality": {
+      "video": 34
+    }
+  },
+  {
+    "id": "019c78d9-c9b1-777a-9792-e0790121359d",
+    "organization": "kling",
+    "provider": "fal",
+    "publicName": "kling-o1-pro",
+    "displayName": "kling-o1-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "video": {
+          "required": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 35,
+    "rankByModality": {
+      "video": 35
+    }
+  },
+  {
+    "id": "55069e04-a634-4d98-8765-95113b945f5e",
+    "organization": "minimax",
+    "provider": "fal",
+    "publicName": "hailuo-02-pro",
+    "displayName": "hailuo-02-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 36,
+    "rankByModality": {
+      "video": 36
+    }
+  },
+  {
+    "id": "527e3f88-c13f-404c-92b4-0dcf7eeb61e6",
+    "organization": "minimax",
+    "provider": "fal",
+    "publicName": "hailuo-02-pro",
+    "displayName": "hailuo-02-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 36,
+    "rankByModality": {
+      "video": 36
+    }
+  },
+  {
+    "id": "4ddc4e52-2867-49b6-a603-5aab24a566ca",
+    "organization": "bytedance",
+    "provider": "fal",
+    "publicName": "seedance-v1-pro",
+    "displayName": "seedance-v1-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 37,
+    "rankByModality": {
+      "video": 37
+    }
+  },
+  {
+    "id": "e705b65f-82cd-40cb-9630-d9e6ca92d06f",
+    "organization": "bytedance",
+    "provider": "fal",
+    "publicName": "seedance-v1-pro",
+    "displayName": "seedance-v1-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 37,
+    "rankByModality": {
+      "video": 37
+    }
+  },
+  {
+    "id": "e652c45e-8699-4392-94f0-7834e7464137",
+    "organization": "minimax",
+    "provider": "fal",
+    "publicName": "hailuo-02-standard",
+    "displayName": "hailuo-02-standard",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 38,
+    "rankByModality": {
+      "video": 38
+    }
+  },
+  {
+    "id": "bf03b5bb-8b4e-4a36-a893-0b2809f1daec",
+    "organization": "minimax",
+    "provider": "fal",
+    "publicName": "hailuo-02-standard",
+    "displayName": "hailuo-02-standard",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 38,
+    "rankByModality": {
+      "video": 38
+    }
+  },
+  {
+    "id": "019a997a-92dd-7588-ac3c-bdca7e81af37",
+    "organization": "kandinsky",
+    "provider": "kandinsky",
+    "publicName": "kandinsky-5.0-t2v-pro",
+    "displayName": "kandinsky-5.0-t2v-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 39,
+    "rankByModality": {
+      "video": 39
+    }
+  },
+  {
+    "id": "019b28b8-671b-7d8c-9d32-0cd757a60a6c",
+    "organization": "tencent",
+    "provider": "tencent",
+    "publicName": "hunyuan-video-1.5",
+    "displayName": "hunyuan-video-1.5",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 40,
+    "rankByModality": {
+      "video": 40
+    }
+  },
+  {
+    "id": "019b28b8-5801-708c-9a7c-e77999d624d6",
+    "organization": "tencent",
+    "provider": "tencent",
+    "publicName": "hunyuan-video-1.5",
+    "displayName": "hunyuan-video-1.5",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 40,
+    "rankByModality": {
+      "video": 40
+    }
+  },
+  {
+    "id": "08d8dcc6-2ab5-45ae-9bf1-353480f1f7ee",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "veo-2",
+    "displayName": "veo-2",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 41,
+    "rankByModality": {
+      "video": 41
+    }
+  },
+  {
+    "id": "019bb42e-a2f0-73e6-a96e-a6f925341d9c",
+    "organization": "lightricks",
+    "provider": "fal",
+    "publicName": "ltx-2-19b",
+    "displayName": "ltx-2-19b",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 43,
+    "rankByModality": {
+      "video": 43
+    }
+  },
+  {
+    "id": "019bb42e-e9ee-75ca-9967-559a2bfb6c8b",
+    "organization": "lightricks",
+    "provider": "fal",
+    "publicName": "ltx-2-19b",
+    "displayName": "ltx-2-19b",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 43,
+    "rankByModality": {
+      "video": 43
+    }
+  },
+  {
+    "id": "264e6e2f-b66a-4e27-a859-8145ff32d6f6",
+    "organization": "wan",
+    "provider": "fal",
+    "publicName": "wan-v2.2-a14b",
+    "displayName": "wan-v2.2-a14b",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 44,
+    "rankByModality": {
+      "video": 44
+    }
+  },
+  {
+    "id": "3a91bb37-39fb-471c-8aa2-a89b98d280d0",
+    "organization": "wan",
+    "provider": "fal",
+    "publicName": "wan-v2.2-a14b",
+    "displayName": "wan-v2.2-a14b",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 44,
+    "rankByModality": {
+      "video": 44
+    }
+  },
+  {
+    "id": "4c8dde6e-1b2c-45b9-91c3-413b2ceafffb",
+    "organization": "bytedance",
+    "provider": "fal",
+    "publicName": "seedance-v1-lite",
+    "displayName": "seedance-v1-lite",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 45,
+    "rankByModality": {
+      "video": 45
+    }
+  },
+  {
+    "id": "13ce11ba-def2-4c80-a70b-b0b2c14d293e",
+    "organization": "bytedance",
+    "provider": "fal",
+    "publicName": "seedance-v1-lite",
+    "displayName": "seedance-v1-lite",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 45,
+    "rankByModality": {
+      "video": 45
+    }
+  },
+  {
+    "id": "019a997a-88a7-7e5c-9214-ed2a946eb739",
+    "organization": "kandinsky",
+    "provider": "kandinsky",
+    "publicName": "kandinsky-5.0-t2v-lite",
+    "displayName": "kandinsky-5.0-t2v-lite",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 46,
+    "rankByModality": {
+      "video": 46
+    }
+  },
+  {
+    "id": "c3d0e5c8-f4b3-417a-8cb8-2ccf757d3869",
+    "organization": "openai",
+    "provider": "azureOpenAI",
+    "publicName": "sora",
+    "displayName": "sora",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 47,
+    "rankByModality": {
+      "video": 47
+    }
+  },
+  {
+    "id": "5b3383a9-6bca-4f71-8210-78895c9d84d5",
+    "organization": "luma-ai",
+    "provider": "fal",
+    "publicName": "ray2",
+    "displayName": "ray2",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 48,
+    "rankByModality": {
+      "video": 48
+    }
+  },
+  {
+    "id": "217158f9-793e-4ffe-a197-6de9448432fc",
+    "organization": "luma-ai",
+    "provider": "fal",
+    "publicName": "ray2",
+    "displayName": "ray2",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 48,
+    "rankByModality": {
+      "video": 48
+    }
+  },
+  {
+    "id": "86de5aea-fc0c-4c36-b65a-7afc443a32d2",
+    "organization": "pika",
+    "provider": "fal",
+    "publicName": "pika-v2.2",
+    "displayName": "pika-v2.2",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 49,
+    "rankByModality": {
+      "video": 49
+    }
+  },
+  {
+    "id": "f9b9f030-9ebc-4765-bf76-c64a82a72dfd",
+    "organization": "pika",
+    "provider": "fal",
+    "publicName": "pika-v2.2",
+    "displayName": "pika-v2.2",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 49,
+    "rankByModality": {
+      "video": 49
+    }
+  },
+  {
+    "id": "f4809219-14a8-47fe-9705-8685085513e7",
+    "organization": "genmo",
+    "provider": "fal",
+    "publicName": "mochi-v1",
+    "displayName": "mochi-v1",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rank": 50,
+    "rankByModality": {
+      "video": 50
+    }
+  },
+  {
+    "id": "019c78da-3629-73c6-8e04-0aba8eae64c8",
+    "organization": "runway",
+    "provider": "replicate",
+    "publicName": "runway-gen4-aleph",
+    "displayName": "runway-gen4-aleph",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "video": {
+          "required": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c05a7-15e7-7305-adc2-0d5939fd6799",
+    "organization": "shengshu",
+    "provider": "shengshu",
+    "publicName": "snowflake",
+    "displayName": "vidu-q3-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019e8ae6-4cee-76dc-9c2d-d3a646f5a5c9",
+    "organization": "xai",
+    "provider": "xai",
+    "publicName": "grok-imagine-video-1.5-preview-720p",
+    "displayName": "grok-imagine-video-1.5-preview-720p",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019f05cc-5c22-75d8-b99e-ffab36d62851",
+    "organization": "aorizon",
+    "provider": "alibaba",
+    "publicName": "happyhorse-1.1",
+    "displayName": "happyhorse-1.1",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": false
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c48d2-0f86-701d-beb2-af070edd1147",
+    "organization": "wan",
+    "provider": "alibaba",
+    "publicName": "wan2.6-i2v",
+    "displayName": "wan2.6-i2v",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c59fa-8a41-7042-baf7-121d052c04b8",
+    "organization": "kling",
+    "provider": "fal",
+    "publicName": "kling-v3",
+    "displayName": "kling-v3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019fb424-59cb-7d5c-bfb4-2ec04fd7bf9e",
+    "organization": "minimax",
+    "provider": "minimaxV2",
+    "publicName": "hailuo-3",
+    "displayName": "minimax-h3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": false
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019a36dd-5d6c-7f15-8598-4755f4c34e28",
+    "organization": "minimax",
+    "provider": "minimax",
+    "publicName": "hailuo-2.3-fast",
+    "displayName": "hailuo-2.3-fast",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019feceb-bf62-71a6-8238-aea19b7b9d9b",
+    "organization": "wan",
+    "provider": "wan",
+    "publicName": "polaris",
+    "displayName": "wan3.0",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "video": {
+          "required": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019fb712-f49a-7258-aee2-28709a533d41",
+    "organization": "minimax",
+    "provider": "minimaxV2",
+    "publicName": "hailuo-3",
+    "displayName": "minimax-h3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "video": {
+          "required": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "01a06881-7bfa-779b-89a7-1c4d4eac8b51",
+    "organization": "hidream",
+    "provider": "hidream",
+    "publicName": "hidream-o1-video",
+    "displayName": "hidream-o1-video",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c78d9-2a0f-7d8d-8b01-94bf9907d65e",
+    "organization": "wan",
+    "provider": "fal",
+    "publicName": "wan-vace",
+    "displayName": "wan-vace",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "video": {
+          "required": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c78d9-8148-794d-ba5e-59c1a29a1dc3",
+    "organization": "xai",
+    "provider": "xai",
+    "publicName": "grok-imagine-video",
+    "displayName": "grok-imagine-video",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "video": {
+          "required": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019f05cc-8b09-7951-ba23-4d97b76302c9",
+    "organization": "aorizon",
+    "provider": "alibaba",
+    "publicName": "happyhorse-1.1",
+    "displayName": "happyhorse-1.1",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019f05cc-d477-712a-a9c8-3a3ec1c61324",
+    "organization": "aorizon",
+    "provider": "alibaba",
+    "publicName": "happyhorse-1.1",
+    "displayName": "happyhorse-1.1",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "video": {
+          "required": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c78d9-ffe4-7a3a-913f-9570e3927788",
+    "organization": "kling",
+    "provider": "fal",
+    "publicName": "kling-o3-pro",
+    "displayName": "kling-o3-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "video": {
+          "required": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019f91b3-6ea2-744a-b698-d09fbadea9fa",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "veo-3.1-audio-4k",
+    "displayName": "veo-3.1-audio-4k",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "01a04421-8705-7ac3-b814-0b4750bf2ea3",
+    "organization": "minimax",
+    "provider": "fal",
+    "publicName": "minimax-h3-max",
+    "displayName": "minimax-h3-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c2116-1107-7146-b617-c70a53abcb3f",
+    "organization": "xai",
+    "provider": "xai",
+    "publicName": "grok-imagine-video",
+    "displayName": "grok-imagine-video",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019e1cd6-1907-7b7c-837c-33a5a3b33b95",
+    "organization": "wan",
+    "provider": "alibaba",
+    "publicName": "wan2.7-i2v",
+    "displayName": "wan2.7-i2v",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "01a04423-3cd2-767a-9f26-0593ff09d518",
+    "organization": "minimax",
+    "provider": "fal",
+    "publicName": "minimax-h3-max",
+    "displayName": "minimax-h3-max",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "58060613-41dc-478b-97a0-6d9c4f0c722a",
+    "organization": "minimax",
+    "provider": "fal",
+    "publicName": "hailuo-02-fast",
+    "displayName": "hailuo-02-fast",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "0754baa1-ab91-42d0-ba74-522aa8e5b8e2",
+    "organization": "runway",
+    "provider": "replicate",
+    "publicName": "runway-gen4-turbo",
+    "displayName": "runway-gen4-turbo",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c59fa-6567-7c42-97af-f51b52ce47d5",
+    "organization": "kling",
+    "provider": "fal",
+    "publicName": "kling-v3",
+    "displayName": "kling-v3",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019c8d5a-ebf3-78a9-b086-33719c7be210",
+    "organization": "kandinsky",
+    "provider": "kandinsky",
+    "publicName": "kandinsky-5.0-i2v-pro",
+    "displayName": "kandinsky-5.0-i2v-pro",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019ff26e-8f7e-70c1-8aaf-5c69fea18bf3",
+    "organization": "bfl",
+    "provider": "bflVideo3",
+    "publicName": "flux-3-video-20260811-i2v",
+    "displayName": "flux-3-video-20260811-i2v",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": {
+          "requiresUpload": true
+        }
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  },
+  {
+    "id": "019f91b2-b157-77bf-bbb8-59763e6625db",
+    "organization": "google",
+    "provider": "googleVertex",
+    "publicName": "veo-3.1-fast-audio-4k",
+    "displayName": "veo-3.1-fast-audio-4k",
+    "capabilities": {
+      "inputCapabilities": {
+        "text": true,
+        "image": true
+      },
+      "outputCapabilities": {
+        "video": true
+      }
+    },
+    "userSelectable": true,
+    "premium": true,
+    "rankByModality": {
+      "video": 9007199254740991
+    }
+  }
+]

@@ -815,6 +815,22 @@ async def get_initial_data():
             # Set up route interceptor BEFORE navigating
             debug_print("  🎯 Setting up route interceptor for JS chunks...")
             captured_responses = []
+            captured_doc_bodies: list[str] = []
+
+            async def capture_document_response(response):
+                """Capture raw document HTML (contains data-dpl-id, removed by JS after boot)."""
+                try:
+                    if getattr(response.request, "resource_type", "") != "document":
+                        return
+                    if "arena.ai" not in response.url and "lmarena.ai" not in response.url:
+                        return
+                    text = await response.text()
+                    if text:
+                        captured_doc_bodies.append(text)
+                except Exception:
+                    pass
+
+            page.on("response", lambda r: asyncio.ensure_future(capture_document_response(r)))
             
             async def capture_js_route(route):
                 """Intercept and capture JS chunk responses"""
@@ -919,13 +935,26 @@ async def get_initial_data():
             else:
                 debug_print("⚠️ Could not find cf_clearance cookie.")
 
+            # Extract the arena web deployment id (data-dpl-id on <html>, removed by JS after boot)
+            try:
+                for doc in captured_doc_bodies:
+                    dpl_match = re.search(r'data-dpl-id="([^"]+)"', doc)
+                    if dpl_match:
+                        if config.get("arena_web_deployment") != dpl_match.group(1):
+                            config["arena_web_deployment"] = dpl_match.group(1)
+                            save_config(config)
+                        debug_print(f"✅ Saved arena web deployment id: {dpl_match.group(1)}")
+                        break
+            except Exception as e:
+                debug_print(f"⚠️  Error extracting deployment id: {e}")
+
             page_body = ""
 
             # Extract models
             debug_print("Extracting models from page...")
             try:
                 page_body = await page.content()
-                match = re.search(r'{\\"initialModels\\":(\[.*?\]),\\"initialModel[A-Z]Id', page_body, re.DOTALL)
+                match = re.search(r'{\\"initialModels\\":(\[.*?\]),\\"initial', page_body, re.DOTALL)
                 if match:
                     models_json = match.group(1).encode().decode('unicode_escape')
                     models = json.loads(models_json)
@@ -2308,18 +2337,58 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         model_org = None
         model_capabilities = {}
         
-        for m in models:
-            if m.get("publicName") == model_public_name:
-                model_id = m.get("id")
-                model_org = m.get("organization")
-                model_capabilities = m.get("capabilities", {})
-                break
-        
+        # The same publicName can map to several variants (e.g. text-only vs image-input
+        # vs web-only output). Restrict to variants whose output the bridge can serve,
+        # then prefer one that accepts the request's image attachments. Only the last
+        # message's images matter — earlier turns aren't re-sent upstream.
+        last_content = messages[-1].get("content") if messages and isinstance(messages[-1], dict) else None
+        num_images = sum(
+            1
+            for part in (last_content if isinstance(last_content, list) else [])
+            if isinstance(part, dict) and part.get("type") == "image_url"
+        )
+        candidates = [m for m in models if m.get("publicName") == model_public_name]
+        servable = [
+            m for m in candidates
+            if any((m.get("capabilities") or {}).get("outputCapabilities", {}).get(k)
+                   for k in ("text", "search", "image"))
+        ] or candidates
+        selected = servable[0] if servable else None
+        if num_images and len(servable) > 1:
+            image_capable = [
+                m for m in servable
+                if (m.get("capabilities") or {}).get("inputCapabilities", {}).get("image")
+            ]
+            if num_images > 1:
+                multi = [
+                    m for m in image_capable
+                    if isinstance(
+                        (m.get("capabilities") or {}).get("inputCapabilities", {}).get("image"),
+                        dict,
+                    ) and m["capabilities"]["inputCapabilities"]["image"].get("multipleImages")
+                ]
+                if multi:
+                    image_capable = multi
+            if image_capable:
+                selected = image_capable[0]
+        if selected:
+            model_id = selected.get("id")
+            model_org = selected.get("organization")
+            model_capabilities = selected.get("capabilities", {})
+
         if not model_id:
             debug_print(f"❌ Model '{model_public_name}' not found in model list")
             raise HTTPException(
                 status_code=404, 
                 detail=f"Model '{model_public_name}' not found. Use /api/v1/models to see available models."
+            )
+        
+        # Fail fast rather than silently dropping attachments process_message_content
+        # would discard when no servable variant accepts image input.
+        if num_images and not (model_capabilities.get("inputCapabilities") or {}).get("image"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{model_public_name}' does not support image input."
             )
         
         # Check if model is a stealth model (no organization)
@@ -2333,6 +2402,20 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         debug_print(f"✅ Found model ID: {model_id}")
         debug_print(f"🔧 Model capabilities: {model_capabilities}")
         
+        # Look up the existing conversation early so follow-ups reuse the variant
+        # the session was created with — re-resolving per request can silently
+        # switch variants (e.g. image-edit <-> text-only) while upstream keeps
+        # one evaluation session. Must happen before process_message_content so
+        # attachment processing uses the same capabilities as the payload.
+        conversation_id = hashlib.sha256(
+            f"{api_key['key']}_{model_public_name}_{str(next((m.get('content', '') for m in messages if m.get('role') == 'user'), ''))[:100]}".encode()
+        ).hexdigest()[:16]
+        per_key_sessions = chat_sessions.setdefault(api_key["key"], {})
+        session = per_key_sessions.get(conversation_id)
+        if session and session.get("model") == model_public_name and session.get("model_id"):
+            model_id = session["model_id"]
+            model_capabilities = session.get("model_capabilities") or model_capabilities
+
         # Determine modality based on model capabilities.
         # Priority: image > search > chat
         if model_capabilities.get("outputCapabilities", {}).get("image"):
@@ -2442,7 +2525,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         # -----------------------------------------------
         
         # Generate conversation ID from context (API key + model + first user message)
-        import hashlib
         first_user_message = next((m.get("content", "") for m in messages if m.get("role") == "user"), "")
         if isinstance(first_user_message, list):
             # Handle array content format
@@ -2458,9 +2540,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         headers: dict[str, str] = {}
         
         # Check if conversation exists for this API key (robust to tests patching chat_sessions to a plain dict)
-        per_key_sessions = chat_sessions.setdefault(api_key_str, {})
-        session = per_key_sessions.get(conversation_id)
-        
         # Detect retry: if session exists and last message is same user message (no assistant response after it)
         is_retry = False
         retry_message_id = None
@@ -2493,20 +2572,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             session_id = str(uuid7())
             user_msg_id = str(uuid7())
             model_msg_id = str(uuid7())
-            model_b_msg_id = str(uuid7())
             
             debug_print(f"🔑 Generated session_id: {session_id}")
             debug_print(f"👤 Generated user_msg_id: {user_msg_id}")
             debug_print(f"🤖 Generated model_msg_id: {model_msg_id}")
-            debug_print(f"🤖 Generated model_b_msg_id: {model_b_msg_id}")
              
             payload = {
                 "id": session_id,
-                "mode": "direct",
+                "mode": "direct-battle",
                 "modelAId": model_id,
                 "userMessageId": user_msg_id,
                 "modelAMessageId": model_msg_id,
-                "modelBMessageId": model_b_msg_id,
                 "userMessage": {
                     "content": prompt,
                     "experimental_attachments": experimental_attachments,
@@ -2527,15 +2603,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             debug_print(f"👤 Generated followup user_msg_id: {user_msg_id}")
             model_msg_id = str(uuid7())
             debug_print(f"🤖 Generated followup model_msg_id: {model_msg_id}")
-            model_b_msg_id = str(uuid7())
-            debug_print(f"🤖 Generated followup model_b_msg_id: {model_b_msg_id}")
              
             payload = {
                 "id": session["conversation_id"],
                 "modelAId": model_id,
                 "userMessageId": user_msg_id,
                 "modelAMessageId": model_msg_id,
-                "modelBMessageId": model_b_msg_id,
                 "userMessage": {
                     "content": prompt,
                     "experimental_attachments": experimental_attachments,
@@ -2689,7 +2762,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         if stream:
             async def generate_stream():
                 nonlocal current_token, headers, failed_tokens, recaptcha_token
-                nonlocal session_id, user_msg_id, model_msg_id, model_b_msg_id
+                nonlocal session_id, user_msg_id, model_msg_id
                 
                 # Safety: don't keep client sockets open forever on repeated upstream failures.
                 try:
@@ -2732,10 +2805,18 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                 # If the userscript proxy is active (internal Camoufox worker / extension poller), route streaming
                 # through it immediately to avoid side-channel reCAPTCHA token minting (which can launch headful Chrome).
+                # When a valid auth token is available, direct httpx streaming works and avoids
+                # slow/flaky browser launches; browser transports remain the fallback for strict
+                # models and anonymous/tokenless operation.
+                has_valid_auth_token = False
+                try:
+                    has_valid_auth_token = bool(current_token) and is_probably_valid_arena_auth_token(current_token)
+                except Exception:
+                    has_valid_auth_token = bool(current_token)
                 use_browser_transports = (
                     force_browser_transports_in_stream
                     or (model_public_name in STRICT_BROWSER_FETCH_MODELS)
-                    or proxy_active_at_start
+                    or (proxy_active_at_start and not has_valid_auth_token)
                 )
                 prefer_chrome_transport = False
                 if use_browser_transports and (model_public_name in STRICT_BROWSER_FETCH_MODELS):
@@ -4117,11 +4198,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         session_id = str(uuid7())
                                         user_msg_id = str(uuid7())
                                         model_msg_id = str(uuid7())
-                                        model_b_msg_id = str(uuid7())
                                         payload["id"] = session_id
                                         payload["userMessageId"] = user_msg_id
                                         payload["modelAMessageId"] = model_msg_id
-                                        payload["modelBMessageId"] = model_b_msg_id
+                                        payload.pop("modelBMessageId", None)
                                         debug_print("🔁 Retrying create-evaluation with fresh session/message IDs.")
                                     async for ka in wait_with_keepalive(1.5):
                                         yield ka
@@ -4150,6 +4230,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 chat_sessions[api_key_str][conversation_id] = {
                                     "conversation_id": session_id,
                                     "model": model_public_name,
+                                    "model_id": model_id,
+                                    "model_capabilities": model_capabilities,
                                     "messages": [
                                         {"id": user_msg_id, "role": "user", "content": prompt},
                                         assistant_message
@@ -4389,8 +4471,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 
             log_http_status(response.status_code, "LMArena API Response")
             
-            # Use aread() to ensure we buffer streaming-capable responses (like BrowserFetchStreamResponse)
-            response_bytes = await response.aread()
+            # Buffer the body: async streaming responses expose aread(), while
+            # cloudscraper/requests responses already hold the body in .content.
+            if hasattr(response, "aread"):
+                response_bytes = await response.aread()
+            else:
+                response_bytes = response.content
             response_text_body = response_bytes.decode("utf-8", errors="replace")
             
             debug_print(f"📏 Response length: {len(response_text_body)} characters")
@@ -4575,6 +4661,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 chat_sessions[api_key_str][conversation_id] = {
                     "conversation_id": session_id,
                     "model": model_public_name,
+                    "model_id": model_id,
+                    "model_capabilities": model_capabilities,
                     "messages": [
                         {"id": user_msg_id, "role": "user", "content": prompt},
                         assistant_message

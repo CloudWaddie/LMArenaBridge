@@ -542,6 +542,14 @@ async def fetch_lmarena_stream_via_userscript_proxy(
 
     proxy_url = _normalize_userscript_proxy_url(str(url))
     sitekey, action = _m().get_recaptcha_settings(config)
+    proxy_headers = {"Content-Type": "text/plain;charset=UTF-8"}
+    try:
+        dep_id = str((config or {}).get("arena_web_deployment") or "").strip()
+        if dep_id:
+            proxy_headers["x-arena-web-deployment"] = dep_id
+            proxy_headers["x-deployment-id"] = dep_id
+    except Exception:
+        pass
     job = {
         "created_at": _m().time.time(),
         "job_id": job_id,
@@ -564,7 +572,7 @@ async def fetch_lmarena_stream_via_userscript_proxy(
         "payload": {
             "url": proxy_url or str(url),
             "method": str(http_method or "POST"),
-            "headers": {"Content-Type": "text/plain;charset=UTF-8"},
+            "headers": proxy_headers,
             "body": json.dumps(payload) if payload is not None else "",
         },
         "lines_queue": lines_queue,
@@ -927,12 +935,15 @@ async def fetch_lmarena_stream_via_chrome(
                         payload["recaptchaV3Token"] = current_recaptcha_token
 
                 extra_headers = {}
-                token_for_headers = current_recaptcha_token
-                if not token_for_headers and isinstance(payload, dict):
-                    token_for_headers = str(payload.get("recaptchaV3Token") or "").strip()
-                if token_for_headers:
-                    extra_headers["X-Recaptcha-Token"] = token_for_headers
-                    extra_headers["X-Recaptcha-Action"] = recaptcha_action
+                # NOTE: the current arena.ai API rejects X-Recaptcha-* request headers
+                # (429 "prompt failed"); the token belongs in the payload only.
+                try:
+                    dep_id = str((_m().get_config() or {}).get("arena_web_deployment") or "").strip()
+                    if dep_id:
+                        extra_headers["x-arena-web-deployment"] = dep_id
+                        extra_headers["x-deployment-id"] = dep_id
+                except Exception:
+                    pass
 
                 body = json.dumps(payload) if payload is not None else ""
                 
@@ -970,31 +981,33 @@ async def fetch_lmarena_stream_via_chrome(
                         continue
                 
                 if fetch_task.done() and meta is None:
-                    # Give a brief moment for meta chunk to arrive in the queue (race condition)
+                    # The fetch completed without pushing a meta chunk — prefer its own
+                    # return value (a non-streaming buffered body) over queue/meta fallbacks.
                     try:
-                        # Check if there's anything in the queue that might be the meta chunk
+                        res = fetch_task.result()
+                        fetch_exc = None
+                    except Exception as e:
+                        res = None
+                        fetch_exc = e
+                        result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
+                    if fetch_exc is not None:
+                        # The fetch raised before reporting metadata — keep the 502; the
+                        # queue is empty anyway and a fabricated 200 would hide the error.
+                        pass
+                    elif isinstance(res, dict) and not res.get("__streaming"):
+                        result = res
+                    else:
+                        # Check the queue once for a racing meta chunk, else assume success.
                         try:
                             item = lines_queue.get_nowait()
                             if isinstance(item, str) and item.startswith('{"__type":"meta"'):
                                 meta = json.loads(item)
                             else:
-                                # Put it back and use default meta
                                 await lines_queue.put(item)
                                 meta = {"status": 200, "headers": {}}
                         except asyncio.QueueEmpty:
-                            # No items in queue, use default successful response
                             meta = {"status": 200, "headers": {}}
-                        
-                        if meta:
-                            result = meta
-                        else:
-                            res = fetch_task.result()
-                            if isinstance(res, dict) and not res.get("__streaming"):
-                                result = res
-                            else:
-                                result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
-                    except Exception as e:
-                        result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
+                        result = meta
                 elif meta:
                     result = meta
                 
@@ -1604,12 +1617,15 @@ async def fetch_lmarena_stream_via_camoufox(
                         _m().debug_print(f"  ⚠️ Error minting token in Camoufox: {e}")
 
                 extra_headers = {}
-                token_for_headers = current_recaptcha_token
-                if not token_for_headers and isinstance(payload, dict):
-                    token_for_headers = str(payload.get("recaptchaV3Token") or "").strip()
-                if token_for_headers:
-                    extra_headers["X-Recaptcha-Token"] = token_for_headers
-                    extra_headers["X-Recaptcha-Action"] = recaptcha_action
+                # NOTE: the current arena.ai API rejects X-Recaptcha-* request headers
+                # (429 "prompt failed"); the token belongs in the payload only.
+                try:
+                    dep_id = str((_m().get_config() or {}).get("arena_web_deployment") or "").strip()
+                    if dep_id:
+                        extra_headers["x-arena-web-deployment"] = dep_id
+                        extra_headers["x-deployment-id"] = dep_id
+                except Exception:
+                    pass
 
                 body = json.dumps(payload) if payload is not None else ""
                 
@@ -1642,31 +1658,33 @@ async def fetch_lmarena_stream_via_camoufox(
                         continue
                 
                 if fetch_task.done() and meta is None:
-                    # Give a brief moment for meta chunk to arrive in the queue (race condition)
+                    # The fetch completed without pushing a meta chunk — prefer its own
+                    # return value (a non-streaming buffered body) over queue/meta fallbacks.
                     try:
-                        # Check if there's anything in the queue that might be the meta chunk
+                        res = fetch_task.result()
+                        fetch_exc = None
+                    except Exception as e:
+                        res = None
+                        fetch_exc = e
+                        result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
+                    if fetch_exc is not None:
+                        # The fetch raised before reporting metadata — keep the 502 rather
+                        # than fabricating a 200 from the empty queue.
+                        pass
+                    elif isinstance(res, dict) and not res.get("__streaming"):
+                        result = res
+                    else:
+                        # Check the queue once for a racing meta chunk, else assume success.
                         try:
                             item = lines_queue.get_nowait()
                             if isinstance(item, str) and item.startswith('{"__type":"meta"'):
                                 meta = json.loads(item)
                             else:
-                                # Put it back and use default meta
                                 await lines_queue.put(item)
                                 meta = {"status": 200, "headers": {}}
                         except asyncio.QueueEmpty:
-                            # No items in queue, use default successful response
                             meta = {"status": 200, "headers": {}}
-                        
-                        if meta:
-                            result = meta
-                        else:
-                            res = fetch_task.result()
-                            if isinstance(res, dict) and not res.get("__streaming"):
-                                result = res
-                            else:
-                                result = {"status": 502, "text": "FETCH_DONE_WITHOUT_META"}
-                    except Exception as e:
-                        result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
+                        result = meta
                 elif meta:
                     result = meta
 
@@ -2810,7 +2828,6 @@ async def camoufox_proxy_worker():
                       body,
                       headers: {
                         ...(payload.headers || { 'Content-Type': 'text/plain;charset=UTF-8' }),
-                        ...(token ? { 'X-Recaptcha-Token': token, ...(action ? { 'X-Recaptcha-Action': action } : {}) } : {}),
                       },
                       credentials: 'include',
                       signal: controller.signal,

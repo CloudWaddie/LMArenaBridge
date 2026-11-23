@@ -1697,6 +1697,16 @@ async def fetch_lmarena_stream_via_camoufox(
 
                 if not _is_recaptcha_validation_failed(status_code, result.get("text")):
                     if status_code < 400:
+                        candidate_body = result.get("text") if isinstance(result, dict) else None
+                        if isinstance(candidate_body, str) and candidate_body:
+                            return BrowserFetchStreamResponse(
+                                status_code=status_code,
+                                headers=result.get("headers", {}) if isinstance(result, dict) else {},
+                                text=candidate_body,
+                                method=http_method,
+                                url=url,
+                            )
+
                         def _on_fetch_task_done(task: "asyncio.Task") -> None:
                             _m()._consume_background_task_exception(task)
                             try:
@@ -1802,10 +1812,12 @@ async def fetch_via_proxy_queue(
 
     task_id = str(uuid.uuid4())
     future = asyncio.Future()
-    proxy_pending_tasks[task_id] = future
+    pending_tasks = _m().proxy_pending_tasks
+    task_queue = _m().proxy_task_queue
+    pending_tasks[task_id] = future
 
     # Add to queue
-    proxy_task_queue.append({
+    task_queue.append({
         "id": task_id,
         "url": url,
         "method": http_method,
@@ -1872,11 +1884,11 @@ async def fetch_via_proxy_queue(
             
     except asyncio.TimeoutError:
         _m().debug_print(f"❌ Proxy Task {task_id} timed out. Is the Userscript running?")
-        if task_id in proxy_pending_tasks:
-            del proxy_pending_tasks[task_id]
-        if task_id in [t['id'] for t in proxy_task_queue]:
+        if task_id in pending_tasks:
+            del pending_tasks[task_id]
+        if task_id in [t['id'] for t in task_queue]:
             # Remove from queue if not picked up
-            proxy_task_queue[:] = [t for t in proxy_task_queue if t['id'] != task_id]
+            task_queue[:] = [t for t in task_queue if t['id'] != task_id]
         return None
     except Exception as e:
         _m().debug_print(f"❌ Proxy Task Exception: {e}")

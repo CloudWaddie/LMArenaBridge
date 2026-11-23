@@ -699,7 +699,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                 # Inject reCAPTCHA scripts since LMArena may not have them loaded
                 await _m().safe_page_evaluate(
                     page,
-                    """() => {
+                    """(recaptcha_sitekey) => {
                         const w = window.wrappedJSObject || window;
                         if (w.__LM_BRIDGE_RECAPTCHA_INJECTED) return true;
                         w.__LM_BRIDGE_RECAPTCHA_INJECTED = true;
@@ -718,7 +718,7 @@ async def get_recaptcha_v3_token() -> Optional[str]:
                         }
                         return true;
                     }""",
-                    recaptcha_sitekey=recaptcha_sitekey,
+                    recaptcha_sitekey,
                 )
                 # Wait for scripts to load
                 await asyncio.sleep(5)

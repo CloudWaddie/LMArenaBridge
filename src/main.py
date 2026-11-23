@@ -10,6 +10,7 @@ import time
 import secrets
 import base64
 import mimetypes
+import ipaddress
 import hashlib
 from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -593,11 +594,49 @@ async def process_message_content(content, model_capabilities: dict) -> tuple[st
                         except Exception as e:
                             debug_print(f"❌ Unexpected error processing base64 image: {type(e).__name__}: {e}")
                     
-                    # Handle URL images (direct URLs)
+                    # Handle URL images (download and re-upload to LMArena)
                     elif url.startswith('http://') or url.startswith('https://'):
-                        # For external URLs, we'd need to download and re-upload
-                        # For now, skip this case
-                        debug_print(f"⚠️  External image URLs not yet supported: {url[:100]}")
+                        try:
+                            # SSRF guard: refuse hosts that resolve to non-public IPs
+                            _host = urlparse(url).hostname or ''
+                            _addrs = {i[4][0] for i in await asyncio.get_running_loop().getaddrinfo(_host, None)}
+                            if not _addrs or not all(ipaddress.ip_address(a).is_global for a in _addrs):
+                                debug_print(f"⚠️  Refusing image URL resolving to a non-public address: {url[:80]}")
+                                continue
+                            image_data = b''
+                            async with httpx.AsyncClient(timeout=30.0) as _img_client:
+                                async with _img_client.stream('GET', url) as img_resp:
+                                    if img_resp.status_code != 200:
+                                        debug_print(f"⚠️  Failed to download image (HTTP {img_resp.status_code}): {url[:80]}")
+                                        continue
+                                    mime_type = (img_resp.headers.get('content-type') or '').split(';')[0].strip() or 'image/png'
+                                    if not mime_type.startswith('image/'):
+                                        debug_print(f"⚠️  URL did not return an image ({mime_type}): {url[:80]}")
+                                        continue
+                                    buf = bytearray()
+                                    async for _chunk in img_resp.aiter_bytes(65536):
+                                        buf += _chunk
+                                        if len(buf) > 10 * 1024 * 1024:
+                                            break
+                                    if len(buf) > 10 * 1024 * 1024:
+                                        debug_print(f"❌ Image too large: >10MB, aborting download")
+                                        continue
+                                    image_data = bytes(buf)
+                            ext = mimetypes.guess_extension(mime_type) or '.png'
+                            filename = f"upload-{uuid.uuid4()}{ext}"
+                            upload_result = await upload_image_to_lmarena(image_data, mime_type, filename)
+                            if upload_result:
+                                key, download_url = upload_result
+                                attachments.append({
+                                    "name": key,
+                                    "contentType": mime_type,
+                                    "url": download_url
+                                })
+                                debug_print(f"✅ External image uploaded and added to attachments")
+                            else:
+                                debug_print(f"⚠️  Failed to upload external image, skipping")
+                        except Exception as e:
+                            debug_print(f"⚠️  Failed to fetch external image URL: {type(e).__name__}: {e}")
                         
                 elif part.get('type') == 'image_url' and not supports_images:
                     debug_print(f"⚠️  Image provided but model doesn't support images")
@@ -2244,12 +2283,12 @@ async def list_models(api_key: dict = Depends(rate_limit_api_key)):
     try:
         models = get_models()
         
-        # Filter for models with text OR search OR image output capability and an organization (exclude stealth models)
-        # Always include image models - no special key needed
+        # Filter for models with text OR search OR image OR video output capability and an organization (exclude stealth models)
         valid_models = [m for m in models 
                        if (m.get('capabilities', {}).get('outputCapabilities', {}).get('text')
                            or m.get('capabilities', {}).get('outputCapabilities', {}).get('search')
-                           or m.get('capabilities', {}).get('outputCapabilities', {}).get('image'))
+                           or m.get('capabilities', {}).get('outputCapabilities', {}).get('image')
+                           or m.get('capabilities', {}).get('outputCapabilities', {}).get('video'))
                        and m.get('organization')]
         
         return {
@@ -2351,8 +2390,22 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         servable = [
             m for m in candidates
             if any((m.get("capabilities") or {}).get("outputCapabilities", {}).get(k)
-                   for k in ("text", "search", "image"))
+                   for k in ("text", "search", "image", "video"))
         ] or candidates
+        # Drop variants that demand input the bridge can't send: a required
+        # source video always, and a required image upload when the request
+        # carries no images (e.g. image-to-video variants).
+        def _required_non_text_input(entry):
+            ic = (entry.get("capabilities") or {}).get("inputCapabilities") or {}
+            if ic.get("video"):
+                return True
+            img = ic.get("image")
+            return not num_images and isinstance(img, dict) and bool(
+                img.get("required") or img.get("requiresUpload"))
+
+        compatible = [m for m in servable if not _required_non_text_input(m)]
+        if compatible:
+            servable = compatible
         selected = servable[0] if servable else None
         if num_images and len(servable) > 1:
             image_capable = [
@@ -2413,14 +2466,28 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         per_key_sessions = chat_sessions.setdefault(api_key["key"], {})
         session = per_key_sessions.get(conversation_id)
         if session and session.get("model") == model_public_name and session.get("model_id"):
+            _saved_caps = session.get("model_capabilities") or {}
+            if num_images and not (_saved_caps.get("inputCapabilities") or {}).get("image"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"This conversation was started with a '{model_public_name}' variant that "
+                        "does not accept image input, and the upstream evaluation session is bound "
+                        "to it. Start a new conversation to send images."
+                    ),
+                )
             model_id = session["model_id"]
-            model_capabilities = session.get("model_capabilities") or model_capabilities
+            model_capabilities = _saved_caps or model_capabilities
 
         # Determine modality based on model capabilities.
-        # Priority: image > search > chat
-        if model_capabilities.get("outputCapabilities", {}).get("image"):
+        # Priority: video > image > search > chat (webdev-only variants are
+        # excluded upstream by the servable-output filter)
+        output_caps = model_capabilities.get("outputCapabilities", {})
+        if output_caps.get("video"):
+            modality = "video"
+        elif output_caps.get("image"):
             modality = "image"
-        elif model_capabilities.get("outputCapabilities", {}).get("search"):
+        elif output_caps.get("search"):
             modality = "search"
         else:
             modality = "chat"
@@ -3887,12 +3954,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                             # OpenAI format: return URL in content
                                             if isinstance(image_list, list) and len(image_list) > 0:
                                                 image_obj = image_list[0]
-                                                if image_obj.get('type') == 'image':
-                                                    image_url = image_obj.get('image', '')
+                                                if image_obj.get('type') == 'video' or str(image_obj.get('mimeType') or '').startswith('video/'):
+                                                    video_url = image_obj.get('url') or image_obj.get('image', '')
+                                                    media_text = f"![Generated Video]({video_url})"
+                                                elif image_obj.get('type') == 'image':
                                                     # Format as markdown for streaming
-                                                    response_text = f"![Generated Image]({image_url})"
-                                                    
-                                                    # Send the markdown-formatted image in a chunk
+                                                    media_text = f"![Generated Image]({image_obj.get('image', '')})"
+                                                else:
+                                                    media_text = ''
+                                                if media_text:
+                                                    response_text += media_text
+                                                    # Send the markdown-formatted media in a chunk
                                                     chunk_response = {
                                                         "id": chunk_id,
                                                         "object": "chat.completion.chunk",
@@ -3901,7 +3973,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                                         "choices": [{
                                                             "index": 0,
                                                             "delta": {
-                                                                "content": response_text
+                                                                "content": media_text
                                                             },
                                                             "finish_reason": None
                                                         }]
@@ -4262,6 +4334,32 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     await _finalize_userscript_proxy_job(jid, error="client disconnected", remove=True)
                         except Exception:
                             pass
+                        # Best-effort: tell arena to stop generating so the session's
+                        # rate-limit budget isn't spent on a response nobody reads.
+                        try:
+                            _stop_session = session["conversation_id"] if session else locals().get("session_id")
+                            _stop_headers = {
+                                "Content-Type": "text/plain;charset=UTF-8",
+                                "cookie": f"arena-auth-prod-v1={current_token}",
+                            }
+                            _dep = str((config or {}).get("arena_web_deployment") or "").strip()
+                            if _dep:
+                                _stop_headers["x-arena-web-deployment"] = _dep
+                                _stop_headers["x-deployment-id"] = _dep
+                            if _stop_session and model_msg_id:
+                                async def _post_stop():
+                                    async with httpx.AsyncClient(timeout=10.0) as _stop_client:
+                                        await _stop_client.post(
+                                            f"https://arena.ai/nextjs-api/stream/stop/{_stop_session}/messages/{model_msg_id}",
+                                            headers=_stop_headers,
+                                        )
+                                # Detached: the stream's AnyIO scope is already being
+                                # cancelled, so an awaited (even shielded) request may
+                                # never leave the box.
+                                _stop_task = asyncio.ensure_future(_post_stop())
+                                _stop_task.add_done_callback(lambda t: t.exception())
+                        except Exception:
+                            pass
                         return
                     except httpx.HTTPStatusError as e:
                         # Handle retry-able errors
@@ -4544,7 +4642,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         # OpenAI format expects URL in content
                         if isinstance(image_list, list) and len(image_list) > 0:
                             image_obj = image_list[0]
-                            if image_obj.get('type') == 'image':
+                            if image_obj.get('type') == 'video' or str(image_obj.get('mimeType') or '').startswith('video/'):
+                                video_url = image_obj.get('url') or image_obj.get('image', '')
+                                response_text = f"![Generated Video]({video_url})"
+                            elif image_obj.get('type') == 'image':
                                 image_url = image_obj.get('image', '')
                                 # Format as markdown
                                 response_text = f"![Generated Image]({image_url})"

@@ -10,6 +10,8 @@ import time
 import secrets
 import base64
 import mimetypes
+import ipaddress
+import socket
 import hashlib
 from collections import defaultdict
 from contextlib import asynccontextmanager, AsyncExitStack
@@ -596,32 +598,44 @@ async def process_message_content(content, model_capabilities: dict) -> tuple[st
                     # Handle URL images (download and re-upload to LMArena)
                     elif url.startswith('http://') or url.startswith('https://'):
                         try:
+                            # SSRF guard: refuse hosts that resolve to non-public IPs
+                            _host = urlparse(url).hostname or ''
+                            _addrs = {i[4][0] for i in socket.getaddrinfo(_host, None)}
+                            if not _addrs or not all(ipaddress.ip_address(a).is_global for a in _addrs):
+                                debug_print(f"⚠️  Refusing image URL resolving to a non-public address: {url[:80]}")
+                                continue
+                            image_data = b''
                             async with httpx.AsyncClient(timeout=30.0) as _img_client:
-                                img_resp = await _img_client.get(url)
-                            if img_resp.status_code == 200:
-                                image_data = img_resp.content
-                                mime_type = (img_resp.headers.get('content-type') or '').split(';')[0].strip() or 'image/png'
-                                if not mime_type.startswith('image/'):
-                                    debug_print(f"⚠️  URL did not return an image ({mime_type}): {url[:80]}")
-                                    continue
-                                if len(image_data) > 10 * 1024 * 1024:
-                                    debug_print(f"❌ Image too large: {len(image_data)} bytes (max 10MB)")
-                                    continue
-                                ext = mimetypes.guess_extension(mime_type) or '.png'
-                                filename = f"upload-{uuid.uuid4()}{ext}"
-                                upload_result = await upload_image_to_lmarena(image_data, mime_type, filename)
-                                if upload_result:
-                                    key, download_url = upload_result
-                                    attachments.append({
-                                        "name": key,
-                                        "contentType": mime_type,
-                                        "url": download_url
-                                    })
-                                    debug_print(f"✅ External image uploaded and added to attachments")
-                                else:
-                                    debug_print(f"⚠️  Failed to upload external image, skipping")
+                                async with _img_client.stream('GET', url) as img_resp:
+                                    if img_resp.status_code != 200:
+                                        debug_print(f"⚠️  Failed to download image (HTTP {img_resp.status_code}): {url[:80]}")
+                                        continue
+                                    mime_type = (img_resp.headers.get('content-type') or '').split(';')[0].strip() or 'image/png'
+                                    if not mime_type.startswith('image/'):
+                                        debug_print(f"⚠️  URL did not return an image ({mime_type}): {url[:80]}")
+                                        continue
+                                    buf = bytearray()
+                                    async for _chunk in img_resp.aiter_bytes(65536):
+                                        buf += _chunk
+                                        if len(buf) > 10 * 1024 * 1024:
+                                            break
+                                    if len(buf) > 10 * 1024 * 1024:
+                                        debug_print(f"❌ Image too large: >10MB, aborting download")
+                                        continue
+                                    image_data = bytes(buf)
+                            ext = mimetypes.guess_extension(mime_type) or '.png'
+                            filename = f"upload-{uuid.uuid4()}{ext}"
+                            upload_result = await upload_image_to_lmarena(image_data, mime_type, filename)
+                            if upload_result:
+                                key, download_url = upload_result
+                                attachments.append({
+                                    "name": key,
+                                    "contentType": mime_type,
+                                    "url": download_url
+                                })
+                                debug_print(f"✅ External image uploaded and added to attachments")
                             else:
-                                debug_print(f"⚠️  Failed to download image (HTTP {img_resp.status_code}): {url[:80]}")
+                                debug_print(f"⚠️  Failed to upload external image, skipping")
                         except Exception as e:
                             debug_print(f"⚠️  Failed to fetch external image URL: {type(e).__name__}: {e}")
                         
@@ -2379,6 +2393,20 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             if any((m.get("capabilities") or {}).get("outputCapabilities", {}).get(k)
                    for k in ("text", "search", "image", "video"))
         ] or candidates
+        # Drop variants that demand input the bridge can't send: a required
+        # source video always, and a required image upload when the request
+        # carries no images (e.g. image-to-video variants).
+        def _required_non_text_input(entry):
+            ic = (entry.get("capabilities") or {}).get("inputCapabilities") or {}
+            if ic.get("video"):
+                return True
+            img = ic.get("image")
+            return not num_images and isinstance(img, dict) and bool(
+                img.get("required") or img.get("requiresUpload"))
+
+        compatible = [m for m in servable if not _required_non_text_input(m)]
+        if compatible:
+            servable = compatible
         selected = servable[0] if servable else None
         if num_images and len(servable) > 1:
             image_capable = [
@@ -3919,13 +3947,15 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                                 image_obj = image_list[0]
                                                 if image_obj.get('type') == 'video' or str(image_obj.get('mimeType') or '').startswith('video/'):
                                                     video_url = image_obj.get('url') or image_obj.get('image', '')
-                                                    response_text = f"![Generated Video]({video_url})"
+                                                    media_text = f"![Generated Video]({video_url})"
                                                 elif image_obj.get('type') == 'image':
-                                                    image_url = image_obj.get('image', '')
                                                     # Format as markdown for streaming
-                                                    response_text = f"![Generated Image]({image_url})"
-                                                    
-                                                    # Send the markdown-formatted image in a chunk
+                                                    media_text = f"![Generated Image]({image_obj.get('image', '')})"
+                                                else:
+                                                    media_text = ''
+                                                if media_text:
+                                                    response_text += media_text
+                                                    # Send the markdown-formatted media in a chunk
                                                     chunk_response = {
                                                         "id": chunk_id,
                                                         "object": "chat.completion.chunk",
@@ -3934,7 +3964,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                                         "choices": [{
                                                             "index": 0,
                                                             "delta": {
-                                                                "content": response_text
+                                                                "content": media_text
                                                             },
                                                             "finish_reason": None
                                                         }]
@@ -4308,11 +4338,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 _stop_headers["x-arena-web-deployment"] = _dep
                                 _stop_headers["x-deployment-id"] = _dep
                             if _stop_session and model_msg_id:
-                                async with httpx.AsyncClient(timeout=10.0) as _stop_client:
-                                    await _stop_client.post(
-                                        f"https://arena.ai/nextjs-api/stream/stop/{_stop_session}/messages/{model_msg_id}",
-                                        headers=_stop_headers,
-                                    )
+                                async def _post_stop():
+                                    async with httpx.AsyncClient(timeout=10.0) as _stop_client:
+                                        await _stop_client.post(
+                                            f"https://arena.ai/nextjs-api/stream/stop/{_stop_session}/messages/{model_msg_id}",
+                                            headers=_stop_headers,
+                                        )
+                                # Detached: the stream's AnyIO scope is already being
+                                # cancelled, so an awaited (even shielded) request may
+                                # never leave the box.
+                                _stop_task = asyncio.ensure_future(_post_stop())
+                                _stop_task.add_done_callback(lambda t: t.exception())
                         except Exception:
                             pass
                         return

@@ -241,11 +241,10 @@ def log_http_status(status_code: int, context: str = "") -> None:
 
 
 
-# Updated constants from gpt4free/g4f/Provider/needs_auth/LMArena.py
-RECAPTCHA_SITEKEY = "6Led_uYrAAAAAKjxDIF58fgFtX3t8loNAK85bW9I"
-RECAPTCHA_ACTION = "chat_submit"
-# reCAPTCHA Enterprise v2 sitekey used when v3 scoring fails and LMArena prompts a checkbox challenge.
-RECAPTCHA_V2_SITEKEY = "6Ld7ePYrAAAAAB34ovoFoDau1fqCJ6IyOjFEQaMn"
+# Default reCAPTCHA Enterprise v3/v2 sitekeys (sourced from src.constants)
+RECAPTCHA_SITEKEY = constants.RECAPTCHA_SITEKEY
+RECAPTCHA_ACTION = constants.RECAPTCHA_ACTION
+RECAPTCHA_V2_SITEKEY = constants.RECAPTCHA_V2_SITEKEY
 # Cloudflare Turnstile sitekey used by LMArena to mint anonymous-user signup tokens.
 # (Used for POST /nextjs-api/sign-up before `arena-auth-prod-v1` exists.)
 TURNSTILE_SITEKEY = "0x4AAAAAAA65vWDmG-O_lPtT"
@@ -336,63 +335,45 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
             debug_print(f"❌ Invalid MIME type: {mime_type}")
             return None
         
-        # Step 1: Request upload URL
+        # Step 1: Request upload URL via Arena's storage REST API
         debug_print(f"📤 Step 1: Requesting upload URL for {filename}")
-        
-        # Get Next-Action IDs from config
-        config = get_config()
-        upload_action_id = config.get("next_action_upload")
-        signed_url_action_id = config.get("next_action_signed_url")
-        
-        if not upload_action_id or not signed_url_action_id:
-            debug_print("❌ Next-Action IDs not found in config. Please refresh tokens from dashboard.")
-            return None
-        
-        # Prepare headers for Next.js Server Action
+
         request_headers = get_request_headers()
         request_headers.update({
-            "Accept": "text/x-component",
-            "Content-Type": "text/plain;charset=UTF-8",
-            "Next-Action": upload_action_id,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
             "Referer": "https://arena.ai/?mode=direct",
         })
-        
-        import cloudscraper as _cs
-        def _cs_upload():
-            scraper = _cs.create_scraper()
-            return scraper.post(
-                "https://arena.ai/?mode=direct",
-                headers=request_headers,
-                data=json.dumps([filename, mime_type]),
-                timeout=30.0,
-            )
+
         try:
-            response = await asyncio.to_thread(_cs_upload)
-            response.raise_for_status()
-        except (_cs.exceptions.CloudflareException, requests.exceptions.RequestException) as e:
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"https://arena.ai{constants.STORAGE_GENERATE_UPLOAD_URL_PATH}",
+                    headers=request_headers,
+                    json={"fileName": filename, "contentType": mime_type},
+                    timeout=30.0,
+                )
+                response.raise_for_status()
+        except httpx.TimeoutException:
+            debug_print("❌ Timeout while requesting upload URL")
+            return None
+        except httpx.HTTPError as e:
             debug_print(f"❌ Error while requesting upload URL: {e}")
             return None
-        
-        # Parse response - format: 0:{...}\n1:{...}\n
+
         try:
-            lines = response.text.strip().split('\n')
-            upload_data = None
-            for line in lines:
-                if line.startswith('1:'):
-                    upload_data = json.loads(line[2:])
-                    break
-            
-            if not upload_data or not upload_data.get('success'):
+            upload_data = response.json()
+            if not isinstance(upload_data, dict) or not upload_data.get("uploadUrl") or not upload_data.get("key"):
                 debug_print(f"❌ Failed to get upload URL: {response.text[:200]}")
                 return None
-            
-            upload_url = upload_data['data']['uploadUrl']
-            key = upload_data['data']['key']
+
+            upload_url = upload_data["uploadUrl"]
+            key = upload_data["key"]
             debug_print(f"✅ Got upload URL and key: {key}")
-        except (json.JSONDecodeError, KeyError, IndexError) as e:
+        except (ValueError, KeyError, TypeError) as e:
             debug_print(f"❌ Failed to parse upload URL response: {e}")
             return None
-        
+
         # Step 2: Upload image to R2 storage
         debug_print(f"📤 Step 2: Uploading image to R2 storage ({len(image_data)} bytes)")
         try:
@@ -411,19 +392,17 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         except httpx.HTTPError as e:
             debug_print(f"❌ HTTP error while uploading image: {e}")
             return None
-        
-        # Step 3: Get signed download URL (uses different Next-Action)
+
+        # Step 3: Get signed download URL
         debug_print(f"📤 Step 3: Requesting signed download URL")
-        request_headers_step3 = request_headers.copy()
-        request_headers_step3["Next-Action"] = signed_url_action_id
-        
+        normalized_key = key.lstrip("/") if isinstance(key, str) else key
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
-                    "https://arena.ai/?mode=direct",
-                    headers=request_headers_step3,
-                    content=json.dumps([key]),
-                    timeout=30.0
+                    f"https://arena.ai{constants.STORAGE_GET_SIGNED_URL_PATH}",
+                    headers=request_headers,
+                    json={"key": normalized_key},
+                    timeout=30.0,
                 )
                 response.raise_for_status()
         except httpx.TimeoutException:
@@ -432,21 +411,14 @@ async def upload_image_to_lmarena(image_data: bytes, mime_type: str, filename: s
         except httpx.HTTPError as e:
             debug_print(f"❌ HTTP error while requesting download URL: {e}")
             return None
-        
-        # Parse response
+
         try:
-            lines = response.text.strip().split('\n')
-            download_data = None
-            for line in lines:
-                if line.startswith('1:'):
-                    download_data = json.loads(line[2:])
-                    break
-            
-            if not download_data or not download_data.get('success'):
+            download_data = response.json()
+            if not isinstance(download_data, dict) or not download_data.get("url"):
                 debug_print(f"❌ Failed to get download URL: {response.text[:200]}")
                 return None
-            
-            download_url = download_data['data']['url']
+
+            download_url = download_data["url"]
             debug_print(f"✅ Got signed download URL: {download_url[:100]}...")
             
             # Cache the uploaded image by MD5 to avoid redundant uploads.
@@ -2372,6 +2344,43 @@ def _parse_arena_citation_sources(data: str) -> list[dict]:
     return []
 
 
+def _extract_arena_media_markdown(line: str) -> str:
+    """Parse arena.ai `a2:` (data) and `ak:` (file) media stream lines into markdown."""
+    if line.startswith("a2:"):
+        try:
+            items = json.loads(line[3:])
+        except json.JSONDecodeError:
+            return ""
+        if not isinstance(items, list) or not items or not isinstance(items[0], dict):
+            return ""
+        media_obj = items[0]
+        mime_type = str(media_obj.get("mimeType") or "")
+        if media_obj.get("type") == "video" or mime_type.startswith("video/"):
+            video_url = media_obj.get("url") or media_obj.get("image", "")
+            return f"![Generated Video]({video_url})" if video_url else ""
+        if media_obj.get("type") == "image":
+            image_url = media_obj.get("image", "")
+            if not image_url and isinstance(media_obj.get("data"), str) and media_obj["data"]:
+                image_url = f"data:{mime_type or 'image/png'};base64,{media_obj['data']}"
+            return f"![Generated Image]({image_url})" if image_url else ""
+        return ""
+
+    if line.startswith("ak:"):
+        try:
+            file_obj = json.loads(line[3:])
+        except json.JSONDecodeError:
+            return ""
+        if not isinstance(file_obj, dict):
+            return ""
+        mime_type = str(file_obj.get("mimeType") or "")
+        data = file_obj.get("data")
+        if mime_type.startswith("image") and isinstance(data, str) and data:
+            return f"![Generated Image](data:{mime_type or 'image/png'};base64,{data})"
+        return ""
+
+    return ""
+
+
 @app.post("/api/v1/chat/completions")
 async def api_chat_completions(request: Request, api_key: dict = Depends(rate_limit_api_key)):
     debug_print("\n" + "="*80)
@@ -4001,41 +4010,25 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         except json.JSONDecodeError:
                                             continue
                                     
-                                    # Parse image generation: a2:[{...}] (for image models)
-                                    elif line.startswith("a2:"):
-                                        image_data = line[3:]
-                                        try:
-                                            image_list = json.loads(image_data)
-                                            # OpenAI format: return URL in content
-                                            if isinstance(image_list, list) and len(image_list) > 0:
-                                                image_obj = image_list[0]
-                                                if image_obj.get('type') == 'video' or str(image_obj.get('mimeType') or '').startswith('video/'):
-                                                    video_url = image_obj.get('url') or image_obj.get('image', '')
-                                                    media_text = f"![Generated Video]({video_url})"
-                                                elif image_obj.get('type') == 'image':
-                                                    # Format as markdown for streaming
-                                                    media_text = f"![Generated Image]({image_obj.get('image', '')})"
-                                                else:
-                                                    media_text = ''
-                                                if media_text:
-                                                    response_text += media_text
-                                                    # Send the markdown-formatted media in a chunk
-                                                    chunk_response = {
-                                                        "id": chunk_id,
-                                                        "object": "chat.completion.chunk",
-                                                        "created": int(time.time()),
-                                                        "model": model_public_name,
-                                                        "choices": [{
-                                                            "index": 0,
-                                                            "delta": {
-                                                                "content": media_text
-                                                            },
-                                                            "finish_reason": None
-                                                        }]
-                                                    }
-                                                    yield f"data: {json.dumps(chunk_response)}\n\n"
-                                        except json.JSONDecodeError:
-                                            pass
+                                    # Parse image/video generation: a2:[{...}] or ak:{data, mimeType}
+                                    elif line.startswith(("a2:", "ak:")):
+                                        media_text = _extract_arena_media_markdown(line)
+                                        if media_text:
+                                            response_text += media_text
+                                            chunk_response = {
+                                                "id": chunk_id,
+                                                "object": "chat.completion.chunk",
+                                                "created": int(time.time()),
+                                                "model": model_public_name,
+                                                "choices": [{
+                                                    "index": 0,
+                                                    "delta": {
+                                                        "content": media_text
+                                                    },
+                                                    "finish_reason": None
+                                                }]
+                                            }
+                                            yield f"data: {json.dumps(chunk_response)}\n\n"
                                     
                                     # Parse citation-source tool-call deltas.
                                     elif line.startswith("ac:"):
@@ -4674,24 +4667,11 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         debug_print(f"  ⚠️ Failed to parse text chunk on line {line_count}: {chunk_data[:100]} - {e}")
                         continue
                 
-                # Parse image generation: a2:[{...}] (for image models)
-                elif line.startswith("a2:"):
-                    image_data = line[3:]  # Remove "a2:" prefix
-                    try:
-                        image_list = json.loads(image_data)
-                        # OpenAI format expects URL in content
-                        if isinstance(image_list, list) and len(image_list) > 0:
-                            image_obj = image_list[0]
-                            if image_obj.get('type') == 'video' or str(image_obj.get('mimeType') or '').startswith('video/'):
-                                video_url = image_obj.get('url') or image_obj.get('image', '')
-                                response_text = f"![Generated Video]({video_url})"
-                            elif image_obj.get('type') == 'image':
-                                image_url = image_obj.get('image', '')
-                                # Format as markdown
-                                response_text = f"![Generated Image]({image_url})"
-                    except json.JSONDecodeError as e:
-                        debug_print(f"  ⚠️ Failed to parse image data on line {line_count}: {image_data[:100]} - {e}")
-                        continue
+                # Parse image/video generation: a2:[{...}] or ak:{data, mimeType}
+                elif line.startswith(("a2:", "ak:")):
+                    media_text = _extract_arena_media_markdown(line)
+                    if media_text:
+                        response_text += media_text
                 
                 # Parse citation-source tool-call deltas.
                 elif line.startswith("ac:"):

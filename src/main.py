@@ -845,8 +845,53 @@ async def rate_limit_api_key(key: str = Depends(API_KEY_HEADER)):
 
 # --- Core Logic ---
 
+async def _refresh_public_model_catalog():
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get("https://arena.ai/nextjs-api/model-catalog")
+            response.raise_for_status()
+        catalog = response.json()
+
+        arenas = {
+            "chat": ("text", "vision", "document"),
+            "webdev": ("code", "image-to-code"),
+            "image": ("text-to-image", "image-edit", "multi-image-edit"),
+            "search": ("search",),
+            "video": ("text-to-video", "image-to-video", "video-to-video"),
+        }
+        arena_ranks = {
+            arena: (modality, index == 0)
+            for modality, names in arenas.items()
+            for index, arena in enumerate(names)
+        }
+        unranked = 2**53 - 1
+        models_by_id = {}
+        for section in catalog:
+            models = section["models"]
+            complete = section.get("complete")
+            if not isinstance(models, list) or not (bool(models) if complete is None else complete):
+                return
+            modality, primary = arena_ranks.get(section["arena"], (None, False))
+            for model in models:
+                if not model.get("id"):
+                    continue
+                cached = models_by_id.setdefault(model["id"], {**model, "rankByModality": {}})
+                if modality:
+                    ranks = cached["rankByModality"]
+                    if primary:
+                        rank = model.get("rank")
+                        ranks[modality] = unranked if rank is None else rank
+                    else:
+                        ranks.setdefault(modality, unranked)
+        if models_by_id:
+            save_models(list(models_by_id.values()))
+    except (httpx.HTTPError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        debug_print(f"⚠️ Could not refresh the public model catalog: {exc}")
+
+
 async def get_initial_data():
     debug_print("Starting initial data retrieval...")
+    await _refresh_public_model_catalog()
     try:
         async with AsyncCamoufox(headless=True, main_world_eval=True) as browser:
             page = await browser.new_page()
@@ -988,21 +1033,10 @@ async def get_initial_data():
                 debug_print(f"⚠️  Error extracting deployment id: {e}")
 
             page_body = ""
-
-            # Extract models
-            debug_print("Extracting models from page...")
             try:
                 page_body = await page.content()
-                match = re.search(r'{\\"initialModels\\":(\[.*?\]),\\"initial', page_body, re.DOTALL)
-                if match:
-                    models_json = match.group(1).encode().decode('unicode_escape')
-                    models = json.loads(models_json)
-                    save_models(models)
-                    debug_print(f"✅ Saved {len(models)} models")
-                else:
-                    debug_print("⚠️ Could not find models in page")
             except Exception as e:
-                debug_print(f"❌ Error extracting models: {e}")
+                debug_print(f"❌ Error reading page content: {e}")
 
             # Extract Next-Action IDs from captured JavaScript responses (Aggressive Discovery)
             debug_print(f"\nExtracting Next-Action IDs from {len(captured_responses)} captured JS responses...")
@@ -2316,6 +2350,27 @@ async def debug_stream(api_key: dict = Depends(rate_limit_api_key)):  # noqa: AR
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(_gen(), media_type="text/event-stream")
+
+
+def _parse_arena_citation_sources(data: str) -> list[dict]:
+    try:
+        delta = json.loads(data)
+        if not isinstance(delta, dict) or delta.get("toolCallId") != "citation-source":
+            return []
+        args_text = delta.get("argsTextDelta")
+        if not isinstance(args_text, str):
+            return []
+        args = json.loads(args_text)
+    except json.JSONDecodeError:
+        return []
+
+    source = args.get("source") if isinstance(args, dict) else None
+    if isinstance(source, dict):
+        return [source]
+    if isinstance(source, list):
+        return [item for item in source if isinstance(item, dict)]
+    return []
+
 
 @app.post("/api/v1/chat/completions")
 async def api_chat_completions(request: Request, api_key: dict = Depends(rate_limit_api_key)):
@@ -3982,24 +4037,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         except json.JSONDecodeError:
                                             pass
                                     
-                                    # Parse citations/tool calls: ac:{...} (for search models)
+                                    # Parse citation-source tool-call deltas.
                                     elif line.startswith("ac:"):
-                                        citation_data = line[3:]
-                                        try:
-                                            citation_obj = json.loads(citation_data)
-                                            # Extract source information from argsTextDelta
-                                            if 'argsTextDelta' in citation_obj:
-                                                args_data = json.loads(citation_obj['argsTextDelta'])
-                                                if 'source' in args_data:
-                                                    source = args_data['source']
-                                                    # Can be a single source or array of sources
-                                                    if isinstance(source, list):
-                                                        citations.extend(source)
-                                                    elif isinstance(source, dict):
-                                                        citations.append(source)
-                                            debug_print(f"  🔗 Citation added: {citation_obj.get('toolCallId')}")
-                                        except json.JSONDecodeError:
-                                            pass
+                                        citations.extend(_parse_arena_citation_sources(line[3:]))
                                     
                                     # Parse error messages
                                     elif line.startswith("a3:"):
@@ -4653,27 +4693,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         debug_print(f"  ⚠️ Failed to parse image data on line {line_count}: {image_data[:100]} - {e}")
                         continue
                 
-                # Parse citations/tool calls: ac:{...} (for search models)
+                # Parse citation-source tool-call deltas.
                 elif line.startswith("ac:"):
-                    citation_data = line[3:]  # Remove "ac:" prefix
-                    citation_chunks_found += 1
-                    try:
-                        citation_obj = json.loads(citation_data)
-                        # Extract source information from argsTextDelta
-                        if 'argsTextDelta' in citation_obj:
-                            args_data = json.loads(citation_obj['argsTextDelta'])
-                            if 'source' in args_data:
-                                source = args_data['source']
-                                # Can be a single source or array of sources
-                                if isinstance(source, list):
-                                    citations.extend(source)
-                                elif isinstance(source, dict):
-                                    citations.append(source)
-                        if citation_chunks_found <= 3:  # Log first 3 citations
-                            debug_print(f"  🔗 Citation chunk {citation_chunks_found}: {citation_obj.get('toolCallId')}")
-                    except json.JSONDecodeError as e:
-                        debug_print(f"  ⚠️ Failed to parse citation chunk on line {line_count}: {citation_data[:100]} - {e}")
-                        continue
+                    sources = _parse_arena_citation_sources(line[3:])
+                    if sources:
+                        citation_chunks_found += 1
+                        citations.extend(sources)
                 
                 # Parse error messages: a3:"An error occurred"
                 elif line.startswith("a3:"):

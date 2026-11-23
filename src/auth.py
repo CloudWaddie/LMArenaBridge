@@ -229,14 +229,17 @@ def get_request_headers_with_token(token: str, recaptcha_v3_token: Optional[str]
         "Referer": "https://arena.ai/?mode=direct",
     }
 
+    deployment_id = str(config.get("arena_web_deployment") or "").strip()
+    if deployment_id:
+        headers["x-arena-web-deployment"] = deployment_id
+        headers["x-deployment-id"] = deployment_id
+
     user_agent = normalize_user_agent_value(config.get("user_agent"))
     if user_agent:
         headers["User-Agent"] = user_agent
     
-    if recaptcha_v3_token:
-        headers["X-Recaptcha-Token"] = recaptcha_v3_token
-        _, recaptcha_action = _m().get_recaptcha_settings(config)
-        headers["X-Recaptcha-Action"] = recaptcha_action
+    # NOTE: the current arena.ai API rejects requests carrying X-Recaptcha-* headers
+    # (responds 429 {"error":"prompt failed"}); the token goes in the payload instead.
     return headers
 
 
@@ -549,23 +552,51 @@ async def refresh_arena_auth_token_via_lmarena_http(old_token: str, config: Opti
     except (_cs.exceptions.CloudflareException, requests.exceptions.RequestException):
         return None
 
+    set_cookie_headers: list[str] = []
     try:
-        set_cookie_headers = resp.headers.get_list("set-cookie")
+        # requests/urllib3 raw headers preserve each Set-Cookie as a separate entry;
+        # resp.headers joins them into one comma-separated string, which is hard to split safely.
+        set_cookie_headers = list(resp.raw.headers.getlist("set-cookie") or [])
     except Exception:
-        raw = resp.headers.get("set-cookie")
-        set_cookie_headers = [raw] if raw else []
+        set_cookie_headers = []
+    if not set_cookie_headers:
+        try:
+            set_cookie_headers = list(resp.headers.get_list("set-cookie") or [])
+        except Exception:
+            raw = resp.headers.get("set-cookie")
+            set_cookie_headers = [raw] if raw else []
+        # get_list may still return comma-joined headers; split on cookie-pair boundaries
+        # (a comma followed by token=), which is safe because Expires uses ", " before a weekday number/word.
+        expanded: list[str] = []
+        for h in set_cookie_headers:
+            parts = re.split(r",\s*(?=[A-Za-z_][A-Za-z0-9_.\-]*=)", h)
+            expanded.extend(p for p in parts if p)
+        set_cookie_headers = expanded
 
+    candidates: list[str] = []
+    chunks: dict[int, str] = {}
     for sc in set_cookie_headers or []:
         if not isinstance(sc, str) or not sc:
             continue
-        if not sc.lower().startswith("arena-auth-prod-v1="):
+        name_val = sc.split(";", 1)[0]
+        name, _, value = name_val.partition("=")
+        name = name.strip()
+        value = value.strip()
+        if name == "arena-auth-prod-v1" and value:
+            candidates.append(value)
             continue
+        # LMArena splits long session cookies into arena-auth-prod-v1.<n> chunks.
+        if name.startswith("arena-auth-prod-v1."):
+            suffix = name.rsplit(".", 1)[1]
+            if suffix.isdigit() and value:
+                chunks[int(suffix)] = value
+    if chunks:
         try:
-            new_value = sc.split(";", 1)[0].split("=", 1)[1].strip()
+            candidates.append("".join(chunks[i] for i in sorted(chunks)))
         except Exception:
-            continue
-        if not new_value:
-            continue
+            pass
+
+    for new_value in candidates:
         # Accept even if identical (some servers still refresh internal tokens while keeping value stable),
         # but prefer a clearly-valid, non-expired cookie.
         if is_probably_valid_arena_auth_token(new_value) and not is_arena_auth_token_expired(new_value, skew_seconds=0):
@@ -719,9 +750,35 @@ async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Opt
 
             # Also prefer it immediately for subsequent requests.
             _m().EPHEMERAL_ARENA_AUTH_TOKEN = new_token
+            _persist_refreshed_auth_token(cfg, old, new_token)
             return new_token
 
     return None
+
+
+def _persist_refreshed_auth_token(cfg: dict, old_token: str, new_token: str) -> None:
+    """Swap a refreshed session token into config.json so restarts keep working."""
+    try:
+        tokens = cfg.get("auth_tokens", [])
+        if not isinstance(tokens, list):
+            tokens = []
+        replaced = False
+        for i, t in enumerate(tokens):
+            if str(t or "").strip() == old_token:
+                tokens[i] = new_token
+                replaced = True
+                break
+        if not replaced:
+            tokens.append(new_token)
+        cfg["auth_tokens"] = tokens
+        if str(cfg.get("auth_token") or "").strip() == old_token:
+            cfg["auth_token"] = new_token
+        cookies = cfg.get("browser_cookies")
+        if isinstance(cookies, dict) and cookies.get("arena-auth-prod-v1") == old_token:
+            cookies["arena-auth-prod-v1"] = new_token
+        _m().save_config(cfg)
+    except Exception:
+        pass
 
 
 async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None) -> Optional[str]:
@@ -775,6 +832,7 @@ async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None
                 continue
 
             _m().EPHEMERAL_ARENA_AUTH_TOKEN = new_token
+            _persist_refreshed_auth_token(cfg, old, new_token)
             return new_token
 
     return None
@@ -879,6 +937,17 @@ def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback:
             token = str(cookie_store.get("arena-auth-prod-v1") or "").strip()
             if token and not is_arena_auth_token_expired(token):
                 auth_tokens = [token]
+                if bool(config.get("persist_arena_auth_cookie")):
+                    existing = config.get("auth_tokens")
+                    tokens = (
+                        [str(t or "").strip() for t in existing if str(t or "").strip()]
+                        if isinstance(existing, list)
+                        else []
+                    )
+                    if token not in tokens:
+                        tokens.append(token)
+                        config["auth_tokens"] = tokens
+                        _m().save_config(config, preserve_auth_tokens=False)
                 _m().debug_print("🔑 Using arena-auth cookie from browser session (browser_cookies).")
     if not auth_tokens:
         raise HTTPException(status_code=500, detail="No auth tokens configured")

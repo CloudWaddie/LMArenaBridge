@@ -815,6 +815,22 @@ async def get_initial_data():
             # Set up route interceptor BEFORE navigating
             debug_print("  🎯 Setting up route interceptor for JS chunks...")
             captured_responses = []
+            captured_doc_bodies: list[str] = []
+
+            async def capture_document_response(response):
+                """Capture raw document HTML (contains data-dpl-id, removed by JS after boot)."""
+                try:
+                    if getattr(response.request, "resource_type", "") != "document":
+                        return
+                    if "arena.ai" not in response.url and "lmarena.ai" not in response.url:
+                        return
+                    text = await response.text()
+                    if text:
+                        captured_doc_bodies.append(text)
+                except Exception:
+                    pass
+
+            page.on("response", lambda r: asyncio.ensure_future(capture_document_response(r)))
             
             async def capture_js_route(route):
                 """Intercept and capture JS chunk responses"""
@@ -919,13 +935,26 @@ async def get_initial_data():
             else:
                 debug_print("⚠️ Could not find cf_clearance cookie.")
 
+            # Extract the arena web deployment id (data-dpl-id on <html>, removed by JS after boot)
+            try:
+                for doc in captured_doc_bodies:
+                    dpl_match = re.search(r'data-dpl-id="([^"]+)"', doc)
+                    if dpl_match:
+                        if config.get("arena_web_deployment") != dpl_match.group(1):
+                            config["arena_web_deployment"] = dpl_match.group(1)
+                            save_config(config)
+                        debug_print(f"✅ Saved arena web deployment id: {dpl_match.group(1)}")
+                        break
+            except Exception as e:
+                debug_print(f"⚠️  Error extracting deployment id: {e}")
+
             page_body = ""
 
             # Extract models
             debug_print("Extracting models from page...")
             try:
                 page_body = await page.content()
-                match = re.search(r'{\\"initialModels\\":(\[.*?\]),\\"initialModel[A-Z]Id', page_body, re.DOTALL)
+                match = re.search(r'{\\"initialModels\\":(\[.*?\]),\\"initial', page_body, re.DOTALL)
                 if match:
                     models_json = match.group(1).encode().decode('unicode_escape')
                     models = json.loads(models_json)
@@ -2493,20 +2522,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             session_id = str(uuid7())
             user_msg_id = str(uuid7())
             model_msg_id = str(uuid7())
-            model_b_msg_id = str(uuid7())
             
             debug_print(f"🔑 Generated session_id: {session_id}")
             debug_print(f"👤 Generated user_msg_id: {user_msg_id}")
             debug_print(f"🤖 Generated model_msg_id: {model_msg_id}")
-            debug_print(f"🤖 Generated model_b_msg_id: {model_b_msg_id}")
              
             payload = {
                 "id": session_id,
-                "mode": "direct",
+                "mode": "direct-battle",
                 "modelAId": model_id,
                 "userMessageId": user_msg_id,
                 "modelAMessageId": model_msg_id,
-                "modelBMessageId": model_b_msg_id,
                 "userMessage": {
                     "content": prompt,
                     "experimental_attachments": experimental_attachments,
@@ -2527,15 +2553,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             debug_print(f"👤 Generated followup user_msg_id: {user_msg_id}")
             model_msg_id = str(uuid7())
             debug_print(f"🤖 Generated followup model_msg_id: {model_msg_id}")
-            model_b_msg_id = str(uuid7())
-            debug_print(f"🤖 Generated followup model_b_msg_id: {model_b_msg_id}")
              
             payload = {
                 "id": session["conversation_id"],
                 "modelAId": model_id,
                 "userMessageId": user_msg_id,
                 "modelAMessageId": model_msg_id,
-                "modelBMessageId": model_b_msg_id,
                 "userMessage": {
                     "content": prompt,
                     "experimental_attachments": experimental_attachments,
@@ -2689,7 +2712,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         if stream:
             async def generate_stream():
                 nonlocal current_token, headers, failed_tokens, recaptcha_token
-                nonlocal session_id, user_msg_id, model_msg_id, model_b_msg_id
+                nonlocal session_id, user_msg_id, model_msg_id
                 
                 # Safety: don't keep client sockets open forever on repeated upstream failures.
                 try:
@@ -2732,10 +2755,18 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                 # If the userscript proxy is active (internal Camoufox worker / extension poller), route streaming
                 # through it immediately to avoid side-channel reCAPTCHA token minting (which can launch headful Chrome).
+                # When a valid auth token is available, direct httpx streaming works and avoids
+                # slow/flaky browser launches; browser transports remain the fallback for strict
+                # models and anonymous/tokenless operation.
+                has_valid_auth_token = False
+                try:
+                    has_valid_auth_token = bool(current_token) and is_probably_valid_arena_auth_token(current_token)
+                except Exception:
+                    has_valid_auth_token = bool(current_token)
                 use_browser_transports = (
                     force_browser_transports_in_stream
                     or (model_public_name in STRICT_BROWSER_FETCH_MODELS)
-                    or proxy_active_at_start
+                    or (proxy_active_at_start and not has_valid_auth_token)
                 )
                 prefer_chrome_transport = False
                 if use_browser_transports and (model_public_name in STRICT_BROWSER_FETCH_MODELS):
@@ -4117,11 +4148,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                         session_id = str(uuid7())
                                         user_msg_id = str(uuid7())
                                         model_msg_id = str(uuid7())
-                                        model_b_msg_id = str(uuid7())
                                         payload["id"] = session_id
                                         payload["userMessageId"] = user_msg_id
                                         payload["modelAMessageId"] = model_msg_id
-                                        payload["modelBMessageId"] = model_b_msg_id
+                                        payload.pop("modelBMessageId", None)
                                         debug_print("🔁 Retrying create-evaluation with fresh session/message IDs.")
                                     async for ka in wait_with_keepalive(1.5):
                                         yield ka
@@ -4389,8 +4419,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 
             log_http_status(response.status_code, "LMArena API Response")
             
-            # Use aread() to ensure we buffer streaming-capable responses (like BrowserFetchStreamResponse)
-            response_bytes = await response.aread()
+            # Buffer the body: async streaming responses expose aread(), while
+            # cloudscraper/requests responses already hold the body in .content.
+            if hasattr(response, "aread"):
+                response_bytes = await response.aread()
+            else:
+                response_bytes = response.content
             response_text_body = response_bytes.decode("utf-8", errors="replace")
             
             debug_print(f"📏 Response length: {len(response_text_body)} characters")

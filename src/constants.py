@@ -158,12 +158,12 @@ STATUS_MESSAGES = {
 # RECAPTCHA CONSTANTS
 # ============================================================
 
-# Default reCAPTCHA sitekey and action from gpt4free/g4f/Provider/needs_auth/LMArena.py
-RECAPTCHA_SITEKEY = "6Led_uYrAAAAAIP_9E8Ais_67Z6Vp4vdf40p8SQU"
+# Default reCAPTCHA Enterprise v3 sitekey and action (matched to live arena.ai JS bundle)
+RECAPTCHA_SITEKEY = "6LeTGMcsAAAAALuIlkVwIxaAuZA8VledA6d3Nnb0"
 RECAPTCHA_ACTION = "chat_submit"
 
 # reCAPTCHA Enterprise v2 sitekey used when v3 scoring fails and LMArena prompts a checkbox challenge
-RECAPTCHA_V2_SITEKEY = "6Ld7ePYrAAAAAB34ovoFoDau1fqCJ6IyOjFEQaMn"
+RECAPTCHA_V2_SITEKEY = "6Le3_cYsAAAAAGwWOK2RLDgNI15Bh8C0yLBOL1yL"
 
 # Cloudflare Turnstile sitekey used by LMArena to mint anonymous-user signup tokens
 TURNSTILE_SITEKEY = "0x4AAAAAAA65vWDmG-O_lPtT"
@@ -314,6 +314,8 @@ ARENA_COOKIE_DOMAINS = (".lmarena.ai", ".arena.ai")
 
 ARENA_DIRECT_MODE_URL = "https://arena.ai/?mode=direct"
 NEXTJS_API_SIGNUP = "/nextjs-api/sign-up"
+STORAGE_GENERATE_UPLOAD_URL_PATH = "/api/storage/generate-upload-url"
+STORAGE_GET_SIGNED_URL_PATH = "/api/storage/get-signed-url"
 
 # ============================================================
 # CONTENT TYPES

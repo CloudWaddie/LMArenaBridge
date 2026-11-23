@@ -2339,12 +2339,12 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         
         # The same publicName can map to several variants (e.g. text-only vs image-input
         # vs web-only output). Restrict to variants whose output the bridge can serve,
-        # then prefer one that accepts the request's image attachments.
+        # then prefer one that accepts the request's image attachments. Only the last
+        # message's images matter — earlier turns aren't re-sent upstream.
+        last_content = messages[-1].get("content") if messages and isinstance(messages[-1], dict) else None
         num_images = sum(
             1
-            for msg in messages
-            if isinstance(msg, dict) and isinstance(msg.get("content"), list)
-            for part in msg["content"]
+            for part in (last_content if isinstance(last_content, list) else [])
             if isinstance(part, dict) and part.get("type") == "image_url"
         )
         candidates = [m for m in models if m.get("publicName") == model_public_name]
@@ -2375,12 +2375,20 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             model_id = selected.get("id")
             model_org = selected.get("organization")
             model_capabilities = selected.get("capabilities", {})
-        
+
         if not model_id:
             debug_print(f"❌ Model '{model_public_name}' not found in model list")
             raise HTTPException(
                 status_code=404, 
                 detail=f"Model '{model_public_name}' not found. Use /api/v1/models to see available models."
+            )
+        
+        # Fail fast rather than silently dropping attachments process_message_content
+        # would discard when no servable variant accepts image input.
+        if num_images and not (model_capabilities.get("inputCapabilities") or {}).get("image"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Model '{model_public_name}' does not support image input."
             )
         
         # Check if model is a stealth model (no organization)

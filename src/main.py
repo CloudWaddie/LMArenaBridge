@@ -2381,6 +2381,14 @@ def _extract_arena_media_markdown(line: str) -> str:
     return ""
 
 
+_INLINE_IMAGE_DATA_URI_RE = re.compile(r"(data:image/[^;,\s)]+;base64,)[A-Za-z0-9+/=]+")
+
+
+def _redact_inline_data_uris_for_history(text: str) -> str:
+    """Strip inline base64 image payloads before storing assistant replies in chat_sessions."""
+    return _INLINE_IMAGE_DATA_URI_RE.sub(r"\1[omitted]", text)
+
+
 @app.post("/api/v1/chat/completions")
 async def api_chat_completions(request: Request, api_key: dict = Depends(rate_limit_api_key)):
     debug_print("\n" + "="*80)
@@ -4314,9 +4322,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
 
                             # Update session - Store message history with IDs (including reasoning and citations if present)
                             assistant_message = {
-                                "id": model_msg_id, 
-                                "role": "assistant", 
-                                "content": response_text.strip()
+                                "id": model_msg_id,
+                                "role": "assistant",
+                                "content": _redact_inline_data_uris_for_history(response_text.strip())
                             }
                             if reasoning_text:
                                 assistant_message["reasoning_content"] = reasoning_text.strip()
@@ -4746,9 +4754,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             
             # Update session - Store message history with IDs (including reasoning and citations if present)
             assistant_message = {
-                "id": model_msg_id, 
-                "role": "assistant", 
-                "content": response_text.strip()
+                "id": model_msg_id,
+                "role": "assistant",
+                "content": _redact_inline_data_uris_for_history(response_text.strip())
             }
             if reasoning_text:
                 assistant_message["reasoning_content"] = reasoning_text.strip()

@@ -132,6 +132,12 @@ class TestArenaParityStorageAndMedia(BaseBridgeTest):
             body["choices"][0]["message"]["content"],
             "![Generated Image](data:image/png;base64,iVBORw0KGgo=)",
         )
+        sessions = self.main.chat_sessions["test-key"]
+        stored_assistant = next(iter(sessions.values()))["messages"][-1]
+        self.assertEqual(
+            stored_assistant["content"],
+            "![Generated Image](data:image/png;base64,[omitted])",
+        )
 
 
 if __name__ == "__main__":

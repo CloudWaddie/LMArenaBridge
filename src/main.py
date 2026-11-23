@@ -2337,12 +2337,25 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         model_org = None
         model_capabilities = {}
         
-        for m in models:
-            if m.get("publicName") == model_public_name:
-                model_id = m.get("id")
-                model_org = m.get("organization")
-                model_capabilities = m.get("capabilities", {})
-                break
+        # The same publicName can map to several variants (e.g. text-only vs image-input).
+        # When the request carries images, prefer a variant that accepts image input.
+        request_has_images = any(
+            isinstance(msg.get("content"), list)
+            and any(isinstance(part, dict) and part.get("type") == "image_url" for part in msg["content"])
+            for msg in messages
+            if isinstance(msg, dict)
+        )
+        candidates = [m for m in models if m.get("publicName") == model_public_name]
+        selected = candidates[0] if candidates else None
+        if request_has_images and len(candidates) > 1:
+            for m in candidates:
+                if (m.get("capabilities") or {}).get("inputCapabilities", {}).get("image"):
+                    selected = m
+                    break
+        if selected:
+            model_id = selected.get("id")
+            model_org = selected.get("organization")
+            model_capabilities = selected.get("capabilities", {})
         
         if not model_id:
             debug_print(f"❌ Model '{model_public_name}' not found in model list")

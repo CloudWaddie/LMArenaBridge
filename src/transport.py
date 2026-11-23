@@ -542,6 +542,14 @@ async def fetch_lmarena_stream_via_userscript_proxy(
 
     proxy_url = _normalize_userscript_proxy_url(str(url))
     sitekey, action = _m().get_recaptcha_settings(config)
+    proxy_headers = {"Content-Type": "text/plain;charset=UTF-8"}
+    try:
+        dep_id = str((config or {}).get("arena_web_deployment") or "").strip()
+        if dep_id:
+            proxy_headers["x-arena-web-deployment"] = dep_id
+            proxy_headers["x-deployment-id"] = dep_id
+    except Exception:
+        pass
     job = {
         "created_at": _m().time.time(),
         "job_id": job_id,
@@ -564,7 +572,7 @@ async def fetch_lmarena_stream_via_userscript_proxy(
         "payload": {
             "url": proxy_url or str(url),
             "method": str(http_method or "POST"),
-            "headers": {"Content-Type": "text/plain;charset=UTF-8"},
+            "headers": proxy_headers,
             "body": json.dumps(payload) if payload is not None else "",
         },
         "lines_queue": lines_queue,
@@ -977,10 +985,16 @@ async def fetch_lmarena_stream_via_chrome(
                     # return value (a non-streaming buffered body) over queue/meta fallbacks.
                     try:
                         res = fetch_task.result()
+                        fetch_exc = None
                     except Exception as e:
                         res = None
+                        fetch_exc = e
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
-                    if isinstance(res, dict) and not res.get("__streaming"):
+                    if fetch_exc is not None:
+                        # The fetch raised before reporting metadata — keep the 502; the
+                        # queue is empty anyway and a fabricated 200 would hide the error.
+                        pass
+                    elif isinstance(res, dict) and not res.get("__streaming"):
                         result = res
                     else:
                         # Check the queue once for a racing meta chunk, else assume success.
@@ -1648,10 +1662,16 @@ async def fetch_lmarena_stream_via_camoufox(
                     # return value (a non-streaming buffered body) over queue/meta fallbacks.
                     try:
                         res = fetch_task.result()
+                        fetch_exc = None
                     except Exception as e:
                         res = None
+                        fetch_exc = e
                         result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
-                    if isinstance(res, dict) and not res.get("__streaming"):
+                    if fetch_exc is not None:
+                        # The fetch raised before reporting metadata — keep the 502 rather
+                        # than fabricating a 200 from the empty queue.
+                        pass
+                    elif isinstance(res, dict) and not res.get("__streaming"):
                         result = res
                     else:
                         # Check the queue once for a racing meta chunk, else assume success.

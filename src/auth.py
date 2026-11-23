@@ -776,7 +776,9 @@ def _persist_refreshed_auth_token(cfg: dict, old_token: str, new_token: str) -> 
         cookies = cfg.get("browser_cookies")
         if isinstance(cookies, dict) and cookies.get("arena-auth-prod-v1") == old_token:
             cookies["arena-auth-prod-v1"] = new_token
-        _m().save_config(cfg)
+        # preserve_auth_tokens=False: the refreshed token must survive save_config's
+        # disk-merge, which otherwise restores the expired token it just replaced.
+        _m().save_config(cfg, preserve_auth_tokens=False)
     except Exception:
         pass
 

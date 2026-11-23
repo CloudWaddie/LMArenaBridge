@@ -88,7 +88,8 @@ class TestStreamNoDeltaNewSessionRegeneratesIds(BaseBridgeTest):
         self.assertIn("Hello", response.text)
         self.assertIn("[DONE]", response.text)
         self.assertGreaterEqual(len(payloads), 2)
-        for key in ("id", "userMessageId", "modelAMessageId", "modelBMessageId"):
+        # modelBMessageId is intentionally absent: arena.ai rejects it now.
+        for key in ("id", "userMessageId", "modelAMessageId"):
             with self.subTest(key=key):
                 self.assertNotEqual(payloads[0].get(key), payloads[1].get(key))
 

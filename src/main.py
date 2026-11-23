@@ -2525,7 +2525,6 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         # -----------------------------------------------
         
         # Generate conversation ID from context (API key + model + first user message)
-        import hashlib
         first_user_message = next((m.get("content", "") for m in messages if m.get("role") == "user"), "")
         if isinstance(first_user_message, list):
             # Handle array content format

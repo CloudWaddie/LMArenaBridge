@@ -347,12 +347,17 @@ def is_execution_context_destroyed_error(exc: BaseException) -> bool:
     return "Execution context was destroyed" in message
 
 
-async def safe_page_evaluate(page, script: str, retries: int = 3):
+_UNSET = object()
+
+
+async def safe_page_evaluate(page, script: str, arg=_UNSET, retries: int = 3):
     retries = max(1, min(int(retries), 5))
     last_exc: Exception | None = None
     for attempt in range(retries):
         try:
-            return await page.evaluate(script)
+            if arg is _UNSET:
+                return await page.evaluate(script)
+            return await page.evaluate(script, arg)
         except Exception as e:
             last_exc = e
             if is_execution_context_destroyed_error(e) and attempt < retries - 1:

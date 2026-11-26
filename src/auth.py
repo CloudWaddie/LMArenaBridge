@@ -259,6 +259,7 @@ def _decode_arena_auth_session_token(token: str) -> Optional[dict]:
     if not b64:
         return None
     try:
+        b64 = b64.replace("-", "+").replace("_", "/")
         b64 += "=" * ((4 - (len(b64) % 4)) % 4)
         raw = base64.b64decode(b64.encode("utf-8"))
         obj = json.loads(raw.decode("utf-8"))
@@ -723,7 +724,7 @@ async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Opt
         t = str(t or "").strip()
         if not t or t in excluded:
             continue
-        if t.startswith("base64-") and is_arena_auth_token_expired(t, skew_seconds=0):
+        if t.startswith("base64-") and is_arena_auth_token_expired(t):
             expired_base64.append(t)
 
     if not expired_base64:
@@ -741,10 +742,10 @@ async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Opt
                 continue
             if old not in tokens:
                 continue
-            if not is_arena_auth_token_expired(old, skew_seconds=0):
+            if not is_arena_auth_token_expired(old):
                 continue
 
-            new_token = await refresh_arena_auth_token_via_lmarena_http(old, cfg)
+            new_token = await _m().refresh_arena_auth_token_via_lmarena_http(old, cfg)
             if not new_token:
                 continue
 
@@ -814,7 +815,7 @@ async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None
         t = str(t or "").strip()
         if not t or t in excluded:
             continue
-        if t.startswith("base64-") and is_arena_auth_token_expired(t, skew_seconds=0):
+        if t.startswith("base64-") and is_arena_auth_token_expired(t):
             expired_base64.append(t)
     if not expired_base64:
         return None
@@ -830,16 +831,59 @@ async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None
                 continue
             if old not in tokens:
                 continue
-            if not is_arena_auth_token_expired(old, skew_seconds=0):
+            if not is_arena_auth_token_expired(old):
                 continue
 
-            new_token = await refresh_arena_auth_token_via_supabase(old)
+            new_token = await _m().refresh_arena_auth_token_via_supabase(old)
             if not new_token:
                 continue
 
             _m().EPHEMERAL_ARENA_AUTH_TOKEN = new_token
             _persist_refreshed_auth_token(cfg, old, new_token)
             return new_token
+
+    return None
+
+
+async def try_refresh_arena_auth_token(
+    current_token: str, config: Optional[dict] = None
+) -> Optional[str]:
+    """
+    Attempt to refresh a specific `arena-auth-prod-v1` session token after a 401.
+
+    Tries LMArena HTTP Set-Cookie refresh first, then falls back to Supabase
+    refresh_token grant. On success, updates `EPHEMERAL_ARENA_AUTH_TOKEN` and
+    persists the rotated token to `config.json`.
+    """
+    token = str(current_token or "").strip()
+    if not token or not token.startswith("base64-"):
+        return None
+
+    cfg = config
+    if not isinstance(cfg, dict):
+        try:
+            cfg = _m().get_config()
+        except Exception:
+            cfg = {}
+    if not isinstance(cfg, dict):
+        cfg = {}
+
+    refreshed_token: Optional[str] = None
+    try:
+        refreshed_token = await _m().refresh_arena_auth_token_via_lmarena_http(token, cfg)
+    except Exception:
+        refreshed_token = None
+
+    if not refreshed_token:
+        try:
+            refreshed_token = await _m().refresh_arena_auth_token_via_supabase(token)
+        except Exception:
+            refreshed_token = None
+
+    if refreshed_token:
+        _m().EPHEMERAL_ARENA_AUTH_TOKEN = refreshed_token
+        _persist_refreshed_auth_token(cfg, token, refreshed_token)
+        return refreshed_token
 
     return None
 

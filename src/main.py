@@ -2655,10 +2655,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             debug_print(f"📦 Using PUT method for retry")
             http_method = "PUT"
         else:
-            user_msg_id = str(uuid7())
-            model_msg_id = str(uuid7())
             if not session:
                 debug_print("🆕 Creating NEW conversation session")
+                # Generate session_id before message IDs so UUIDv7 timestamps stay monotonic.
                 session_id = str(uuid7())
                 conv_id = session_id
                 url = f"https://arena.ai{STREAM_CREATE_EVALUATION_PATH}"
@@ -2666,6 +2665,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 debug_print("🔄 Using EXISTING conversation session")
                 conv_id = session["conversation_id"]
                 url = f"https://arena.ai/nextjs-api/stream/post-to-evaluation/{conv_id}"
+            user_msg_id = str(uuid7())
+            model_msg_id = str(uuid7())
             payload = {
                 "id": conv_id,
                 **({"mode": "direct-battle"} if not session else {}),
@@ -4093,7 +4094,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     timeout_seconds=120,
                     auth_token=current_token,
                 )
-                if response:
+                if response and response.status_code == HTTPStatus.FORBIDDEN:
+                    debug_print("⚠️ Userscript Proxy returned 403. Falling back to direct/browser retry...")
+                    response = None
+                elif response:
                     # Raise for status to trigger the standard error handling block below if needed
                     response.raise_for_status()
                 else:
@@ -4144,7 +4148,27 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         # If success or non-retryable error, break and use this response
                         break
                 else:
-                    response = await make_request_with_retry(url, payload, http_method)
+                    try:
+                        response = await make_request_with_retry(url, payload, http_method)
+                    except (httpx.HTTPStatusError, requests.exceptions.HTTPError) as http_err:
+                        if (
+                            getattr(http_err.response, "status_code", None) == HTTPStatus.FORBIDDEN
+                            and "recaptcha" in str(getattr(http_err.response, "text", "") or "").lower()
+                        ):
+                            debug_print("🌐 Direct HTTP hit reCAPTCHA 403; falling back to Chrome fetch...")
+                            if isinstance(payload, dict):
+                                payload["recaptchaV3Token"] = ""
+                            response = await fetch_lmarena_stream_via_chrome(
+                                http_method=http_method,
+                                url=url,
+                                payload=payload if isinstance(payload, dict) else {},
+                                auth_token=current_token,
+                                timeout_seconds=120,
+                            )
+                            if response is None:
+                                raise
+                        else:
+                            raise
             
             if response is None:
                 debug_print("⚠️ Browser transports returned None; falling back to direct httpx.")

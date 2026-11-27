@@ -2679,6 +2679,12 @@ async def camoufox_proxy_worker():
                     pass
             return
         except Exception as e:
+            if type(e).__name__ == "CamoufoxNotInstalled":
+                _mark_userscript_proxy_inactive()
+                _m().debug_print(
+                    f"⚠️ Camoufox proxy worker disabled ({type(e).__name__}): {e}"
+                )
+                return
             _m().debug_print(f"⚠️ Camoufox proxy worker exception: {e}")
             await asyncio.sleep(5.0)
             # Mark for relaunch

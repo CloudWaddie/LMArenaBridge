@@ -34,22 +34,20 @@ def _m():
 
 def _combine_split_arena_auth_cookies(cookies: list[dict]) -> Optional[str]:
     """
-    Combine split arena-auth-prod-v1.0 and .1 cookies into a single value.
-    Google OAuth sometimes creates split cookies due to size limits.
+    Combine split arena-auth-prod-v1.<n> cookies into a single value.
+    Signed-in Supabase SSR sessions exceed 3180 bytes and are split across numbered chunks.
     """
-    parts = {}
+    parts: dict[int, str] = {}
     for cookie in cookies or []:
         name = str(cookie.get("name") or "")
-        if name == "arena-auth-prod-v1.0":
-            parts[0] = str(cookie.get("value") or "")
-        elif name == "arena-auth-prod-v1.1":
-            parts[1] = str(cookie.get("value") or "")
-    if 0 in parts and 1 in parts:
-        combined = (parts[0] + parts[1]).strip()
+        if name.startswith("arena-auth-prod-v1."):
+            suffix = name.rsplit(".", 1)[1]
+            val = str(cookie.get("value") or "")
+            if suffix.isdigit() and val:
+                parts[int(suffix)] = val
+    if parts:
+        combined = "".join(parts[i] for i in sorted(parts)).strip()
         return combined if combined else None
-    elif 0 in parts:
-        value = parts[0].strip()
-        return value if value else None
     return None
 
 
@@ -121,12 +119,11 @@ def _upsert_browser_session_into_config(config: dict, cookies: list[dict], user_
         if not name or value is None:
             continue
         name = str(name)
-        # Always save arena-auth-prod-v1 to browser_cookies (for HTTP fallback)
+        # Always save non-empty arena-auth-prod-v1 to browser_cookies (for HTTP fallback)
         # Only promote to top-level auth_tokens when persist_arena_auth_cookie is true
         if name == "arena-auth-prod-v1" and not bool(config.get("persist_arena_auth_cookie")):
-            # Still save to browser_cookies for plain HTTP fallback
-            value = str(value)
-            if cookie_store.get(name) != value:
+            value = str(value).strip()
+            if value and cookie_store.get(name) != value:
                 cookie_store[name] = value
                 changed = True
             continue
@@ -259,6 +256,7 @@ def _decode_arena_auth_session_token(token: str) -> Optional[dict]:
     if not b64:
         return None
     try:
+        b64 = b64.replace("-", "+").replace("_", "/")
         b64 += "=" * ((4 - (len(b64) % 4)) % 4)
         raw = base64.b64decode(b64.encode("utf-8"))
         obj = json.loads(raw.decode("utf-8"))
@@ -723,7 +721,7 @@ async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Opt
         t = str(t or "").strip()
         if not t or t in excluded:
             continue
-        if t.startswith("base64-") and is_arena_auth_token_expired(t, skew_seconds=0):
+        if t.startswith("base64-") and is_arena_auth_token_expired(t):
             expired_base64.append(t)
 
     if not expired_base64:
@@ -741,10 +739,10 @@ async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Opt
                 continue
             if old not in tokens:
                 continue
-            if not is_arena_auth_token_expired(old, skew_seconds=0):
+            if not is_arena_auth_token_expired(old):
                 continue
 
-            new_token = await refresh_arena_auth_token_via_lmarena_http(old, cfg)
+            new_token = await _m().refresh_arena_auth_token_via_lmarena_http(old, cfg)
             if not new_token:
                 continue
 
@@ -756,8 +754,10 @@ async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Opt
     return None
 
 
-def _persist_refreshed_auth_token(cfg: dict, old_token: str, new_token: str) -> None:
-    """Swap a refreshed session token into config.json so restarts keep working."""
+def _persist_refreshed_auth_token(
+    cfg: dict, old_token: str, new_token: str, *, managed_account: Optional[dict] = None
+) -> None:
+    """Save a refreshed session token and any newly created managed account."""
     try:
         # Re-read the on-disk config and apply the swap to it: writing back the stale
         # in-memory cfg would erase credentials added via the dashboard mid-request,
@@ -782,6 +782,8 @@ def _persist_refreshed_auth_token(cfg: dict, old_token: str, new_token: str) -> 
         cookies = disk_cfg.get("browser_cookies")
         if isinstance(cookies, dict) and cookies.get("arena-auth-prod-v1") == old_token:
             cookies["arena-auth-prod-v1"] = new_token
+        if managed_account is not None:
+            disk_cfg["managed_account"] = managed_account
         _m().save_config(disk_cfg, preserve_auth_tokens=False)
     except Exception:
         pass
@@ -814,7 +816,7 @@ async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None
         t = str(t or "").strip()
         if not t or t in excluded:
             continue
-        if t.startswith("base64-") and is_arena_auth_token_expired(t, skew_seconds=0):
+        if t.startswith("base64-") and is_arena_auth_token_expired(t):
             expired_base64.append(t)
     if not expired_base64:
         return None
@@ -830,10 +832,10 @@ async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None
                 continue
             if old not in tokens:
                 continue
-            if not is_arena_auth_token_expired(old, skew_seconds=0):
+            if not is_arena_auth_token_expired(old):
                 continue
 
-            new_token = await refresh_arena_auth_token_via_supabase(old)
+            new_token = await _m().refresh_arena_auth_token_via_supabase(old)
             if not new_token:
                 continue
 
@@ -842,6 +844,44 @@ async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None
             return new_token
 
     return None
+
+
+async def try_refresh_arena_auth_token(
+    current_token: str, config: Optional[dict] = None
+) -> Optional[str]:
+    """Refresh an `arena-auth-prod-v1` token after 401 (LMArena HTTP -> Supabase -> account recovery)."""
+    token = str(current_token or "").strip()
+    if not token.startswith("base64-"):
+        return None
+
+    cfg = config if isinstance(config, dict) else {}
+    if not cfg:
+        try:
+            loaded = _m().get_config()
+            if isinstance(loaded, dict):
+                cfg = loaded
+        except Exception:
+            pass
+
+    for refresh_fn in (
+        lambda: _m().refresh_arena_auth_token_via_lmarena_http(token, cfg),
+        lambda: _m().refresh_arena_auth_token_via_supabase(token),
+    ):
+        try:
+            refreshed = await refresh_fn()
+        except Exception:
+            refreshed = None
+        if refreshed:
+            _m().EPHEMERAL_ARENA_AUTH_TOKEN = refreshed
+            _persist_refreshed_auth_token(cfg, token, refreshed)
+            return refreshed
+
+    try:
+        from .account_recovery import recover_arena_auth_session
+
+        return await recover_arena_auth_session(old_token=token, config=cfg)
+    except Exception:
+        return None
 
 
 def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback: bool = True):

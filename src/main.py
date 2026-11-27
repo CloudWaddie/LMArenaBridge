@@ -75,6 +75,7 @@ from .auth import (
     refresh_arena_auth_token_via_supabase,
     maybe_refresh_expired_auth_tokens_via_lmarena_http,
     maybe_refresh_expired_auth_tokens,
+    try_refresh_arena_auth_token,
     get_next_auth_token,
     remove_auth_token,
     ARENA_AUTH_REFRESH_LOCK,
@@ -2740,6 +2741,25 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
         else:
             debug_print("🔑 No auth token configured (will rely on browser session cookies).")
         
+        async def _refresh_or_rotate_auth_token(*, clear_recaptcha: bool = False) -> bool:
+            nonlocal current_token, headers
+            refreshed = await try_refresh_arena_auth_token(current_token)
+            if refreshed and refreshed not in failed_tokens:
+                current_token = refreshed
+                headers = get_request_headers_with_token(current_token, recaptcha_token)
+                if clear_recaptcha and isinstance(payload, dict):
+                    payload["recaptchaV3Token"] = ""
+                debug_print("🔄 Refreshed arena-auth-prod-v1 session after 401. Retrying...")
+                return True
+            try:
+                current_token = get_next_auth_token(exclude_tokens=failed_tokens)
+                headers = get_request_headers_with_token(current_token, recaptcha_token)
+                debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
+                return True
+            except HTTPException as e:
+                debug_print(f"❌ No more tokens available: {e.detail}")
+                return False
+
         async def make_request_with_retry(url, payload, http_method, max_retries=3):
             nonlocal current_token, headers, failed_tokens, recaptcha_token
 
@@ -2771,7 +2791,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                 continue
                             except HTTPException as e:
                                 debug_print(f"❌ No more tokens available: {e.detail}")
-                                break
+                                response.raise_for_status()
 
                     elif response.status_code == HTTPStatus.FORBIDDEN:
                         try:
@@ -2797,23 +2817,17 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         debug_print(f"📝 Failed tokens so far: {len(failed_tokens)}")
 
                         if attempt < max_retries - 1:
-                            try:
-                                current_token = get_next_auth_token(exclude_tokens=failed_tokens)
-                                headers = get_request_headers_with_token(current_token, recaptcha_token)
-                                debug_print(f"🔄 Retrying with next token: {current_token[:20]}...")
+                            if await _refresh_or_rotate_auth_token():
                                 await asyncio.sleep(1)
                                 continue
-                            except HTTPException as e:
-                                debug_print(f"❌ No more tokens available: {e.detail}")
-                                break
+                            response.raise_for_status()
 
                     response.raise_for_status()
                     return response
 
-                except (requests.exceptions.HTTPError, _cs.exceptions.CloudflareException) as e:
-                    status_code = getattr(getattr(e, 'response', None), 'status_code', None)
-                    if status_code and status_code not in [429, 401]:
-                        raise
+                except requests.exceptions.HTTPError:
+                    raise
+                except _cs.exceptions.CloudflareException:
                     if attempt == max_retries - 1:
                         raise
 
@@ -3663,56 +3677,18 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                                     # Add current token to failed set
                                     failed_tokens.add(current_token)
 
-                                    # Best-effort: refresh the current base64 session in-memory before rotating.
-                                    refreshed_token: Optional[str] = None
-                                    if current_token:
-                                        try:
-                                            cfg_now = get_config()
-                                        except Exception:
-                                            cfg_now = {}
-                                        if not isinstance(cfg_now, dict):
-                                            cfg_now = {}
-                                        try:
-                                            refreshed_token = await refresh_arena_auth_token_via_lmarena_http(
-                                                current_token, cfg_now
-                                            )
-                                        except Exception:
-                                            refreshed_token = None
-                                        if not refreshed_token:
-                                            try:
-                                                refreshed_token = await refresh_arena_auth_token_via_supabase(current_token)
-                                            except Exception:
-                                                refreshed_token = None
-
-                                    if refreshed_token:
-                                        global EPHEMERAL_ARENA_AUTH_TOKEN
-                                        EPHEMERAL_ARENA_AUTH_TOKEN = refreshed_token
-                                        current_token = refreshed_token
-                                        headers = get_request_headers_with_token(current_token, recaptcha_token)
-                                        # Ensure the next browser attempt mints a fresh token for the refreshed session.
-                                        if isinstance(payload, dict):
-                                            payload["recaptchaV3Token"] = ""
-                                        debug_print("🔄 Refreshed arena-auth-prod-v1 session after 401. Retrying...")
+                                    if await _refresh_or_rotate_auth_token(clear_recaptcha=True):
                                         async for ka in wait_with_keepalive(1.0):
                                             yield ka
                                         continue
-                                    try:
-                                        # Try with next available token (excluding failed ones)
-                                        current_token = get_next_auth_token(exclude_tokens=failed_tokens)
-                                        headers = get_request_headers_with_token(current_token, recaptcha_token)
-                                        debug_print(f"🔄 Retrying stream with next token: {current_token[:20]}...")
-                                        async for ka in wait_with_keepalive(1.0):
-                                            yield ka
-                                        continue
-                                    except HTTPException:
-                                        debug_print("No more tokens available for streaming request.")
-                                        yield _sse_error(
-                                            "Unauthorized: Your LMArena auth token has expired or is invalid. "
-                                            "Please get a new auth token from the dashboard.",
-                                            "authentication_error",
-                                            HTTPStatus.UNAUTHORIZED,
-                                        )
-                                        return
+                                    debug_print("No more tokens available for streaming request.")
+                                    yield _sse_error(
+                                        "Unauthorized: Your LMArena auth token has expired or is invalid. "
+                                        "Please get a new auth token from the dashboard.",
+                                        "authentication_error",
+                                        HTTPStatus.UNAUTHORIZED,
+                                    )
+                                    return
                                 
                                 log_http_status(response.status_code, "Stream Connection")
                                 response.raise_for_status()
@@ -4155,12 +4131,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                             failed_tokens.add(current_token)
                             # (Pruning disabled)
                             if chrome_attempt < max_chrome_retries - 1:
-                                try:
-                                    current_token = get_next_auth_token(exclude_tokens=failed_tokens)
-                                    debug_print(f"🔄 Rotating to next token: {current_token[:20]}...")
+                                if await _refresh_or_rotate_auth_token():
                                     continue
-                                except HTTPException:
-                                    break
+                                break
                         elif response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
                             debug_print(f"⏱️  Rate limit in Chrome fetch (attempt {chrome_attempt+1})")
                             if chrome_attempt < max_chrome_retries - 1:
@@ -4184,6 +4157,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 )
                 
             log_http_status(response.status_code, "LMArena API Response")
+            if getattr(response, "status_code", 200) >= 400 and hasattr(response, "raise_for_status"):
+                response.raise_for_status()
             
             # Buffer the body: async streaming responses expose aread(), while
             # cloudscraper/requests responses already hold the body in .content.
@@ -4432,7 +4407,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             
             return final_response
 
-        except httpx.HTTPStatusError as e:
+        except (httpx.HTTPStatusError, requests.exceptions.HTTPError) as e:
             # Log error status
             log_http_status(e.response.status_code, "Error Response")
             
@@ -4451,7 +4426,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 error_detail = "Rate limit exceeded on LMArena. Please try again in a few moments."
                 error_type = "rate_limit_error"
             elif e.response.status_code == HTTPStatus.UNAUTHORIZED:
-                error_detail = "Unauthorized: Your LMArena auth token has expired or is invalid. Please get a new auth token from the dashboard."
+                prefix = f"Unauthorized: {lmarena_error}." if lmarena_error else "Unauthorized:"
+                error_detail = f"{prefix} Your LMArena auth token has expired or is invalid. Please get a new auth token from the dashboard."
                 error_type = "authentication_error"
             elif e.response.status_code == HTTPStatus.FORBIDDEN:
                 error_detail = f"Forbidden: Access to this resource is denied. {e.response.text}"
@@ -4489,7 +4465,7 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 }
             }
         
-        except httpx.TimeoutException as e:
+        except (httpx.TimeoutException, requests.exceptions.Timeout) as e:
             print(f"\n⏱️  TIMEOUT ERROR")
             print(f"📛 Request timed out after 120 seconds")
             print(f"📤 Request URL: {url}")
@@ -4727,11 +4703,12 @@ if __name__ == "__main__":
     except Exception:
         pass
 
+    HOST = os.environ.get("HOST", "localhost")
     print("=" * 60)
     print("🚀 LMArena Bridge Server Starting...")
     print("=" * 60)
-    print(f"📍 Dashboard: http://localhost:{PORT}/dashboard")
-    print(f"🔐 Login: http://localhost:{PORT}/login")
-    print(f"📚 API Base URL: http://localhost:{PORT}/api/v1")
+    print(f"📍 Dashboard: http://{HOST}:{PORT}/dashboard")
+    print(f"🔐 Login: http://{HOST}:{PORT}/login")
+    print(f"📚 API Base URL: http://{HOST}:{PORT}/api/v1")
     print("=" * 60)
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host=HOST, port=PORT)

@@ -845,53 +845,39 @@ async def maybe_refresh_expired_auth_tokens(exclude_tokens: Optional[set] = None
 async def try_refresh_arena_auth_token(
     current_token: str, config: Optional[dict] = None
 ) -> Optional[str]:
-    """
-    Attempt to refresh a specific `arena-auth-prod-v1` session token after a 401.
-
-    Tries LMArena HTTP Set-Cookie refresh first, then falls back to Supabase
-    refresh_token grant. On success, updates `EPHEMERAL_ARENA_AUTH_TOKEN` and
-    persists the rotated token to `config.json`.
-    """
+    """Refresh an `arena-auth-prod-v1` token after 401 (LMArena HTTP -> Supabase -> account recovery)."""
     token = str(current_token or "").strip()
-    if not token or not token.startswith("base64-"):
+    if not token.startswith("base64-"):
         return None
 
-    cfg = config
-    if not isinstance(cfg, dict):
+    cfg = config if isinstance(config, dict) else {}
+    if not cfg:
         try:
-            cfg = _m().get_config()
+            loaded = _m().get_config()
+            if isinstance(loaded, dict):
+                cfg = loaded
         except Exception:
-            cfg = {}
-    if not isinstance(cfg, dict):
-        cfg = {}
+            pass
 
-    refreshed_token: Optional[str] = None
-    try:
-        refreshed_token = await _m().refresh_arena_auth_token_via_lmarena_http(token, cfg)
-    except Exception:
-        refreshed_token = None
-
-    if not refreshed_token:
+    for refresh_fn in (
+        lambda: _m().refresh_arena_auth_token_via_lmarena_http(token, cfg),
+        lambda: _m().refresh_arena_auth_token_via_supabase(token),
+    ):
         try:
-            refreshed_token = await _m().refresh_arena_auth_token_via_supabase(token)
+            refreshed = await refresh_fn()
         except Exception:
-            refreshed_token = None
-
-    if refreshed_token:
-        _m().EPHEMERAL_ARENA_AUTH_TOKEN = refreshed_token
-        _persist_refreshed_auth_token(cfg, token, refreshed_token)
-        return refreshed_token
+            refreshed = None
+        if refreshed:
+            _m().EPHEMERAL_ARENA_AUTH_TOKEN = refreshed
+            _persist_refreshed_auth_token(cfg, token, refreshed)
+            return refreshed
 
     try:
         from .account_recovery import recover_arena_auth_session
 
-        recovered = await recover_arena_auth_session(old_token=token, config=cfg)
-        if recovered:
-            return recovered
+        return await recover_arena_auth_session(old_token=token, config=cfg)
     except Exception:
-        pass
-
-    return None
+        return None
 
 
 def get_next_auth_token(exclude_tokens: set = None, *, allow_ephemeral_fallback: bool = True):

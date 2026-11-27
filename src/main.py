@@ -5151,11 +5151,12 @@ if __name__ == "__main__":
     except Exception:
         pass
 
+    HOST = os.environ.get("HOST", "localhost")
     print("=" * 60)
     print("🚀 LMArena Bridge Server Starting...")
     print("=" * 60)
-    print(f"📍 Dashboard: http://localhost:{PORT}/dashboard")
-    print(f"🔐 Login: http://localhost:{PORT}/login")
-    print(f"📚 API Base URL: http://localhost:{PORT}/api/v1")
+    print(f"📍 Dashboard: http://{HOST}:{PORT}/dashboard")
+    print(f"🔐 Login: http://{HOST}:{PORT}/login")
+    print(f"📚 API Base URL: http://{HOST}:{PORT}/api/v1")
     print("=" * 60)
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(app, host=HOST, port=PORT)

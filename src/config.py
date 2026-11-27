@@ -5,8 +5,7 @@ Handles loading, saving, and managing configuration.
 
 import json
 import os
-from typing import Optional, Dict, Any
-from collections import defaultdict
+from typing import Dict, Any
 
 from . import constants
 
@@ -14,19 +13,6 @@ from . import constants
 # Global state
 _current_config_file: str = constants.CONFIG_FILE
 _current_token_index: int = 0
-
-
-def get_config_file() -> str:
-    """Get the current config file path."""
-    return _current_config_file
-
-
-def set_config_file(path: str) -> None:
-    """Set the config file path (useful for tests)."""
-    global _current_config_file, _current_token_index
-    if _current_config_file != path:
-        _current_config_file = path
-        _current_token_index = 0
 
 
 def get_config() -> dict:
@@ -128,15 +114,6 @@ def _get_global_state() -> Dict[str, Any]:
     return _global_state
 
 
-def set_global_state(key: str, value: Any) -> None:
-    """Set a global state value."""
-    _global_state[key] = value
-
-
-def get_global_state(key: str, default: Any = None) -> Any:
-    """Get a global state value."""
-    return _global_state.get(key, default)
-
 
 # === Model management ===
 
@@ -158,29 +135,3 @@ def save_models(models: list) -> None:
         os.replace(tmp_path, constants.MODELS_FILE)
     except Exception as e:
         print(f"Error saving models: {e}")
-
-
-# === Default config for startup ===
-
-def get_default_config() -> dict:
-    """Get default configuration values."""
-    return {
-        "password": "admin",
-        "auth_token": "",
-        "auth_tokens": [],
-        "cf_clearance": "",
-        "api_keys": [
-            {
-                "name": "Default Key",
-                "key": "",  # Will be generated
-                "rpm": constants.DEFAULT_RATE_LIMIT_RPM,
-                "created": 0,
-            }
-        ],
-        "usage_stats": {},
-        "prune_invalid_tokens": False,
-        "persist_arena_auth_cookie": True,
-        "camoufox_proxy_window_mode": constants.DEFAULT_CAMOUFOX_PROXY_WINDOW_MODE,
-        "camoufox_fetch_window_mode": constants.DEFAULT_CAMOUFOX_FETCH_WINDOW_MODE,
-        "chrome_fetch_window_mode": constants.DEFAULT_CHROME_FETCH_WINDOW_MODE,
-    }

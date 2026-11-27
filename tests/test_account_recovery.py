@@ -70,3 +70,28 @@ class TestAccountRecoveryHelpers(unittest.TestCase):
             url,
             "https://arena.ai/nextjs-api/callback/email?token=pkce_abc&type=email&signup_intent_id=2",
         )
+
+
+class TestCamoufoxNotInstalledWorkerExit(unittest.IsolatedAsyncioTestCase):
+    async def test_camoufox_proxy_worker_exits_and_marks_inactive_when_not_installed(self) -> None:
+        from unittest.mock import patch
+        from src import main, transport
+
+        class CamoufoxNotInstalled(Exception):
+            pass
+
+        class FakeCM:
+            async def __aenter__(self):
+                raise CamoufoxNotInstalled("official/stable is not installed")
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+        main.last_userscript_poll = time.time()
+        main.USERSCRIPT_PROXY_LAST_POLL_AT = main.last_userscript_poll
+
+        with patch.object(main, "AsyncCamoufox", return_value=FakeCM()):
+            await transport.camoufox_proxy_worker()
+
+        self.assertEqual(main.last_userscript_poll, 0.0)
+        self.assertEqual(main.USERSCRIPT_PROXY_LAST_POLL_AT, 0.0)

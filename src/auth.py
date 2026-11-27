@@ -34,22 +34,20 @@ def _m():
 
 def _combine_split_arena_auth_cookies(cookies: list[dict]) -> Optional[str]:
     """
-    Combine split arena-auth-prod-v1.0 and .1 cookies into a single value.
-    Google OAuth sometimes creates split cookies due to size limits.
+    Combine split arena-auth-prod-v1.<n> cookies into a single value.
+    Signed-in Supabase SSR sessions exceed 3180 bytes and are split across numbered chunks.
     """
-    parts = {}
+    parts: dict[int, str] = {}
     for cookie in cookies or []:
         name = str(cookie.get("name") or "")
-        if name == "arena-auth-prod-v1.0":
-            parts[0] = str(cookie.get("value") or "")
-        elif name == "arena-auth-prod-v1.1":
-            parts[1] = str(cookie.get("value") or "")
-    if 0 in parts and 1 in parts:
-        combined = (parts[0] + parts[1]).strip()
+        if name.startswith("arena-auth-prod-v1."):
+            suffix = name.rsplit(".", 1)[1]
+            val = str(cookie.get("value") or "")
+            if suffix.isdigit() and val:
+                parts[int(suffix)] = val
+    if parts:
+        combined = "".join(parts[i] for i in sorted(parts)).strip()
         return combined if combined else None
-    elif 0 in parts:
-        value = parts[0].strip()
-        return value if value else None
     return None
 
 
@@ -121,12 +119,11 @@ def _upsert_browser_session_into_config(config: dict, cookies: list[dict], user_
         if not name or value is None:
             continue
         name = str(name)
-        # Always save arena-auth-prod-v1 to browser_cookies (for HTTP fallback)
+        # Always save non-empty arena-auth-prod-v1 to browser_cookies (for HTTP fallback)
         # Only promote to top-level auth_tokens when persist_arena_auth_cookie is true
         if name == "arena-auth-prod-v1" and not bool(config.get("persist_arena_auth_cookie")):
-            # Still save to browser_cookies for plain HTTP fallback
-            value = str(value)
-            if cookie_store.get(name) != value:
+            value = str(value).strip()
+            if value and cookie_store.get(name) != value:
                 cookie_store[name] = value
                 changed = True
             continue
@@ -884,6 +881,15 @@ async def try_refresh_arena_auth_token(
         _m().EPHEMERAL_ARENA_AUTH_TOKEN = refreshed_token
         _persist_refreshed_auth_token(cfg, token, refreshed_token)
         return refreshed_token
+
+    try:
+        from .account_recovery import recover_arena_auth_session
+
+        recovered = await recover_arena_auth_session(old_token=token, config=cfg)
+        if recovered:
+            return recovered
+    except Exception:
+        pass
 
     return None
 

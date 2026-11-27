@@ -4093,7 +4093,10 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                     timeout_seconds=120,
                     auth_token=current_token,
                 )
-                if response:
+                if response and response.status_code == HTTPStatus.FORBIDDEN:
+                    debug_print("⚠️ Userscript Proxy returned 403. Falling back to direct/browser retry...")
+                    response = None
+                elif response:
                     # Raise for status to trigger the standard error handling block below if needed
                     response.raise_for_status()
                 else:

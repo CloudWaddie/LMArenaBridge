@@ -1,10 +1,11 @@
 import base64
 import json
+import os
+from pathlib import Path
+import tempfile
 import time
 import unittest
-from unittest.mock import AsyncMock
-
-import pytest
+from unittest.mock import AsyncMock, patch
 
 from src.account_recovery import (
     _extract_arena_auth_from_cookies,
@@ -75,37 +76,41 @@ class TestAccountRecoveryHelpers(unittest.TestCase):
         )
 
 
-@pytest.mark.asyncio
-async def test_signup_recovery_persists_managed_account_and_token(tmp_path, monkeypatch):
-    from src import account_recovery, main
+class TestAccountRecoveryPersistence(unittest.IsolatedAsyncioTestCase):
+    async def test_signup_recovery_persists_managed_account_and_token(self) -> None:
+        from src import account_recovery, main
 
-    config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"auth_tokens": ["expired", "added-on-disk"]}))
-    monkeypatch.setattr(main, "CONFIG_FILE", str(config_path))
-    monkeypatch.setattr(main, "EPHEMERAL_ARENA_AUTH_TOKEN", "")
-    monkeypatch.setenv("LM_ALLOW_RECOVERY_IN_TESTS", "1")
-    monkeypatch.delenv("LM_ARENA_EMAIL", raising=False)
-    monkeypatch.delenv("LM_ARENA_PASSWORD", raising=False)
-    monkeypatch.setenv("LM_IMAP_HOST", "imap.example.com")
-    monkeypatch.setenv("LM_IMAP_USER", "mailbox@example.com")
-    monkeypatch.setenv("LM_IMAP_PASSWORD", "test-mailbox-password")
-    monkeypatch.setenv("LM_IMAP_PORT", "993")
-    monkeypatch.setenv("LM_SIGNUP_EMAIL", "arena@example.com")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text(json.dumps({"auth_tokens": ["expired", "added-on-disk"]}))
+            token = _make_session_token(int(time.time()) + 3600, is_anonymous=False)
+            signup = AsyncMock(return_value=(token, "test-account-password"))
+            env = {
+                "LM_ALLOW_RECOVERY_IN_TESTS": "1",
+                "LM_ARENA_EMAIL": "",
+                "LM_ARENA_PASSWORD": "",
+                "LM_IMAP_HOST": "imap.example.com",
+                "LM_IMAP_USER": "mailbox@example.com",
+                "LM_IMAP_PASSWORD": "test-mailbox-password",
+                "LM_IMAP_PORT": "993",
+                "LM_SIGNUP_EMAIL": "arena@example.com",
+            }
+            with (
+                patch.object(main, "CONFIG_FILE", str(config_path)),
+                patch.object(main, "EPHEMERAL_ARENA_AUTH_TOKEN", ""),
+                patch.dict(os.environ, env, clear=False),
+                patch.object(account_recovery, "signup_arena_email_account", signup),
+            ):
+                recovered = await account_recovery.recover_arena_auth_session(
+                    old_token="expired", config={"auth_tokens": ["expired"]}
+                )
 
-    token = _make_session_token(int(time.time()) + 3600, is_anonymous=False)
-    signup = AsyncMock(return_value=(token, "test-account-password"))
-    monkeypatch.setattr(account_recovery, "signup_arena_email_account", signup)
-
-    recovered = await account_recovery.recover_arena_auth_session(
-        old_token="expired", config={"auth_tokens": ["expired"]}
-    )
-
-    signup.assert_awaited_once()
-    assert recovered == token
-    saved = json.loads(config_path.read_text())
-    assert saved["auth_tokens"] == [token, "added-on-disk"]
-    assert saved["managed_account"]["address"] == "arena@example.com"
-    assert saved["managed_account"]["password"] == "test-account-password"
+            signup.assert_awaited_once()
+            self.assertEqual(recovered, token)
+            saved = json.loads(config_path.read_text())
+            self.assertEqual(saved["auth_tokens"], [token, "added-on-disk"])
+            self.assertEqual(saved["managed_account"]["address"], "arena@example.com")
+            self.assertEqual(saved["managed_account"]["password"], "test-account-password")
 
 
 class TestCamoufoxNotInstalledWorkerExit(unittest.IsolatedAsyncioTestCase):

@@ -5,7 +5,6 @@ Holds in-memory state that needs to be shared across modules.
 
 from collections import defaultdict
 from typing import Dict, Any, Optional
-import time
 
 
 # In-memory stores
@@ -38,28 +37,3 @@ IMAGES_CACHE: Dict[str, dict] = {}
 
 # Discovered actions: { action_name: action_id }
 DISCOVERED_ACTIONS: Dict[str, str] = {}
-
-
-def get_model_usage_stats() -> defaultdict:
-    return model_usage_stats
-
-
-def set_model_usage_stats(stats: defaultdict) -> None:
-    global model_usage_stats
-    model_usage_stats = stats
-
-
-def get_current_token_index() -> int:
-    return current_token_index
-
-
-def set_current_token_index(index: int) -> None:
-    global current_token_index
-    current_token_index = index
-
-
-def increment_token_index(length: int) -> int:
-    global current_token_index
-    if length > 0:
-        current_token_index = (current_token_index + 1) % length
-    return current_token_index

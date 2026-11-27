@@ -9,8 +9,6 @@ Acts as a fallback when simple invisible v2 minting fails.
 from __future__ import annotations
 
 import asyncio
-import os
-import sys
 from pathlib import Path
 from typing import Optional
 

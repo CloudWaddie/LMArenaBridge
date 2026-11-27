@@ -12,7 +12,6 @@ on main.X remain effective.
 import asyncio
 import json
 import os
-import time
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -23,6 +22,357 @@ from fastapi import HTTPException, Request
 from . import constants as _constants
 
 HTTPStatus = _constants.HTTPStatus
+
+_BROWSER_STREAM_FETCH_JS = """async ({url, method, body, extraHeaders, timeoutMs}) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort('timeout'), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'content-type': 'text/plain;charset=UTF-8',
+        ...extraHeaders
+      },
+      body,
+      credentials: 'include',
+      signal: controller.signal,
+    });
+    const headers = {};
+    try {
+      if (res.headers && typeof res.headers.forEach === 'function') {
+        res.headers.forEach((value, key) => { headers[key] = value; });
+      }
+    } catch (e) {}
+
+    if (window.reportChunk) {
+      await window.reportChunk(JSON.stringify({ __type: 'meta', status: res.status, headers }));
+    }
+
+    if (res.body) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { value, done } = await reader.read();
+        if (value) buffer += decoder.decode(value, { stream: true });
+        if (done) buffer += decoder.decode();
+        const parts = buffer.split(/\\r?\\n/);
+        buffer = parts.pop() || '';
+        for (const line of parts) {
+          if (line.trim() && window.reportChunk) {
+            await window.reportChunk(line);
+          }
+        }
+        if (done) break;
+      }
+      if (buffer.trim() && window.reportChunk) {
+        await window.reportChunk(buffer);
+      }
+    } else {
+      const text = await res.text();
+      if (window.reportChunk) await window.reportChunk(text);
+    }
+    return { __streaming: true };
+  } catch (e) {
+    return { status: 502, headers: {}, text: 'FETCH_ERROR:' + String(e) };
+  } finally {
+    clearTimeout(timer);
+  }
+}"""
+
+_RENDER_TURNSTILE_JS = """async ({ sitekey }) => {
+  const w = (window.wrappedJSObject || window);
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const key = String(sitekey || '');
+  const out = { ok: false, widgetId: null, stage: 'start', error: '' };
+  if (!key) { out.stage = 'no_sitekey'; return out; }
+  try {
+    const prev = w.__LM_BRIDGE_TURNSTILE_WIDGET_ID;
+    if (prev != null && w.turnstile && typeof w.turnstile.remove === 'function') {
+      try { w.turnstile.remove(prev); } catch (e) {}
+    }
+  } catch (e) {}
+  try {
+    const old = w.document.getElementById('lm-bridge-turnstile');
+    if (old) old.remove();
+  } catch (e) {}
+  async function ensureLoaded() {
+    if (w.turnstile && typeof w.turnstile.render === 'function') return true;
+    try {
+      const h = w.document?.head;
+      if (!h) return false;
+      if (!w.__LM_BRIDGE_TURNSTILE_INJECTED) {
+        w.__LM_BRIDGE_TURNSTILE_INJECTED = true;
+        out.stage = 'inject_script';
+        await Promise.race([
+          new Promise((resolve) => {
+            const s = w.document.createElement('script');
+            s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+            s.async = true;
+            s.defer = true;
+            s.onload = () => resolve(true);
+            s.onerror = () => resolve(false);
+            h.appendChild(s);
+          }),
+          sleep(12000).then(() => false),
+        ]);
+      }
+    } catch (e) { out.error = String(e); }
+    const start = Date.now();
+    while ((Date.now() - start) < 15000) {
+      if (w.turnstile && typeof w.turnstile.render === 'function') return true;
+      await sleep(250);
+    }
+    return false;
+  }
+  const ok = await ensureLoaded();
+  if (!ok || !(w.turnstile && typeof w.turnstile.render === 'function')) { out.stage = 'not_loaded'; return out; }
+  out.stage = 'render';
+  try {
+    const el = w.document.createElement('div');
+    el.id = 'lm-bridge-turnstile';
+    el.style.cssText = 'position:fixed;left:20px;top:20px;z-index:2147483647;';
+    (w.document.body || w.document.documentElement).appendChild(el);
+    const params = new w.Object();
+    params.sitekey = key;
+    params.size = 'normal';
+    params.appearance = 'interaction-only';
+    params.callback = (tok) => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = String(tok || ''); } catch (e) {} };
+    params['error-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
+    params['expired-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
+    const widgetId = w.turnstile.render(el, params);
+    w.__LM_BRIDGE_TURNSTILE_WIDGET_ID = widgetId;
+    out.ok = true;
+    out.widgetId = widgetId;
+    return out;
+  } catch (e) {
+    out.error = String(e);
+    out.stage = 'render_error';
+    return out;
+  }
+}"""
+
+
+def _build_desired_arena_cookies(
+    config: dict, auth_token: str = "", *, include_grecaptcha: bool = True
+) -> list[dict]:
+    """Build Playwright cookie specs for .lmarena.ai and .arena.ai from config."""
+    cookie_store = config.get("browser_cookies")
+    cookie_map = (
+        {str(k): str(v) for k, v in cookie_store.items() if k and v}
+        if isinstance(cookie_store, dict)
+        else {}
+    )
+    cookie_definitions = [
+        (str(config.get("cf_clearance") or cookie_map.get("cf_clearance") or "").strip(), "cf_clearance"),
+        (str(config.get("cf_bm") or cookie_map.get("__cf_bm") or "").strip(), "__cf_bm"),
+        (str(config.get("cfuvid") or cookie_map.get("_cfuvid") or "").strip(), "_cfuvid"),
+        (str(config.get("provisional_user_id") or cookie_map.get("provisional_user_id") or "").strip(), "provisional_user_id"),
+    ]
+    if include_grecaptcha:
+        cookie_definitions.append((str(cookie_map.get("_GRECAPTCHA") or "").strip(), "_GRECAPTCHA"))
+
+    desired_cookies = [
+        {"name": name, "value": value, "domain": domain}
+        for value, name in cookie_definitions
+        if value
+        for domain in (".lmarena.ai", ".arena.ai")
+    ]
+    if auth_token:
+        desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
+    return desired_cookies
+
+
+async def _run_in_page_streaming_fetch(
+    *,
+    page,
+    http_method: str,
+    url: str,
+    fetch_url: str,
+    payload: dict,
+    timeout_seconds: int,
+    max_recaptcha_attempts: int,
+    is_recaptcha_failed,
+    mint_v3,
+    mint_v2,
+    label: str,
+    fixed_429_sleep: Optional[float] = None,
+    on_recaptcha_retry=None,
+) -> "BrowserFetchStreamResponse":
+    """Execute in-page streaming fetch with meta detection, 429 backoff, and reCAPTCHA v2/vision retry."""
+    lines_queue: asyncio.Queue = asyncio.Queue()
+    done_event: asyncio.Event = asyncio.Event()
+
+    async def _report_chunk(source, line: str):
+        if line and line.strip():
+            await lines_queue.put(line)
+
+    await page.expose_binding("reportChunk", _report_chunk)
+
+    result: dict = {"status": 0, "headers": {}, "text": ""}
+    for attempt in range(max_recaptcha_attempts):
+        while not lines_queue.empty():
+            lines_queue.get_nowait()
+        done_event.clear()
+
+        has_v2 = isinstance(payload, dict) and bool(payload.get("recaptchaV2Token"))
+        has_v3 = isinstance(payload, dict) and bool(payload.get("recaptchaV3Token"))
+        if isinstance(payload, dict) and not has_v2 and (attempt > 0 or not has_v3):
+            try:
+                tok = await mint_v3()
+                if tok:
+                    payload["recaptchaV3Token"] = tok
+            except Exception as e:
+                _m().debug_print(f"  ⚠️ Error minting token in {label}: {e}")
+
+        extra_headers = {}
+        try:
+            dep_id = str((_m().get_config() or {}).get("arena_web_deployment") or "").strip()
+            if dep_id:
+                extra_headers["x-arena-web-deployment"] = dep_id
+                extra_headers["x-deployment-id"] = dep_id
+        except Exception:
+            pass
+
+        fetch_task = asyncio.create_task(
+            page.evaluate(
+                _BROWSER_STREAM_FETCH_JS,
+                {
+                    "url": fetch_url,
+                    "method": http_method,
+                    "body": json.dumps(payload) if payload is not None else "",
+                    "extraHeaders": extra_headers,
+                    "timeoutMs": int(timeout_seconds * 1000),
+                },
+            )
+        )
+
+        meta = None
+        while not fetch_task.done():
+            try:
+                item = await asyncio.wait_for(lines_queue.get(), timeout=0.1)
+                if isinstance(item, str) and item.startswith('{"__type":"meta"'):
+                    meta = json.loads(item)
+                    break
+                await lines_queue.put(item)
+                meta = {"status": 200, "headers": {}}
+                break
+            except asyncio.TimeoutError:
+                continue
+
+        if fetch_task.done() and meta is None:
+            try:
+                res = fetch_task.result()
+                fetch_exc = None
+            except Exception as e:
+                res, fetch_exc = None, e
+                result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
+            if fetch_exc is None:
+                if isinstance(res, dict) and not res.get("__streaming"):
+                    result = res
+                else:
+                    try:
+                        item = lines_queue.get_nowait()
+                        if isinstance(item, str) and item.startswith('{"__type":"meta"'):
+                            meta = json.loads(item)
+                        else:
+                            await lines_queue.put(item)
+                            meta = {"status": 200, "headers": {}}
+                    except asyncio.QueueEmpty:
+                        meta = {"status": 200, "headers": {}}
+                    result = meta
+        elif meta:
+            result = meta
+
+        status_code = int(result.get("status") or 0)
+        if status_code == HTTPStatus.TOO_MANY_REQUESTS and attempt < max_recaptcha_attempts - 1:
+            if fixed_429_sleep is not None:
+                sleep_seconds = fixed_429_sleep
+            else:
+                headers_map = result.get("headers") if isinstance(result, dict) and isinstance(result.get("headers"), dict) else {}
+                retry_after = headers_map.get("retry-after") or headers_map.get("Retry-After")
+                sleep_seconds = _m().get_rate_limit_sleep_seconds(
+                    str(retry_after) if retry_after is not None else None, attempt
+                )
+            await _m()._cancel_background_task(fetch_task)
+            await asyncio.sleep(sleep_seconds)
+            continue
+
+        if not is_recaptcha_failed(status_code, result.get("text")):
+            if status_code < 400:
+                candidate_body = result.get("text") if isinstance(result, dict) else None
+                if isinstance(candidate_body, str) and candidate_body:
+                    return BrowserFetchStreamResponse(
+                        status_code=status_code,
+                        headers=result.get("headers", {}) if isinstance(result, dict) else {},
+                        text=candidate_body,
+                        method=http_method,
+                        url=url,
+                    )
+
+                def _on_fetch_task_done(task: "asyncio.Task") -> None:
+                    _m()._consume_background_task_exception(task)
+                    try:
+                        done_event.set()
+                    except Exception:
+                        pass
+
+                try:
+                    fetch_task.add_done_callback(_on_fetch_task_done)
+                except Exception:
+                    pass
+
+                return BrowserFetchStreamResponse(
+                    status_code=status_code,
+                    headers=result.get("headers", {}),
+                    method=http_method,
+                    url=url,
+                    lines_queue=lines_queue,
+                    done_event=done_event,
+                )
+            await _m()._cancel_background_task(fetch_task)
+            break
+
+        await _m()._cancel_background_task(fetch_task)
+        if attempt < max_recaptcha_attempts - 1:
+            if isinstance(payload, dict) and not bool(payload.get("recaptchaV2Token")):
+                try:
+                    v2_token = await mint_v2()
+                except Exception:
+                    v2_token = None
+                if v2_token:
+                    payload["recaptchaV2Token"] = v2_token
+                    payload.pop("recaptchaV3Token", None)
+                    await asyncio.sleep(0.5)
+                    continue
+                try:
+                    from .vision_solver import solve_recaptcha_v2_challenge, VisionSolverConfig
+
+                    _m().debug_print(f"🤖 {label} fetch: invisible v2 mint failed, trying AI vision solver...")
+                    v2_vision_token = await solve_recaptcha_v2_challenge(
+                        website_key=_m().RECAPTCHA_V2_SITEKEY,
+                        website_url="https://arena.ai/",
+                        solver_config=VisionSolverConfig(_m().get_config()),
+                    )
+                    if v2_vision_token:
+                        payload["recaptchaV2Token"] = v2_vision_token
+                        payload.pop("recaptchaV3Token", None)
+                        await asyncio.sleep(0.5)
+                        continue
+                except Exception:
+                    pass
+            if on_recaptcha_retry is not None:
+                await on_recaptcha_retry(attempt)
+        elif on_recaptcha_retry is None:
+            await asyncio.sleep(2)
+
+    return BrowserFetchStreamResponse(
+        int(result.get("status") or 0),
+        result.get("headers") if isinstance(result, dict) else {},
+        result.get("text") if isinstance(result, dict) else "",
+        method=http_method,
+        url=url,
+    )
 
 
 def _m():
@@ -614,40 +964,10 @@ async def fetch_lmarena_stream_via_chrome(
     config = _m().get_config()
     recaptcha_sitekey, recaptcha_action = _m().get_recaptcha_settings(config)
 
-    cookie_store = config.get("browser_cookies")
-    cookie_map: dict[str, str] = {}
-    if isinstance(cookie_store, dict):
-        for name, value in cookie_store.items():
-            if not name or not value:
-                continue
-            cookie_map[str(name)] = str(value)
-
     # Prefer the Chrome persistent profile's own Cloudflare/BM cookies when present.
     # We only inject missing cookies to avoid overwriting a valid cf_clearance/__cf_bm with stale values
     # coming from a different browser fingerprint.
-    cf_clearance = str(config.get("cf_clearance") or cookie_map.get("cf_clearance") or "").strip()
-    cf_bm = str(config.get("cf_bm") or cookie_map.get("__cf_bm") or "").strip()
-    cfuvid = str(config.get("cfuvid") or cookie_map.get("_cfuvid") or "").strip()
-    provisional_user_id = str(config.get("provisional_user_id") or cookie_map.get("provisional_user_id") or "").strip()
-    grecaptcha_cookie = str(cookie_map.get("_GRECAPTCHA") or "").strip()
-
-    desired_cookies: list[dict] = []
-    # When using domain, do NOT include path - they're mutually exclusive in Playwright
-    # We define cookies for both domains for seamless migration
-    cookie_definitions = [
-        (cf_clearance, "cf_clearance"),
-        (cf_bm, "__cf_bm"),
-        (cfuvid, "_cfuvid"),
-        (provisional_user_id, "provisional_user_id"),
-        (grecaptcha_cookie, "_GRECAPTCHA"),
-    ]
-    for value, name in cookie_definitions:
-        if value:
-            for _domain in (".lmarena.ai", ".arena.ai"):
-                desired_cookies.append({"name": name, "value": value, "domain": _domain})
-    
-    if auth_token:
-        desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
+    desired_cookies = _build_desired_arena_cookies(config, auth_token)
 
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))
 
@@ -848,278 +1168,32 @@ async def fetch_lmarena_stream_via_chrome(
                     return token
                 return None
 
-            lines_queue: asyncio.Queue = asyncio.Queue()
-            done_event: asyncio.Event = asyncio.Event()
-
-            # Buffer for splitlines handling in browser
-            async def _report_chunk(source, line: str):
-                if line and line.strip():
-                    await lines_queue.put(line)
-
-            await page.expose_binding("reportChunk", _report_chunk)
-
-            fetch_script = """async ({url, method, body, extraHeaders, timeoutMs}) => {
-              const controller = new AbortController();
-              const timer = setTimeout(() => controller.abort('timeout'), timeoutMs);
-              try {
-                const res = await fetch(url, {
-                  method,
-                  headers: { 
-                    'content-type': 'text/plain;charset=UTF-8',
-                    ...extraHeaders
-                  },
-                  body,
-                  credentials: 'include',
-                  signal: controller.signal,
-                });
-                const headers = {};
-                try {
-                  if (res.headers && typeof res.headers.forEach === 'function') {
-                    res.headers.forEach((value, key) => { headers[key] = value; });
-                  }
-                } catch (e) {}
-
-                // Send initial status and headers
-                if (window.reportChunk) {
-                    await window.reportChunk(JSON.stringify({ __type: 'meta', status: res.status, headers }));
-                }
-
-                if (res.body) {
-                  const reader = res.body.getReader();
-                  const decoder = new TextDecoder();
-                  let buffer = '';
-                  while (true) {
-                    const { value, done } = await reader.read();
-                    if (value) buffer += decoder.decode(value, { stream: true });
-                    if (done) buffer += decoder.decode();
-                    
-                    const parts = buffer.split(/\\r?\\n/);
-                    buffer = parts.pop() || '';
-                    for (const line of parts) {
-                        if (line.trim() && window.reportChunk) {
-                            await window.reportChunk(line);
-                        }
-                    }
-                    if (done) break;
-                  }
-                  if (buffer.trim() && window.reportChunk) {
-                      await window.reportChunk(buffer);
-                  }
-                } else {
-                  const text = await res.text();
-                  if (window.reportChunk) await window.reportChunk(text);
-                }
-                return { __streaming: true };
-              } catch (e) {
-                return { status: 502, headers: {}, text: 'FETCH_ERROR:' + String(e) };
-              } finally {
-                clearTimeout(timer);
-              }
-            }"""
-
-            result: dict = {"status": 0, "headers": {}, "text": ""}
-            for attempt in range(max_recaptcha_attempts):
-                # Clear queue for each attempt
-                while not lines_queue.empty():
-                    lines_queue.get_nowait()
-                done_event.clear()
-
-                current_recaptcha_token = ""
-                # Mint a new token if not already present or if it's empty
-                has_v2 = isinstance(payload, dict) and bool(payload.get("recaptchaV2Token"))
-                has_v3 = isinstance(payload, dict) and bool(payload.get("recaptchaV3Token"))
-                
-                if isinstance(payload, dict) and not has_v2 and (attempt > 0 or not has_v3):
-                    current_recaptcha_token = await _mint_recaptcha_v3_token()
-                    if current_recaptcha_token:
-                        payload["recaptchaV3Token"] = current_recaptcha_token
-
-                extra_headers = {}
-                # NOTE: the current arena.ai API rejects X-Recaptcha-* request headers
-                # (429 "prompt failed"); the token belongs in the payload only.
+            async def _chrome_recaptcha_retry(attempt: int) -> None:
                 try:
-                    dep_id = str((_m().get_config() or {}).get("arena_web_deployment") or "").strip()
-                    if dep_id:
-                        extra_headers["x-arena-web-deployment"] = dep_id
-                        extra_headers["x-deployment-id"] = dep_id
+                    await _m().click_turnstile(page)
                 except Exception:
                     pass
+                try:
+                    await page.mouse.move(120 + (attempt * 10), 120 + (attempt * 10))
+                    await page.mouse.wheel(0, 250)
+                except Exception:
+                    pass
+                await asyncio.sleep(min(2.0 * (2**attempt), 15.0))
 
-                body = json.dumps(payload) if payload is not None else ""
-                
-                # Start fetch task
-                fetch_task = asyncio.create_task(page.evaluate(
-                    fetch_script,
-                    {
-                        "url": fetch_url,
-                        "method": http_method,
-                        "body": body,
-                        "extraHeaders": extra_headers,
-                        "timeoutMs": int(timeout_seconds * 1000),
-                    },
-                ))
-
-                # Wait for initial meta (status/headers) OR task completion
-                meta = None
-                while not fetch_task.done():
-                    try:
-                        # Peek at queue for meta
-                        item = await asyncio.wait_for(lines_queue.get(), timeout=0.1)
-                        if isinstance(item, str) and item.startswith('{"__type":"meta"'):
-                            meta = json.loads(item)
-                            break
-                        else:
-                            # Not meta, put it back (though it shouldn't happen before meta)
-                            # Actually, LMArena might send data immediately.
-                            # If it's not meta, it's likely already content.
-                            # For safety, let's assume if it doesn't look like meta, status is 200.
-                            if not item.startswith('{"__type":"meta"'):
-                                await lines_queue.put(item)
-                                meta = {"status": 200, "headers": {}}
-                                break
-                    except asyncio.TimeoutError:
-                        continue
-                
-                if fetch_task.done() and meta is None:
-                    # The fetch completed without pushing a meta chunk — prefer its own
-                    # return value (a non-streaming buffered body) over queue/meta fallbacks.
-                    try:
-                        res = fetch_task.result()
-                        fetch_exc = None
-                    except Exception as e:
-                        res = None
-                        fetch_exc = e
-                        result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
-                    if fetch_exc is not None:
-                        # The fetch raised before reporting metadata — keep the 502; the
-                        # queue is empty anyway and a fabricated 200 would hide the error.
-                        pass
-                    elif isinstance(res, dict) and not res.get("__streaming"):
-                        result = res
-                    else:
-                        # Check the queue once for a racing meta chunk, else assume success.
-                        try:
-                            item = lines_queue.get_nowait()
-                            if isinstance(item, str) and item.startswith('{"__type":"meta"'):
-                                meta = json.loads(item)
-                            else:
-                                await lines_queue.put(item)
-                                meta = {"status": 200, "headers": {}}
-                        except asyncio.QueueEmpty:
-                            meta = {"status": 200, "headers": {}}
-                        result = meta
-                elif meta:
-                    result = meta
-                
-                status_code = int(result.get("status") or 0)
-
-                # If upstream rate limits us, wait and retry inside the same browser session to avoid hammering.
-                if status_code == HTTPStatus.TOO_MANY_REQUESTS and attempt < max_recaptcha_attempts - 1:
-                    retry_after = None
-                    if isinstance(result, dict) and isinstance(result.get("headers"), dict):
-                        headers_map = result.get("headers") or {}
-                        retry_after = headers_map.get("retry-after") or headers_map.get("Retry-After")
-                    sleep_seconds = _m().get_rate_limit_sleep_seconds(
-                        str(retry_after) if retry_after is not None else None,
-                        attempt,
-                    )
-                    await _m()._cancel_background_task(fetch_task)
-                    await asyncio.sleep(sleep_seconds)
-                    continue
-
-                if not _is_recaptcha_validation_failed(status_code, result.get("text")):
-                    # Success or non-recaptcha error. 
-                    # If success, start a task to wait for fetch_task to finish and set done_event.
-                    if status_code < 400:
-                        # If the in-page script returned a buffered body (e.g. in unit tests/mocks where
-                        # `reportChunk` isn't exercised), fall back to a plain buffered response.
-                        body_text = ""
-                        try:
-                            candidate_body = result.get("text") if isinstance(result, dict) else None
-                        except Exception:
-                            candidate_body = None
-                        if isinstance(candidate_body, str) and candidate_body:
-                            return BrowserFetchStreamResponse(
-                                status_code=status_code,
-                                headers=result.get("headers", {}) if isinstance(result, dict) else {},
-                                text=candidate_body,
-                                method=http_method,
-                                url=url,
-                            )
-
-                        def _on_fetch_task_done(task: "asyncio.Task") -> None:
-                            _m()._consume_background_task_exception(task)
-                            try:
-                                done_event.set()
-                            except Exception:
-                                pass
-
-                        try:
-                            fetch_task.add_done_callback(_on_fetch_task_done)
-                        except Exception:
-                            pass
-                        
-                        return BrowserFetchStreamResponse(
-                            status_code=status_code,
-                            headers=result.get("headers", {}),
-                            method=http_method,
-                            url=url,
-                            lines_queue=lines_queue,
-                            done_event=done_event
-                        )
-                    await _m()._cancel_background_task(fetch_task)
-                    break
-
-                await _m()._cancel_background_task(fetch_task)
-                if attempt < max_recaptcha_attempts - 1:
-                    # ... retry logic ...
-                    if isinstance(payload, dict) and not bool(payload.get("recaptchaV2Token")):
-                        try:
-                            v2_token = await _mint_recaptcha_v2_token()
-                        except Exception:
-                            v2_token = None
-                        if v2_token:
-                            payload["recaptchaV2Token"] = v2_token
-                            payload.pop("recaptchaV3Token", None)
-                            await asyncio.sleep(0.5)
-                            continue
-
-                        try:
-                            from .vision_solver import solve_recaptcha_v2_challenge, VisionSolverConfig
-                            _m().debug_print("🤖 Chrome fetch: invisible v2 mint failed, trying AI vision solver...")
-                            v2_vision_token = await solve_recaptcha_v2_challenge(
-                                website_key=_m().RECAPTCHA_V2_SITEKEY,
-                                website_url="https://arena.ai/",
-                                solver_config=VisionSolverConfig(_m().get_config()),
-                            )
-                            if v2_vision_token:
-                                payload["recaptchaV2Token"] = v2_vision_token
-                                payload.pop("recaptchaV3Token", None)
-                                await asyncio.sleep(0.5)
-                                continue
-                        except Exception:
-                            pass
-
-                    try:
-                        await _m().click_turnstile(page)
-                    except Exception:
-                        pass
-
-                    try:
-                        await page.mouse.move(120 + (attempt * 10), 120 + (attempt * 10))
-                        await page.mouse.wheel(0, 250)
-                    except Exception:
-                        pass
-                    await asyncio.sleep(min(2.0 * (2**attempt), 15.0))
-
-            response = BrowserFetchStreamResponse(
-                int(result.get("status") or 0),
-                result.get("headers") if isinstance(result, dict) else {},
-                result.get("text") if isinstance(result, dict) else "",
-                method=http_method,
+            return await _run_in_page_streaming_fetch(
+                page=page,
+                http_method=http_method,
                 url=url,
+                fetch_url=fetch_url,
+                payload=payload,
+                timeout_seconds=timeout_seconds,
+                max_recaptcha_attempts=max_recaptcha_attempts,
+                is_recaptcha_failed=_is_recaptcha_validation_failed,
+                mint_v3=_mint_recaptcha_v3_token,
+                mint_v2=_mint_recaptcha_v2_token,
+                label="Chrome",
+                on_recaptcha_retry=_chrome_recaptcha_retry,
             )
-            return response
         except Exception as e:
             _m().debug_print(f"??? Chrome fetch transport failed: {e}")
             return None
@@ -1144,42 +1218,9 @@ async def fetch_lmarena_stream_via_camoufox(
     config = _m().get_config()
     recaptcha_sitekey, recaptcha_action = _m().get_recaptcha_settings(config)
     
-    cookie_store = config.get("browser_cookies")
-    cookie_map: dict[str, str] = {}
-    if isinstance(cookie_store, dict):
-        for name, value in cookie_store.items():
-            if not name or not value:
-                continue
-            cookie_map[str(name)] = str(value)
-
-    cf_clearance = str(config.get("cf_clearance") or cookie_map.get("cf_clearance") or "").strip()
-    cf_bm = str(config.get("cf_bm") or cookie_map.get("__cf_bm") or "").strip()
-    cfuvid = str(config.get("cfuvid") or cookie_map.get("_cfuvid") or "").strip()
-    provisional_user_id = str(config.get("provisional_user_id") or cookie_map.get("provisional_user_id") or "").strip()
-    grecaptcha_cookie = str(cookie_map.get("_GRECAPTCHA") or "").strip()
-
-    desired_cookies: list[dict] = []
-    # When using domain, do NOT include path - they're mutually exclusive in Playwright
-    # We define cookies for both domains for seamless migration
-    cookie_definitions = [
-        (cf_clearance, "cf_clearance"),
-        (cf_bm, "__cf_bm"),
-        (cfuvid, "_cfuvid"),
-        (provisional_user_id, "provisional_user_id"),
-        (grecaptcha_cookie, "_GRECAPTCHA"),
-    ]
-    for value, name in cookie_definitions:
-        if value:
-            for _domain in (".lmarena.ai", ".arena.ai"):
-                desired_cookies.append({"name": name, "value": value, "domain": _domain})
-    
-    # If no auth token provided, try to get one from config/browser_cookies
     if not auth_token:
-        # Check if we have an arena-auth cookie in browser_cookies
         auth_token = config.get("browser_cookies", {}).get("arena-auth-prod-v1") or _m().EPHEMERAL_ARENA_AUTH_TOKEN or ""
-    
-    if auth_token:
-        desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
+    desired_cookies = _build_desired_arena_cookies(config, auth_token)
     user_agent = _m().normalize_user_agent_value(config.get("user_agent"))
 
     fetch_url = _normalize_userscript_proxy_url(url)
@@ -1269,77 +1310,7 @@ async def fetch_lmarena_stream_via_camoufox(
                 turnstile_token = ""
                 widget_id = None
                 _m().debug_print(" 🦊 Rendering Turnstile widget...")
-                render_turnstile_js = """async ({ sitekey }) => {
-                  const w = (window.wrappedJSObject || window);
-                  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-                  const key = String(sitekey || '');
-                  const out = { ok: false, widgetId: null, stage: 'start', error: '' };
-                  if (!key) { out.stage = 'no_sitekey'; return out; }
-                  try {
-                    const prev = w.__LM_BRIDGE_TURNSTILE_WIDGET_ID;
-                    if (prev != null && w.turnstile && typeof w.turnstile.remove === 'function') {
-                      try { w.turnstile.remove(prev); } catch (e) {}
-                    }
-                  } catch (e) {}
-                  try {
-                    const old = w.document.getElementById('lm-bridge-turnstile');
-                    if (old) old.remove();
-                  } catch (e) {}
-                  async function ensureLoaded() {
-                    if (w.turnstile && typeof w.turnstile.render === 'function') return true;
-                    try {
-                      const h = w.document?.head;
-                      if (!h) return false;
-                      if (!w.__LM_BRIDGE_TURNSTILE_INJECTED) {
-                        w.__LM_BRIDGE_TURNSTILE_INJECTED = true;
-                        out.stage = 'inject_script';
-                        await Promise.race([
-                          new Promise((resolve) => {
-                            const s = w.document.createElement('script');
-                            s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-                            s.async = true;
-                            s.defer = true;
-                            s.onload = () => resolve(true);
-                            s.onerror = () => resolve(false);
-                            h.appendChild(s);
-                          }),
-                          sleep(12000).then(() => false),
-                        ]);
-                      }
-                    } catch (e) { out.error = String(e); }
-                    const start = Date.now();
-                    while ((Date.now() - start) < 15000) {
-                      if (w.turnstile && typeof w.turnstile.render === 'function') return true;
-                      await sleep(250);
-                    }
-                    return false;
-                  }
-                  const ok = await ensureLoaded();
-                  if (!ok || !(w.turnstile && typeof w.turnstile.render === 'function')) { out.stage = 'not_loaded'; return out; }
-                  out.stage = 'render';
-                  try {
-                    const el = w.document.createElement('div');
-                    el.id = 'lm-bridge-turnstile';
-                    el.style.cssText = 'position:fixed;left:20px;top:20px;z-index:2147483647;';
-                    (w.document.body || w.document.documentElement).appendChild(el);
-                    const params = new w.Object();
-                    params.sitekey = key;
-                    params.size = 'normal';
-                    params.appearance = 'interaction-only';
-                    params.callback = (tok) => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = String(tok || ''); } catch (e) {} };
-                    params['error-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
-                    params['expired-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
-                    const widgetId = w.turnstile.render(el, params);
-                    w.__LM_BRIDGE_TURNSTILE_WIDGET_ID = widgetId;
-                    out.ok = true;
-                    out.widgetId = widgetId;
-                    return out;
-                  } catch (e) {
-                    out.error = String(e);
-                    out.stage = 'render_error';
-                    return out;
-                  }
-                }"""
+                render_turnstile_js = _RENDER_TURNSTILE_JS
                 
                 poll_turnstile_js = """({ widgetId }) => {
                   const w = (window.wrappedJSObject || window);
@@ -1529,243 +1500,19 @@ async def fetch_lmarena_stream_via_camoufox(
                     return token
                 return None
 
-            lines_queue: asyncio.Queue = asyncio.Queue()
-            done_event: asyncio.Event = asyncio.Event()
-
-            async def _report_chunk(source, line: str):
-                if line and line.strip():
-                    await lines_queue.put(line)
-
-            await page.expose_binding("reportChunk", _report_chunk)
-
-            fetch_script = """async ({url, method, body, extraHeaders, timeoutMs}) => {
-              const controller = new AbortController();
-              const timer = setTimeout(() => controller.abort('timeout'), timeoutMs);
-              try {
-                const res = await fetch(url, {
-                  method,
-                  headers: { 
-                    'content-type': 'text/plain;charset=UTF-8',
-                    ...extraHeaders
-                  },
-                  body,
-                  credentials: 'include',
-                  signal: controller.signal,
-                });
-                const headers = {};
-                try {
-                  if (res.headers && typeof res.headers.forEach === 'function') {
-                    res.headers.forEach((value, key) => { headers[key] = value; });
-                  }
-                } catch (e) {}
-
-                // Send initial status and headers
-                if (window.reportChunk) {
-                    await window.reportChunk(JSON.stringify({ __type: 'meta', status: res.status, headers }));
-                }
-
-                if (res.body) {
-                  const reader = res.body.getReader();
-                  const decoder = new TextDecoder();
-                  let buffer = '';
-                  while (true) {
-                    const { value, done } = await reader.read();
-                    if (value) buffer += decoder.decode(value, { stream: true });
-                    if (done) buffer += decoder.decode();
-                    
-                    const parts = buffer.split(/\\r?\\n/);
-                    buffer = parts.pop() || '';
-                    for (const line of parts) {
-                        if (line.trim() && window.reportChunk) {
-                            await window.reportChunk(line);
-                        }
-                    }
-                    if (done) break;
-                  }
-                  if (buffer.trim() && window.reportChunk) {
-                      await window.reportChunk(buffer);
-                  }
-                } else {
-                  const text = await res.text();
-                  if (window.reportChunk) await window.reportChunk(text);
-                }
-                return { __streaming: true };
-              } catch (e) {
-                return { status: 502, headers: {}, text: 'FETCH_ERROR:' + String(e) };
-              } finally {
-                clearTimeout(timer);
-              }
-            }"""
-
-            result: dict = {"status": 0, "headers": {}, "text": ""}
-            for attempt in range(max_recaptcha_attempts):
-                # Clear queue for each attempt
-                while not lines_queue.empty():
-                    lines_queue.get_nowait()
-                done_event.clear()
-
-                current_recaptcha_token = ""
-                has_v2 = isinstance(payload, dict) and bool(payload.get("recaptchaV2Token"))
-                has_v3 = isinstance(payload, dict) and bool(payload.get("recaptchaV3Token"))
-                
-                if isinstance(payload, dict) and not has_v2 and (attempt > 0 or not has_v3):
-                    try:
-                        current_recaptcha_token = await _mint_recaptcha_v3_token()
-                        if current_recaptcha_token:
-                            payload["recaptchaV3Token"] = current_recaptcha_token
-                    except Exception as e:
-                        _m().debug_print(f"  ⚠️ Error minting token in Camoufox: {e}")
-
-                extra_headers = {}
-                # NOTE: the current arena.ai API rejects X-Recaptcha-* request headers
-                # (429 "prompt failed"); the token belongs in the payload only.
-                try:
-                    dep_id = str((_m().get_config() or {}).get("arena_web_deployment") or "").strip()
-                    if dep_id:
-                        extra_headers["x-arena-web-deployment"] = dep_id
-                        extra_headers["x-deployment-id"] = dep_id
-                except Exception:
-                    pass
-
-                body = json.dumps(payload) if payload is not None else ""
-                
-                # Execute fetch
-                fetch_task = asyncio.create_task(page.evaluate(
-                    fetch_script,
-                    {
-                        "url": fetch_url,
-                        "method": http_method,
-                        "body": body,
-                        "extraHeaders": extra_headers,
-                        "timeoutMs": int(timeout_seconds * 1000),
-                    },
-                ))
-
-                # Wait for initial meta (status/headers) OR task completion
-                meta = None
-                while not fetch_task.done():
-                    try:
-                        item = await asyncio.wait_for(lines_queue.get(), timeout=0.1)
-                        if isinstance(item, str) and item.startswith('{"__type":"meta"'):
-                            meta = json.loads(item)
-                            break
-                        else:
-                            if not item.startswith('{"__type":"meta"'):
-                                await lines_queue.put(item)
-                                meta = {"status": 200, "headers": {}}
-                                break
-                    except asyncio.TimeoutError:
-                        continue
-                
-                if fetch_task.done() and meta is None:
-                    # The fetch completed without pushing a meta chunk — prefer its own
-                    # return value (a non-streaming buffered body) over queue/meta fallbacks.
-                    try:
-                        res = fetch_task.result()
-                        fetch_exc = None
-                    except Exception as e:
-                        res = None
-                        fetch_exc = e
-                        result = {"status": 502, "text": f"FETCH_EXCEPTION: {e}"}
-                    if fetch_exc is not None:
-                        # The fetch raised before reporting metadata — keep the 502 rather
-                        # than fabricating a 200 from the empty queue.
-                        pass
-                    elif isinstance(res, dict) and not res.get("__streaming"):
-                        result = res
-                    else:
-                        # Check the queue once for a racing meta chunk, else assume success.
-                        try:
-                            item = lines_queue.get_nowait()
-                            if isinstance(item, str) and item.startswith('{"__type":"meta"'):
-                                meta = json.loads(item)
-                            else:
-                                await lines_queue.put(item)
-                                meta = {"status": 200, "headers": {}}
-                        except asyncio.QueueEmpty:
-                            meta = {"status": 200, "headers": {}}
-                        result = meta
-                elif meta:
-                    result = meta
-
-                status_code = int(result.get("status") or 0)
-
-                if status_code == HTTPStatus.TOO_MANY_REQUESTS and attempt < max_recaptcha_attempts - 1:
-                    await _m()._cancel_background_task(fetch_task)
-                    await asyncio.sleep(5)
-                    continue
-
-                if not _is_recaptcha_validation_failed(status_code, result.get("text")):
-                    if status_code < 400:
-                        candidate_body = result.get("text") if isinstance(result, dict) else None
-                        if isinstance(candidate_body, str) and candidate_body:
-                            return BrowserFetchStreamResponse(
-                                status_code=status_code,
-                                headers=result.get("headers", {}) if isinstance(result, dict) else {},
-                                text=candidate_body,
-                                method=http_method,
-                                url=url,
-                            )
-
-                        def _on_fetch_task_done(task: "asyncio.Task") -> None:
-                            _m()._consume_background_task_exception(task)
-                            try:
-                                done_event.set()
-                            except Exception:
-                                pass
-
-                        try:
-                            fetch_task.add_done_callback(_on_fetch_task_done)
-                        except Exception:
-                            pass
-                        
-                        return BrowserFetchStreamResponse(
-                            status_code=status_code,
-                            headers=result.get("headers", {}),
-                            method=http_method,
-                            url=url,
-                            lines_queue=lines_queue,
-                            done_event=done_event
-                        )
-                    await _m()._cancel_background_task(fetch_task)
-                    break
-
-                await _m()._cancel_background_task(fetch_task)
-                if attempt < max_recaptcha_attempts - 1 and isinstance(payload, dict) and not bool(payload.get("recaptchaV2Token")):
-                    try:
-                        v2_token = await _mint_recaptcha_v2_token()
-                    except Exception:
-                        v2_token = None
-                    if v2_token:
-                        payload["recaptchaV2Token"] = v2_token
-                        payload.pop("recaptchaV3Token", None)
-                        await asyncio.sleep(0.5)
-                        continue
-
-                    try:
-                        from .vision_solver import solve_recaptcha_v2_challenge, VisionSolverConfig
-                        _m().debug_print("🤖 Camoufox fetch: invisible v2 mint failed, trying AI vision solver...")
-                        v2_vision_token = await solve_recaptcha_v2_challenge(
-                            website_key=_m().RECAPTCHA_V2_SITEKEY,
-                            website_url="https://arena.ai/",
-                            solver_config=VisionSolverConfig(_m().get_config()),
-                        )
-                        if v2_vision_token:
-                            payload["recaptchaV2Token"] = v2_vision_token
-                            payload.pop("recaptchaV3Token", None)
-                            await asyncio.sleep(0.5)
-                            continue
-                    except Exception:
-                        pass
-                
-                await asyncio.sleep(2)
-
-            return BrowserFetchStreamResponse(
-                int(result.get("status") or 0),
-                result.get("headers") if isinstance(result, dict) else {},
-                result.get("text") if isinstance(result, dict) else "",
-                method=http_method,
+            return await _run_in_page_streaming_fetch(
+                page=page,
+                http_method=http_method,
                 url=url,
+                fetch_url=fetch_url,
+                payload=payload,
+                timeout_seconds=timeout_seconds,
+                max_recaptcha_attempts=max_recaptcha_attempts,
+                is_recaptcha_failed=_is_recaptcha_validation_failed,
+                mint_v3=_mint_recaptcha_v3_token,
+                mint_v2=_mint_recaptcha_v2_token,
+                label="Camoufox",
+                fixed_429_sleep=5.0,
             )
 
     except Exception as e:
@@ -2098,32 +1845,7 @@ async def camoufox_proxy_worker():
                     pass
 
                 # Inject only a minimal set of cookies (do not overwrite browser-managed state).
-                cookie_store = cfg.get("browser_cookies")
-                cookie_map: dict[str, str] = {}
-                if isinstance(cookie_store, dict):
-                    for name, value in cookie_store.items():
-                        if not name or not value:
-                            continue
-                        cookie_map[str(name)] = str(value)
-
-                cf_clearance = str(cfg.get("cf_clearance") or cookie_map.get("cf_clearance") or "").strip()
-                cf_bm = str(cfg.get("cf_bm") or cookie_map.get("__cf_bm") or "").strip()
-                cfuvid = str(cfg.get("cfuvid") or cookie_map.get("_cfuvid") or "").strip()
-                provisional_user_id = str(cfg.get("provisional_user_id") or cookie_map.get("provisional_user_id") or "").strip()
-
-                desired_cookies: list[dict] = []
-                # When using domain, do NOT include path - they're mutually exclusive in Playwright
-                # Define cookies for BOTH domains since lmarena.ai 301-redirects to arena.ai
-                cookie_definitions = [
-                    (cf_clearance, "cf_clearance"),
-                    (cf_bm, "__cf_bm"),
-                    (cfuvid, "_cfuvid"),
-                    (provisional_user_id, "provisional_user_id"),
-                ]
-                for value, name in cookie_definitions:
-                    if value:
-                        for _domain in (".lmarena.ai", ".arena.ai"):
-                            desired_cookies.append({"name": name, "value": value, "domain": _domain})
+                desired_cookies = _build_desired_arena_cookies(cfg, include_grecaptcha=False)
                 if desired_cookies:
                     try:
                         existing_names: set[str] = set()
@@ -2421,84 +2143,7 @@ async def camoufox_proxy_worker():
                 # Turnstile token minting:
                 # Avoid long-running `page.evaluate` promises (they can hang if the page reloads). Render once, then poll
                 # `turnstile.getResponse(widgetId)` from Python and click the widget if it becomes interactive.
-                render_turnstile_js = """async ({ sitekey }) => {
-                  const w = (window.wrappedJSObject || window);
-                  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-                  const key = String(sitekey || '');
-                  const out = { ok: false, widgetId: null, stage: 'start', error: '' };
-                  if (!key) { out.stage = 'no_sitekey'; return out; }
-
-                  try {
-                    const prev = w.__LM_BRIDGE_TURNSTILE_WIDGET_ID;
-                    if (prev != null && w.turnstile && typeof w.turnstile.remove === 'function') {
-                      try { w.turnstile.remove(prev); } catch (e) {}
-                    }
-                  } catch (e) {}
-                  try {
-                    const old = w.document.getElementById('lm-bridge-turnstile');
-                    if (old) old.remove();
-                  } catch (e) {}
-
-                  async function ensureLoaded() {
-                    if (w.turnstile && typeof w.turnstile.render === 'function') return true;
-                    try {
-                      const h = w.document?.head;
-                      if (!h) return false;
-                      if (!w.__LM_BRIDGE_TURNSTILE_INJECTED) {
-                        w.__LM_BRIDGE_TURNSTILE_INJECTED = true;
-                        out.stage = 'inject_script';
-                        await Promise.race([
-                          new Promise((resolve) => {
-                            const s = w.document.createElement('script');
-                            s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-                            s.async = true;
-                            s.defer = true;
-                            s.onload = () => resolve(true);
-                            s.onerror = () => resolve(false);
-                            h.appendChild(s);
-                          }),
-                          sleep(12000).then(() => false),
-                        ]);
-                      }
-                    } catch (e) { out.error = String(e); }
-                    const start = Date.now();
-                    while ((Date.now() - start) < 15000) {
-                      if (w.turnstile && typeof w.turnstile.render === 'function') return true;
-                      await sleep(250);
-                    }
-                    return false;
-                  }
-
-                  const ok = await ensureLoaded();
-                  if (!ok || !(w.turnstile && typeof w.turnstile.render === 'function')) { out.stage = 'not_loaded'; return out; }
-
-                  out.stage = 'render';
-                  try {
-                    const el = w.document.createElement('div');
-                    el.id = 'lm-bridge-turnstile';
-                    el.style.cssText = 'position:fixed;left:20px;top:20px;z-index:2147483647;';
-                    (w.document.body || w.document.documentElement).appendChild(el);
-                    const params = new w.Object();
-                    params.sitekey = key;
-                    // Match LMArena's own anonymous sign-up widget settings.
-                    // `size: normal` + `appearance: interaction-only` tends to be accepted more reliably than
-                    // forcing an invisible execute flow.
-                    params.size = 'normal';
-                    params.appearance = 'interaction-only';
-                    params.callback = (tok) => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = String(tok || ''); } catch (e) {} };
-                    params['error-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
-                    params['expired-callback'] = () => { try { w.__LM_BRIDGE_TURNSTILE_TOKEN = ''; } catch (e) {} };
-                    const widgetId = w.turnstile.render(el, params);
-                    w.__LM_BRIDGE_TURNSTILE_WIDGET_ID = widgetId;
-                    out.ok = true;
-                    out.widgetId = widgetId;
-                    return out;
-                  } catch (e) {
-                    out.error = String(e);
-                    out.stage = 'render_error';
-                    return out;
-                  }
-                }"""
+                render_turnstile_js = _RENDER_TURNSTILE_JS
 
                 poll_turnstile_js = """({ widgetId }) => {
                   const w = (window.wrappedJSObject || window);

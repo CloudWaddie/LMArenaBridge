@@ -260,6 +260,7 @@ async def recover_arena_auth_session(
         email_addr = str(account.get("address") or os.environ.get("LM_ARENA_EMAIL") or "").strip()
         email_pw = str(account.get("password") or os.environ.get("LM_ARENA_PASSWORD") or "").strip()
         token: Optional[str] = None
+        new_managed_account: Optional[dict] = None
 
         if email_addr and email_pw:
             try:
@@ -289,7 +290,7 @@ async def recover_arena_auth_session(
                         signup_email, wait_for_verification_url=wait_verif, config=cfg
                     )
                     if token:
-                        cfg["managed_account"] = {
+                        new_managed_account = {
                             "provider": "email",
                             "address": signup_email,
                             "password": used_pw,
@@ -301,7 +302,7 @@ async def recover_arena_auth_session(
 
         if token and is_signed_in_arena_auth_token(token):
             _main.EPHEMERAL_ARENA_AUTH_TOKEN = token
-            _persist_refreshed_auth_token(cfg, old_token, token)
+            _persist_refreshed_auth_token(cfg, old_token, token, managed_account=new_managed_account)
             _main.debug_print("✅ Recovered signed-in arena-auth-prod-v1 session.")
             return token
         return None

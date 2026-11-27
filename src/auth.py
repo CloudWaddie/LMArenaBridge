@@ -754,8 +754,10 @@ async def maybe_refresh_expired_auth_tokens_via_lmarena_http(exclude_tokens: Opt
     return None
 
 
-def _persist_refreshed_auth_token(cfg: dict, old_token: str, new_token: str) -> None:
-    """Swap a refreshed session token into config.json so restarts keep working."""
+def _persist_refreshed_auth_token(
+    cfg: dict, old_token: str, new_token: str, *, managed_account: Optional[dict] = None
+) -> None:
+    """Save a refreshed session token and any newly created managed account."""
     try:
         # Re-read the on-disk config and apply the swap to it: writing back the stale
         # in-memory cfg would erase credentials added via the dashboard mid-request,
@@ -780,6 +782,8 @@ def _persist_refreshed_auth_token(cfg: dict, old_token: str, new_token: str) -> 
         cookies = disk_cfg.get("browser_cookies")
         if isinstance(cookies, dict) and cookies.get("arena-auth-prod-v1") == old_token:
             cookies["arena-auth-prod-v1"] = new_token
+        if managed_account is not None:
+            disk_cfg["managed_account"] = managed_account
         _m().save_config(disk_cfg, preserve_auth_tokens=False)
     except Exception:
         pass

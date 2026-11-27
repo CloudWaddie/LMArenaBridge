@@ -4148,7 +4148,27 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                         # If success or non-retryable error, break and use this response
                         break
                 else:
-                    response = await make_request_with_retry(url, payload, http_method)
+                    try:
+                        response = await make_request_with_retry(url, payload, http_method)
+                    except (httpx.HTTPStatusError, requests.exceptions.HTTPError) as http_err:
+                        if (
+                            getattr(http_err.response, "status_code", None) == HTTPStatus.FORBIDDEN
+                            and "recaptcha" in str(getattr(http_err.response, "text", "") or "").lower()
+                        ):
+                            debug_print("🌐 Direct HTTP hit reCAPTCHA 403; falling back to Chrome fetch...")
+                            if isinstance(payload, dict):
+                                payload["recaptchaV3Token"] = ""
+                            response = await fetch_lmarena_stream_via_chrome(
+                                http_method=http_method,
+                                url=url,
+                                payload=payload if isinstance(payload, dict) else {},
+                                auth_token=current_token,
+                                timeout_seconds=120,
+                            )
+                            if response is None:
+                                raise
+                        else:
+                            raise
             
             if response is None:
                 debug_print("⚠️ Browser transports returned None; falling back to direct httpx.")

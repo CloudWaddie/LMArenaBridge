@@ -179,7 +179,13 @@ def _build_desired_arena_cookies(
         for domain in (".lmarena.ai", ".arena.ai")
     ]
     if auth_token:
-        desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
+        if len(auth_token) > 3180:
+            chunks = [auth_token[i : i + 3180] for i in range(0, len(auth_token), 3180)]
+            for origin in _arena_origin_candidates(None):
+                for idx, chunk in enumerate(chunks):
+                    desired_cookies.append({"name": f"arena-auth-prod-v1.{idx}", "value": chunk, "url": origin})
+        else:
+            desired_cookies.extend(_arena_auth_cookie_specs(auth_token))
     return desired_cookies
 
 

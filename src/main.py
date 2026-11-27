@@ -2655,10 +2655,9 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
             debug_print(f"📦 Using PUT method for retry")
             http_method = "PUT"
         else:
-            user_msg_id = str(uuid7())
-            model_msg_id = str(uuid7())
             if not session:
                 debug_print("🆕 Creating NEW conversation session")
+                # Generate session_id before message IDs so UUIDv7 timestamps stay monotonic.
                 session_id = str(uuid7())
                 conv_id = session_id
                 url = f"https://arena.ai{STREAM_CREATE_EVALUATION_PATH}"
@@ -2666,6 +2665,8 @@ async def api_chat_completions(request: Request, api_key: dict = Depends(rate_li
                 debug_print("🔄 Using EXISTING conversation session")
                 conv_id = session["conversation_id"]
                 url = f"https://arena.ai/nextjs-api/stream/post-to-evaluation/{conv_id}"
+            user_msg_id = str(uuid7())
+            model_msg_id = str(uuid7())
             payload = {
                 "id": conv_id,
                 **({"mode": "direct-battle"} if not session else {}),

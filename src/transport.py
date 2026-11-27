@@ -2599,18 +2599,30 @@ async def camoufox_proxy_worker():
                         use_job_token = True
                     else:
                         try:
-                            if _m().is_arena_auth_token_expired(browser_auth_cookie, skew_seconds=60):
+                            from .account_recovery import is_anonymous_arena_auth_token
+
+                            if _m().is_arena_auth_token_expired(browser_auth_cookie, skew_seconds=60) or (
+                                is_anonymous_arena_auth_token(browser_auth_cookie)
+                                and not is_anonymous_arena_auth_token(auth_token)
+                            ):
                                 use_job_token = True
                         except Exception:
                             use_job_token = True
                 
                 if use_job_token:
-                    await context.add_cookies(
-                        _arena_auth_cookie_specs(
-                            auth_token,
-                            page_url=str(getattr(page, "url", "") or ""),
-                        )
-                    )
+                    # Playwright rejects cookie specs with both url and path; split >3180-char SSR tokens.
+                    chunks = [auth_token[i : i + 3180] for i in range(0, len(auth_token), 3180)]
+                    origins = _arena_origin_candidates(str(getattr(page, "url", "") or ""))
+                    specs = [
+                        {
+                            "name": f"arena-auth-prod-v1.{idx}" if len(chunks) > 1 else "arena-auth-prod-v1",
+                            "value": chunk,
+                            "url": origin,
+                        }
+                        for origin in origins
+                        for idx, chunk in enumerate(chunks)
+                    ]
+                    await context.add_cookies(specs)
                 elif browser_auth_cookie and not use_job_token:
                     _m().debug_print("🦊 Camoufox proxy: using valid browser auth cookie (job token is empty or invalid).")
             except Exception:
